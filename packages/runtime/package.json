@@ -1,0 +1,13 @@
+{
+  "name": "@emaki/runtime",
+  "version": "0.1.0",
+  "description": "Headless Emaki story VM: runs compiled stories, rollback, save/load.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@emaki/format": "0.1.0"
+  }
+}

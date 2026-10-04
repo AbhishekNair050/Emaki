@@ -1,0 +1,27 @@
+{
+  "name": "emaki",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json",
+    "emaki": "node packages/cli/src/main.ts",
+    "check": "node packages/cli/src/main.ts check games/gullwing/story.vn",
+    "dev": "vite --config packages/player-web/vite.config.ts",
+    "build:demo": "vite build --config packages/player-web/vite.config.ts",
+    "art": "node games/gullwing/tools/gen-art.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

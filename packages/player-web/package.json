@@ -1,0 +1,12 @@
+{
+  "name": "@emaki/player-web",
+  "version": "0.1.0",
+  "description": "Browser player for Emaki stories (DOM renderer).",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@emaki/format": "0.1.0",
+    "@emaki/runtime": "0.1.0"
+  }
+}
