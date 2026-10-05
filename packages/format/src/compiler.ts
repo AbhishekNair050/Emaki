@@ -1,0 +1,343 @@
+/**
+ * Compiler: AST -> CompiledStory.
+ *
+ * Responsibilities:
+ *  - validate references (characters, images, labels, variables, audio)
+ *  - flatten nested blocks (if/menu) into a flat instruction list with jumps
+ *  - assign stable line ids to dialogue and menus (for localization & saves)
+ *  - static analysis: unreachable labels
+ */
+import type { Diagnostic, Program, Stmt } from './ast.ts';
+import {
+  FORMAT_ID, FORMAT_VERSION,
+  type CompiledChoice, type CompiledStory, type Instr, type SrcRef,
+} from './compiled.ts';
+import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
+import { parse } from './parser.ts';
+
+export const TRANSITIONS = ['fade', 'dissolve', 'none'];
+export const POSITIONS = ['left', 'center', 'right'];
+/** Image names that exist without being declared. */
+export const BUILTIN_IMAGES = ['black'];
+
+export interface CompileResult {
+  /** null when there are errors. */
+  story: CompiledStory | null;
+  diagnostics: Diagnostic[];
+  program: Program;
+}
+
+/** Parse + compile in one go. */
+export function compile(source: string): CompileResult {
+  const { program, diagnostics } = parse(source);
+  const res = compileProgram(program);
+  const all = [...diagnostics, ...res.diagnostics].sort((a, b) => a.line - b.line);
+  const hasErrors = all.some((d) => d.severity === 'error');
+  return { story: hasErrors ? null : res.story, diagnostics: all, program };
+}
+
+export function compileProgram(program: Program): { story: CompiledStory; diagnostics: Diagnostic[] } {
+  const diagnostics: Diagnostic[] = [];
+  const error = (line: number, code: string, message: string) =>
+    diagnostics.push({ severity: 'error', line, code, message });
+  const warn = (line: number, code: string, message: string) =>
+    diagnostics.push({ severity: 'warning', line, code, message });
+
+  // --- Declarations -----------------------------------------------------
+  const meta: Record<string, string> = {};
+  for (const [k, v] of program.meta) meta[k] = v;
+
+  const characters: CompiledStory['characters'] = {};
+  for (const c of program.characters) {
+    if (characters[c.id]) error(c.loc.line, 'duplicate', `Character '${c.id}' is already defined`);
+    characters[c.id] = { name: c.name, color: c.color };
+  }
+
+  const images: Record<string, string> = {};
+  for (const im of program.images) {
+    if (images[im.name]) error(im.loc.line, 'duplicate', `Image '${im.name}' is already defined`);
+    images[im.name] = im.path;
+  }
+
+  const audio: Record<string, string> = {};
+  for (const a of program.audio) {
+    if (audio[a.name]) error(a.loc.line, 'duplicate', `Audio '${a.name}' is already defined`);
+    audio[a.name] = a.path;
+  }
+
+  const vars: Record<string, Value> = {};
+  for (const v of program.vars) {
+    if (Object.prototype.hasOwnProperty.call(vars, v.name)) {
+      error(v.loc.line, 'duplicate', `Variable '${v.name}' is already declared`);
+      continue;
+    }
+    try {
+      vars[v.name] = evaluate(v.init, {});
+    } catch (e) {
+      if (!(e instanceof EvalError)) throw e;
+      error(v.loc.line, 'bad-var', `Starting values must be plain values (numbers, text, true/false)`);
+      vars[v.name] = 0;
+    }
+  }
+
+  const labelNames = new Set<string>();
+  for (const l of program.labels) {
+    if (labelNames.has(l.name)) error(l.loc.line, 'duplicate', `Label '${l.name}' is already defined`);
+    labelNames.add(l.name);
+  }
+
+  const imageTags = new Set([...Object.keys(images), ...BUILTIN_IMAGES].map((n) => n.split(' ')[0]));
+
+  // --- Code generation --------------------------------------------------
+  const code: Instr[] = [];
+  const labels: Record<string, number> = {};
+  const usedIds = new Map<string, number>();
+  const pendingTargets: Array<{ instr: { target: number; label?: string }; name: string; line: number }> = [];
+
+  const lineId = (label: string, key: string): string => {
+    const base = `${label}.${fnv1a(key)}`;
+    const n = usedIds.get(base) ?? 0;
+    usedIds.set(base, n + 1);
+    return n === 0 ? base : `${base}.${n + 1}`;
+  };
+
+  const checkVars = (e: Expr, line: number) => {
+    for (const name of freeVars(e)) {
+      if (!Object.prototype.hasOwnProperty.call(vars, name)) {
+        error(line, 'unknown-variable', didYouMean(name, Object.keys(vars)) ?? `Unknown variable '${name}'. Declare it at the top: var ${name} = 0`);
+      }
+    }
+  };
+
+  const checkTransition = (t: string | null, line: number) => {
+    if (t && !TRANSITIONS.includes(t)) warn(line, 'unknown-transition', `Unknown transition '${t}' (known: ${TRANSITIONS.join(', ')})`);
+  };
+
+  const checkText = (text: string, line: number) => {
+    for (const m of text.matchAll(/\{\{|\}\}|\{([^{}]*)\}/g)) {
+      if (m[1] === undefined) continue;
+      const name = m[1].trim();
+      if (!/^[A-Za-z_]\w*$/.test(name)) {
+        error(line, 'bad-interpolation', `'{${m[1]}}' — only variable names can go in braces. Use '{{' for a literal brace.`);
+      } else if (!Object.prototype.hasOwnProperty.call(vars, name)) {
+        error(line, 'unknown-variable', `Unknown variable '${name}' in text`);
+      }
+    }
+  };
+
+  const emitBlock = (stmts: Stmt[], label: string): void => {
+    for (const s of stmts) emitStmt(s, label);
+  };
+
+  const emitStmt = (s: Stmt, label: string): void => {
+    const src: SrcRef = { line: s.loc.line, label };
+    switch (s.type) {
+      case 'say': {
+        if (s.who !== null && !characters[s.who]) {
+          error(s.loc.line, 'unknown-character', didYouMean(s.who, Object.keys(characters)) ?? `Unknown character '${s.who}'. Add: define ${s.who} "Name"`);
+        }
+        if (s.attrs.length && s.who) {
+          const name = `${s.who} ${s.attrs.join(' ')}`;
+          if (!images[name]) error(s.loc.line, 'unknown-image', `No image named '${name}'`);
+        }
+        checkText(s.text, s.loc.line);
+        code.push({ op: 'say', id: lineId(label, `${s.who ?? ''}|${s.text}`), who: s.who, attrs: s.attrs, text: s.text, src });
+        return;
+      }
+      case 'scene': {
+        if (s.image && !images[s.image] && !BUILTIN_IMAGES.includes(s.image)) {
+          error(s.loc.line, 'unknown-image', didYouMean(s.image, Object.keys(images)) ?? `No image named '${s.image}'`);
+        }
+        checkTransition(s.transition, s.loc.line);
+        code.push({ op: 'scene', image: s.image, transition: s.transition, src });
+        return;
+      }
+      case 'show': {
+        if (s.attrs.length) {
+          const name = `${s.tag} ${s.attrs.join(' ')}`;
+          if (!images[name]) error(s.loc.line, 'unknown-image', `No image named '${name}'`);
+        } else if (!imageTags.has(s.tag)) {
+          error(s.loc.line, 'unknown-image', `No image named '${s.tag}'`);
+        }
+        if (s.at && !POSITIONS.includes(s.at)) error(s.loc.line, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')})`);
+        checkTransition(s.transition, s.loc.line);
+        code.push({ op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, at: s.at, transition: s.transition, src });
+        return;
+      }
+      case 'hide':
+        if (!imageTags.has(s.tag)) warn(s.loc.line, 'unknown-image', `Nothing called '${s.tag}' can be shown, so it can't be hidden`);
+        checkTransition(s.transition, s.loc.line);
+        code.push({ op: 'hide', tag: s.tag, transition: s.transition, src });
+        return;
+      case 'play': {
+        let path = '';
+        if (s.asset.kind === 'path') path = s.asset.path;
+        else if (audio[s.asset.name]) path = audio[s.asset.name];
+        else error(s.loc.line, 'unknown-audio', `Unknown audio '${s.asset.name}'. Add: audio ${s.asset.name} = "audio/file.ogg"`);
+        code.push({ op: 'play', channel: s.channel, path, loop: s.loop ?? s.channel === 'music', fade: s.fade, src });
+        return;
+      }
+      case 'stop':
+        code.push({ op: 'stop', channel: s.channel, fade: s.fade, src });
+        return;
+      case 'set': {
+        if (!Object.prototype.hasOwnProperty.call(vars, s.name)) {
+          error(s.loc.line, 'unknown-variable', didYouMean(s.name, Object.keys(vars)) ?? `Unknown variable '${s.name}'. Declare it at the top: var ${s.name} = 0`);
+        }
+        checkVars(s.expr, s.loc.line);
+        const expr: Expr = s.op === '='
+          ? s.expr
+          : { k: 'bin', op: s.op === '+=' ? '+' : '-', l: { k: 'var', name: s.name }, r: s.expr };
+        code.push({ op: 'set', name: s.name, expr, src });
+        return;
+      }
+      case 'jump': {
+        const instr = { op: 'jump' as const, target: -1, label: s.target, src };
+        pendingTargets.push({ instr, name: s.target, line: s.loc.line });
+        code.push(instr);
+        return;
+      }
+      case 'call': {
+        const instr = { op: 'call' as const, target: -1, label: s.target, src };
+        pendingTargets.push({ instr, name: s.target, line: s.loc.line });
+        code.push(instr);
+        return;
+      }
+      case 'return': code.push({ op: 'return', src }); return;
+      case 'end': code.push({ op: 'end', src }); return;
+      case 'wait': code.push({ op: 'wait', seconds: s.seconds, src }); return;
+      case 'menu': {
+        const choices: CompiledChoice[] = s.choices.map((c) => {
+          if (c.cond) checkVars(c.cond, c.loc.line);
+          checkText(c.text, c.loc.line);
+          return { id: '', text: c.text, cond: c.cond, target: -1 };
+        });
+        const menuId = lineId(label, `menu|${s.choices.map((c) => c.text).join('|')}`);
+        choices.forEach((c) => { c.id = lineId(label, `choice|${c.text}`); });
+        code.push({ op: 'menu', id: menuId, choices, src });
+        const exits: Array<{ target: number }> = [];
+        s.choices.forEach((c, i) => {
+          choices[i].target = code.length;
+          emitBlock(c.body, label);
+          const j = { op: 'jump' as const, target: -1, src: { line: c.loc.line, label } };
+          exits.push(j);
+          code.push(j);
+        });
+        for (const j of exits) j.target = code.length;
+        return;
+      }
+      case 'if': {
+        const exits: Array<{ target: number }> = [];
+        for (const b of s.branches) {
+          let skip: { target: number } | null = null;
+          if (b.cond) {
+            checkVars(b.cond, b.loc.line);
+            const ji = { op: 'jumpIfNot' as const, cond: b.cond, target: -1, src: { line: b.loc.line, label } };
+            code.push(ji);
+            skip = ji;
+          }
+          emitBlock(b.body, label);
+          const j = { op: 'jump' as const, target: -1, src: { line: b.loc.line, label } };
+          exits.push(j);
+          code.push(j);
+          if (skip) skip.target = code.length;
+        }
+        for (const j of exits) j.target = code.length;
+        return;
+      }
+    }
+  };
+
+  for (const l of program.labels) {
+    labels[l.name] = code.length;
+    emitBlock(l.body, l.name);
+    // Reaching the end of a label behaves like `return` (ends the story if nothing called it).
+    code.push({ op: 'return', src: { line: l.loc.line, label: l.name } });
+  }
+
+  for (const p of pendingTargets) {
+    if (labels[p.name] === undefined) error(p.line, 'unknown-label', didYouMean(p.name, Object.keys(labels)) ?? `No label named '${p.name}'`);
+    else p.instr.target = labels[p.name];
+  }
+
+  // --- Start label --------------------------------------------------------
+  let start = 0;
+  const startName = meta.start ?? (labels.start !== undefined ? 'start' : program.labels[0]?.name);
+  if (!startName) error(1, 'no-labels', 'The story has no labels. Add one: label start:');
+  else if (labels[startName] === undefined) error(1, 'unknown-label', `Start label '${startName}' doesn't exist`);
+  else start = labels[startName];
+
+  // --- Reachability -----------------------------------------------------
+  if (code.length && !diagnostics.some((d) => d.severity === 'error')) {
+    const seen = reachable(code, start);
+    for (const l of program.labels) {
+      if (!seen.has(labels[l.name])) warn(l.loc.line, 'unreachable-label', `Label '${l.name}' can never be reached`);
+    }
+  }
+
+  const story: CompiledStory = {
+    format: FORMAT_ID,
+    version: FORMAT_VERSION,
+    meta, start, characters, images, audio, vars, labels, code,
+    hash: '',
+  };
+  story.hash = fnv1a(JSON.stringify({ ...story, hash: '' }));
+  return { story, diagnostics };
+}
+
+/** Instruction indices reachable from `start`. */
+export function reachable(code: Instr[], start: number): Set<number> {
+  const seen = new Set<number>();
+  const todo = [start];
+  while (todo.length) {
+    const i = todo.pop()!;
+    if (i < 0 || i >= code.length || seen.has(i)) continue;
+    seen.add(i);
+    const ins = code[i];
+    switch (ins.op) {
+      case 'jump': todo.push(ins.target); break;
+      case 'jumpIfNot': todo.push(i + 1, ins.target); break;
+      case 'menu': for (const c of ins.choices) todo.push(c.target); break;
+      case 'call': todo.push(ins.target, i + 1); break;
+      case 'return': case 'end': break;
+      default: todo.push(i + 1);
+    }
+  }
+  return seen;
+}
+
+/** FNV-1a 32-bit hash, base36. Small, fast, deterministic across runtimes. */
+export function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/** "Unknown 'kitchen_tlak'. Did you mean 'kitchen_talk'?" — or null if nothing is close. */
+function didYouMean(name: string, candidates: string[]): string | null {
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (const c of candidates) {
+    const d = editDistance(name.toLowerCase(), c.toLowerCase());
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  const limit = Math.max(1, Math.floor(name.length / 3));
+  return best !== null && bestDist <= limit ? `Unknown name '${name}'. Did you mean '${best}'?` : null;
+}
+
+function editDistance(a: string, b: string): number {
+  // Optimal string alignment distance (Levenshtein + adjacent transpositions).
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
