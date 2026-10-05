@@ -1,0 +1,170 @@
+---
+title: The Keeper of Gullwing Point
+author: Emaki demo
+start: arrival
+title_image: bg/cliff_road_dusk.svg
+---
+
+# ── Characters ──────────────────────────────────────────────
+define mira "Mira" color=#e8b04b
+define ren "Ren" color=#8fc1e3
+define radio "Radio" color=#9fd8a8
+
+# ── Backgrounds ─────────────────────────────────────────────
+image cliff_road = "bg/cliff_road_dusk.svg"
+image kitchen = "bg/kitchen_night.svg"
+image lamp_room = "bg/lamp_room_night.svg"
+image shore_dawn = "bg/shore_dawn.svg"
+
+# ── Mira's expressions ──────────────────────────────────────
+image mira neutral = "sprites/mira_neutral.svg"
+image mira smile = "sprites/mira_smile.svg"
+image mira stern = "sprites/mira_stern.svg"
+image mira sad = "sprites/mira_sad.svg"
+
+# ── Story state ─────────────────────────────────────────────
+var trust = 0
+var read_letter = false
+var lamp_fixed = false
+var boat_safe = false
+
+
+label arrival:
+  scene cliff_road with fade
+  "The bus left me where the road gave up, a mile short of the lighthouse."
+  "Gullwing Point. Forty years of logbooks, one keeper, and as of tonight, one relief assistant."
+  "Me."
+  show mira neutral at center with dissolve
+  "She's waiting at the gate in an oilskin coat, as if she'd known to the minute when I'd arrive."
+  mira: You're Ren.
+  ren: That's me. Relief assistant, as of—
+  mira: You're early. Nobody's ever early.
+
+  menu:
+    "The driver wanted to be home before the storm.":
+      mira: Smart man. Smarter than most who come up this road.
+    "I wanted to see the light come on.":
+      set trust += 1
+      mira smile: Did you now.
+      mira: Then you'd better not miss it.
+
+  mira neutral: Come on. Kettle's been on since noon.
+  jump kitchen_talk
+
+
+label kitchen_talk:
+  scene kitchen with dissolve
+  show mira neutral at right with dissolve
+  "Her kitchen smells of coal tar and tea that has been stewing for hours."
+  "There's a letter on the table. Sealed, addressed in her handwriting to the Lighthouse Board."
+  mira: I'll check the barometer. Don't touch anything that ticks.
+  hide mira with dissolve
+
+  menu:
+    "Read the letter.":
+      set read_letter = true
+      "I shouldn't. I do anyway. The wax is old and gives too easily."
+      "It's short. She's resigning, effective the end of the month."
+      "\"The Point needs someone who isn't tired,\" it says. \"I am tired.\""
+    "Leave it alone.":
+      set trust += 1
+      "Whatever it is, it's hers. I pour two cups instead."
+
+  show mira stern at right with dissolve
+  mira: Glass is dropping. Faster than I've seen in twenty years.
+  if read_letter:
+    "Her eyes go to the letter, then to me. If she notices the broken seal, she doesn't say."
+  else:
+    mira smile: You poured me one. That's a start.
+    mira stern: Drink it fast.
+  mira: Up to the lamp room. Now.
+  jump lamp_room_trouble
+
+
+label lamp_room_trouble:
+  scene lamp_room with fade
+  show mira stern at left with dissolve
+  "The lens is taller than I am, a beehive of glass that turns on a bath of mercury."
+  "Tonight it isn't turning."
+  mira: Clockwork's jammed. The weight's dropped and the governor's stuck.
+  radio: Gullwing, Gullwing, this is the Marguerite. We've lost our plotter. Do you read?
+  mira: That's Tom Halloran's boat. He'll be steering by our light, and our light is standing still.
+  mira: I need hands on the crank and a voice on that radio. I can't be both.
+
+  menu:
+    "I'll crank. You know the radio.":
+      call crank_the_lamp
+      "Behind me, Mira talks Tom in, calm as a weather report."
+      "\"Two points to starboard, Tom. You'll see us in a minute. There. There we are.\""
+      set boat_safe = true
+    "I'll take the radio. You fix the lamp.":
+      "I grab the handset. My voice comes out higher than I'd like."
+      ren: Marguerite, this is Gullwing. The light will be back. Hold your heading.
+      radio: Hold it where, Gullwing? I can't see a blessed thing.
+      "I don't know these waters. I don't know where to tell him to go."
+      "By the time the lens turns again, Tom has found the rocks off the north spit. Not hard. But hard enough."
+      set lamp_fixed = true
+    "Tell me what to do. I'll do whatever you say." if trust >= 1:
+      set trust += 1
+      mira smile: Good answer. Crank, and repeat everything I say into that handset.
+      call crank_the_lamp
+      "Between turns of the crank I relay her words, one by one."
+      ren: Marguerite, two points to starboard. You'll see us in a minute.
+      radio: I see you, Gullwing! Lord, I see you.
+      set boat_safe = true
+
+  jump the_long_night
+
+
+label crank_the_lamp:
+  "The crank is cold and stiff, then suddenly it isn't."
+  "One turn. Ten. Forty. My shoulders burn."
+  "The lens shudders, then turns. Light sweeps out over the black water."
+  set lamp_fixed = true
+  return
+
+
+label the_long_night:
+  scene shore_dawn with fade
+  "By dawn the storm has blown itself out over the headland."
+  show mira neutral at center with dissolve
+
+  if boat_safe and trust >= 2:
+    jump ending_two_keepers
+  elif boat_safe:
+    jump ending_light_holds
+  else:
+    jump ending_rough_water
+
+
+label ending_two_keepers:
+  "The Marguerite sits in the harbour below us, whole, her crew already arguing over breakfast."
+  if read_letter:
+    mira sad: You read my letter.
+    ren: I did. I'm sorry.
+    mira neutral: Don't be. Saves me explaining.
+  mira: I wrote that I was tired.
+  mira smile: I'm still tired. But I think I'd like to see whether you're any good at this.
+  "She takes the letter from her pocket and lets the wind have it."
+  mira: One more year. I'll teach you the rocks.
+  "Ending: Two Keepers."
+  end
+
+
+label ending_light_holds:
+  "The Marguerite is safe in harbour. Nobody hurt, nothing lost."
+  mira: You did fine. Better than fine.
+  mira sad: But I meant what I wrote. I'm done at the end of the month.
+  "She hands me the logbook. Forty years of weather, in her careful hand."
+  mira neutral: Keep it better than I did.
+  "Ending: The Light Holds."
+  end
+
+
+label ending_rough_water:
+  "The Marguerite limps into harbour with a stove-in bow. Tom has a cut on his head and a story for the pub."
+  "Everyone is alive."
+  mira: Everyone comes home. That's the job. The rest is learning.
+  mira sad: You'll learn the rocks. I did.
+  "Ending: Rough Water."
+  end
