@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000">
+  <defs>
+    <linearGradient id="coat" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d8a33a"/><stop offset="1" stop-color="#9c6f1f"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e6bb98"/><stop offset="1" stop-color="#cf9f7c"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9d6cf"/><stop offset="1" stop-color="#9c9890"/>
+    </linearGradient>
+  </defs>
+  <!-- coat -->
+  <path d="M110 1000 L132 560 Q150 450 300 432 Q450 450 468 560 L490 1000Z" fill="url(#coat)"/>
+  <path d="M300 470 L300 1000" stroke="#7d5717" stroke-width="5"/>
+  <g fill="#5e4210"><circle cx="318" cy="560" r="9"/><circle cx="318" cy="650" r="9"/><circle cx="318" cy="740" r="9"/><circle cx="318" cy="830" r="9"/><circle cx="318" cy="920" r="9"/></g>
+  <path d="M140 640 Q150 760 180 1000" stroke="#7d5717" stroke-width="4" fill="none" opacity="0.6"/>
+  <path d="M460 640 Q450 760 420 1000" stroke="#7d5717" stroke-width="4" fill="none" opacity="0.6"/>
+  <!-- sweater collar + neck -->
+  <rect x="262" y="360" width="76" height="70" fill="url(#skin)"/>
+  <path d="M232 410 Q300 450 368 410 L384 470 Q300 510 216 470Z" fill="#3b4a5a"/>
+  <path d="M222 466 L300 520 L250 560 L196 480Z M378 466 L300 520 L350 560 L404 480Z" fill="#b8862c"/>
+  <!-- hair back + bun -->
+  <circle cx="300" cy="148" r="58" fill="url(#hair)"/>
+  <ellipse cx="300" cy="236" rx="112" ry="120" fill="url(#hair)"/>
+  <!-- face -->
+  <ellipse cx="300" cy="270" rx="94" ry="112" fill="url(#skin)"/>
+  <ellipse cx="206" cy="282" rx="14" ry="24" fill="#cf9f7c"/><ellipse cx="394" cy="282" rx="14" ry="24" fill="#cf9f7c"/>
+  <!-- hair front -->
+  <path d="M206 250 Q210 150 300 146 Q392 150 396 250 Q380 196 330 186 Q300 210 250 196 Q216 210 206 250Z" fill="url(#hair)"/>
+  <path d="M250 196 Q280 176 330 186" stroke="#f1efe9" stroke-width="3" fill="none" opacity="0.6"/>
+  <!-- age lines -->
+  <path d="M232 280 l-12 6 M232 290 l-10 10 M368 280 l12 6 M368 290 l10 10" stroke="#b07e62" stroke-width="2"/>
+  <path d="M262 352 Q300 362 338 352" stroke="#c48d6c" stroke-width="2" fill="none" opacity="0.6"/>
+  <!-- features -->
+  <path d="M296 236 L298 250 M304 236 L302 250" stroke="#b07e62" stroke-width="2"/>
+  <path d="M236 226 L288 242 M312 242 L364 226" stroke="#8a857c" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <ellipse cx="262" cy="268" rx="9" ry="8" fill="#2b2420"/><ellipse cx="338" cy="268" rx="9" ry="8" fill="#2b2420"/>
+  <path d="M298 276 Q292 304 300 310 Q306 312 312 306" stroke="#b07e62" stroke-width="3" fill="none"/>
+  <path d="M276 336 L324 336" stroke="#8c4a3e" stroke-width="5" fill="none" stroke-linecap="round"/>
+</svg>
