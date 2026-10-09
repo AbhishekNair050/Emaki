@@ -38,7 +38,8 @@ export interface RunState {
   lastSay: SayBlock | null;
 }
 
-export type SayBlock = { type: 'say'; id: string; who: Speaker | null; text: string; line: number };
+/** `label` is the story label the line belongs to (for maps, analytics, debugging). */
+export type SayBlock = { type: 'say'; id: string; who: Speaker | null; text: string; line: number; label: string };
 
 export type Effect =
   | { type: 'scene'; bg: string | null; path: string | null; transition: string | null }
@@ -55,8 +56,8 @@ export interface Speaker {
 
 export type Block =
   | SayBlock
-  | { type: 'menu'; id: string; choices: Array<{ index: number; id: string; text: string }>; line: number }
-  | { type: 'wait'; seconds: number; line: number }
+  | { type: 'menu'; id: string; choices: Array<{ index: number; id: string; text: string }>; line: number; label: string }
+  | { type: 'wait'; seconds: number; line: number; label: string }
   | { type: 'end' };
 
 export interface Step {
@@ -109,6 +110,33 @@ export class Runner {
     this.state = this.initialState();
     this.history = [];
     return this.run();
+  }
+
+  /**
+   * Begin from any label: a testing aid for writers ("play from here").
+   * Variables start from their declared values, overridden by `vars`.
+   * Pass `scene` to keep what's currently on screen, since a label that
+   * doesn't open with `scene` would otherwise start on black.
+   */
+  startAt(label: string, opts: { vars?: Record<string, Value>; scene?: SceneState } = {}): Step {
+    const pc = this.story.labels[label];
+    if (pc === undefined) throw new StoryError(`No label named '${label}'`, null);
+    this.state = this.initialState();
+    this.state.pc = pc;
+    for (const [name, v] of Object.entries(opts.vars ?? {})) {
+      if (Object.prototype.hasOwnProperty.call(this.story.vars, name)) this.state.vars[name] = v;
+    }
+    if (opts.scene) this.state.scene = clone(opts.scene);
+    this.history = [];
+    return this.run();
+  }
+
+  /** Change a declared variable (testing aid). Throws for unknown names. */
+  setVar(name: string, value: Value): void {
+    if (!Object.prototype.hasOwnProperty.call(this.story.vars, name)) {
+      throw new StoryError(`Unknown variable '${name}'`, null);
+    }
+    this.state.vars[name] = value;
   }
 
   /** Continue past the current dialogue line or wait. */
@@ -284,6 +312,7 @@ export class Runner {
             who: ins.who && c ? { id: ins.who, name: c.name, color: c.color } : null,
             text: this.interpolate(ins.text, ins),
             line: ins.src.line,
+            label: ins.src.label,
           }, effects);
         }
         case 'menu': {
@@ -294,11 +323,11 @@ export class Runner {
           if (choices.length === 0) {
             throw new StoryError('Every choice in this menu is hidden by its condition', ins.src.line);
           }
-          return this.blockOn({ type: 'menu', id: ins.id, choices, line: ins.src.line }, effects);
+          return this.blockOn({ type: 'menu', id: ins.id, choices, line: ins.src.line, label: ins.src.label }, effects);
         }
         case 'wait':
           s.pc++;
-          return this.blockOn({ type: 'wait', seconds: ins.seconds, line: ins.src.line }, effects);
+          return this.blockOn({ type: 'wait', seconds: ins.seconds, line: ins.src.line, label: ins.src.label }, effects);
         case 'scene':
           s.pc++;
           s.scene = { bg: ins.image === 'black' ? null : ins.image, sprites: [] };

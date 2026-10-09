@@ -174,6 +174,36 @@ label sub:
     expect(r2.vars.n).toBe(5);
   });
 
+  it('tags every line with the label it belongs to', () => {
+    const r = new Runner(story(src));
+    expect(r.start().block).toMatchObject({ label: 'start' });
+    r.advance();
+    r.choose(0);
+    expect(r.advance().block).toMatchObject({ text: 'In sub.', label: 'sub' });
+  });
+
+  it('starts from any label, with overridden variables and kept scene', () => {
+    const r = new Runner(demo);
+    r.start();
+    const scene = r.scene();
+    const step = r.startAt('the_long_night', { vars: { trust: 3, boat_safe: true, nonsense: 1 }, scene });
+    expect(step.block).toMatchObject({ label: 'the_long_night', text: 'By dawn the storm has blown itself out over the headland.' });
+    expect(r.vars).toMatchObject({ trust: 3, boat_safe: true });
+    expect(r.vars).not.toHaveProperty('nonsense');
+    let b = step.block;
+    while (b.type !== 'end') b = r.advance().block;
+    expect(r.log.at(-1)!.text).toBe('Ending: Two Keepers.');
+    expect(() => r.startAt('nowhere')).toThrow(StoryError);
+  });
+
+  it('lets tools change declared variables only', () => {
+    const r = new Runner(demo);
+    r.start();
+    r.setVar('trust', 5);
+    expect(r.vars.trust).toBe(5);
+    expect(() => r.setVar('trsut', 1)).toThrow(StoryError);
+  });
+
   it('rejects garbage saves', () => {
     const r = new Runner(story(src));
     expect(r.load({} as never).ok).toBe(false);
