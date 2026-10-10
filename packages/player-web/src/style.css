@@ -31,7 +31,7 @@ html, body {
 /* 16:9 stage, letterboxed to fit any window. Everything inside sizes off the stage (cq units). */
 .stage {
   position: relative;
-  width: min(100vw, calc(100dvh * 16 / 9));
+  width: min(100%, calc(100dvh * 16 / 9));
   aspect-ratio: 16 / 9;
   container-type: size;
   overflow: hidden;

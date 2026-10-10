@@ -5,7 +5,7 @@
  * crisp text at any size, tiny download. A WebGL renderer can implement the
  * same Effect/Block contract later for shaders and particle effects.
  */
-import type { CompiledStory } from '@emaki/format';
+import type { CompiledStory, Value } from '@emaki/format';
 import {
   Runner, StoryError,
   type Block, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -23,6 +23,8 @@ type Mode = 'title' | 'playing' | 'ended';
 export interface PlayerOptions {
   /** Dev mode: resume at the same line after the script is edited. */
   dev?: boolean;
+  /** Called whenever a new line/menu/end is shown (null on the title screen). Used by dev tools. */
+  onUpdate?: (block: Block | null) => void;
 }
 
 export class Player {
@@ -137,6 +139,30 @@ export class Player {
     this.showTitle();
   }
 
+  // ---------------------------------------------------------------- dev tools
+
+  get vars(): Readonly<Record<string, Value>> {
+    return this.runner.vars;
+  }
+
+  /** Play from any label, keeping the current variables and what's on screen. */
+  jumpTo(label: string): void {
+    const scene = this.mode === 'title' ? undefined : this.runner.scene();
+    const vars = { ...this.runner.vars };
+    this.enterPlaying();
+    this.auto = this.skip = false;
+    this.updateToggles();
+    this.epoch++;
+    this.busy = false;
+    this.syncScene(scene ?? { bg: null, sprites: [] });
+    this.guard(() => this.present(this.runner.startAt(label, { vars, scene })));
+  }
+
+  setVar(name: string, value: Value): void {
+    this.guard(() => this.runner.setVar(name, value));
+    this.opts.onUpdate?.(this.runner.block);
+  }
+
   // ---------------------------------------------------------------- flow
 
   private start(): void {
@@ -239,6 +265,7 @@ export class Player {
         this.showEnd();
         break;
     }
+    this.opts.onUpdate?.(b);
   }
 
   // ---------------------------------------------------------- text
@@ -460,6 +487,7 @@ export class Player {
   }
 
   private showTitle(): void {
+    this.opts.onUpdate?.(null);
     this.mode = 'title';
     this.epoch++;
     this.clearTimers();
@@ -577,6 +605,8 @@ export class Player {
 
   private onKey(e: KeyboardEvent): void {
     if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return;
+    // Keys aimed at something focused outside the game (e.g. a dev panel) aren't ours.
+    if (e.target instanceof Element && e.target !== document.body && !this.stage.contains(e.target)) return;
     if (e.key === 'Escape' && this.overlayOpen && this.mode === 'playing') { this.closeOverlay(); return; }
     if (this.mode !== 'playing' || this.overlayOpen) return;
     const block = this.runner.block;
