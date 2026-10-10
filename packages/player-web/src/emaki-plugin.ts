@@ -6,16 +6,20 @@
 import { readFileSync } from 'node:fs';
 import { normalize, resolve } from 'node:path';
 import type { Plugin } from 'vite';
-import { compile } from '@emaki/format';
+import { buildGraph, compile } from '@emaki/format';
 
 const VIRTUAL = 'virtual:emaki-game';
 const RESOLVED = '\0' + VIRTUAL;
 
 export function emakiGame(gameDir: string): Plugin {
   const storyPath = resolve(gameDir, 'story.vn');
+  let devServer = false;
 
   return {
     name: 'emaki-game',
+    configResolved(config) {
+      devServer = config.command === 'serve';
+    },
     resolveId(id) {
       return id === VIRTUAL ? RESOLVED : null;
     },
@@ -32,6 +36,8 @@ export function emakiGame(gameDir: string): Plugin {
         `export const story = ${JSON.stringify(r.story)};`,
         `export const diagnostics = ${JSON.stringify(r.diagnostics)};`,
         `export const sourceLines = ${JSON.stringify(source.replace(/\r\n?/g, '\n').split('\n'))};`,
+        // The story map is a dev tool: never ship a spoiler map of the routes in a build.
+        `export const graph = ${JSON.stringify(devServer && r.story ? buildGraph(r.program) : null)};`,
       ].join('\n');
     },
     handleHotUpdate({ file, server }) {
