@@ -2,45 +2,79 @@
  * Printer: AST -> canonical `.vn` source.
  *
  * This is the foundation of the visual editor round-trip: the flowchart view
- * edits the AST, and the printer writes it back as clean, diff-friendly text.
- * Invariant (tested): parse(print(ast)) is structurally equal to ast.
+ * edits the AST, and the printer writes it back as clean, diff-friendly text,
+ * keeping every comment and paragraph break the writer made.
+ *
+ * Invariants (tested):
+ *  - parse(print(ast)) is structurally equal to ast
+ *  - print(parse(text)) === text for any text already in canonical form
+ *
+ * Canonical spacing: one blank line between the header, each group of
+ * declarations (characters, images, audio, variables) and each label. Inside
+ * blocks, blank lines are kept where the writer put them (collapsed to one).
  */
-import type { AssetRef, Program, Stmt } from './ast.ts';
+import type { AssetRef, Program, Stmt, Trivia } from './ast.ts';
 import { printExpr } from './expr.ts';
 
 const INDENT = '  ';
 
 export function print(program: Program): string {
   const out: string[] = [];
+  const blank = () => {
+    if (out.length && out[out.length - 1] !== '') out.push('');
+  };
 
   if (program.meta.length) {
     out.push('---');
     for (const [k, v] of program.meta) out.push(`${k}: ${v}`);
-    out.push('---', '');
+    out.push('---');
   }
 
-  const section = (lines: string[]) => {
-    if (lines.length) out.push(...lines, '');
-  };
-
-  section(program.characters.map((c) => `define ${c.id} ${q(c.name)}${c.color ? ` color=${c.color}` : ''}`));
-  section(program.images.map((i) => `image ${i.name} = ${q(i.path)}`));
-  section(program.audio.map((a) => `audio ${a.name} = ${q(a.path)}`));
-  section(program.vars.map((v) => `var ${v.name} = ${printExpr(v.init)}`));
+  const sections: Array<Array<Trivia & { text: string }>> = [
+    program.characters.map((c) => ({ leading: c.leading, text: `define ${c.id} ${q(c.name)}${c.color ? ` color=${c.color}` : ''}` })),
+    program.images.map((i) => ({ leading: i.leading, text: `image ${i.name} = ${q(i.path)}` })),
+    program.audio.map((a) => ({ leading: a.leading, text: `audio ${a.name} = ${q(a.path)}` })),
+    program.vars.map((v) => ({ leading: v.leading, text: `var ${v.name} = ${printExpr(v.init)}` })),
+  ];
+  for (const section of sections) {
+    if (!section.length) continue;
+    blank();
+    for (const item of section) {
+      trivia(item.leading, '', out);
+      out.push(item.text);
+    }
+  }
 
   for (const l of program.labels) {
+    blank();
+    trivia(l.leading, '', out);
     out.push(`label ${l.name}:`);
     printBlock(l.body, 1, out);
-    out.push('');
   }
 
+  if (program.trailing?.length) {
+    blank();
+    trivia(program.trailing, '', out);
+  }
+
+  while (out.length && out[0] === '') out.shift();
   while (out.length && out[out.length - 1] === '') out.pop();
   return out.join('\n') + '\n';
+}
+
+/** Emit comments and blank lines above a node. */
+function trivia(leading: string[] | undefined, pad: string, out: string[]): void {
+  for (const t of leading ?? []) {
+    if (t === '') {
+      if (out.length && out[out.length - 1] !== '') out.push('');
+    } else out.push(pad + t);
+  }
 }
 
 function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
   const pad = INDENT.repeat(depth);
   for (const s of stmts) {
+    trivia(s.leading, pad, out);
     switch (s.type) {
       case 'say': {
         if (s.who === null) out.push(pad + q(s.text));
@@ -86,12 +120,14 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
       case 'menu':
         out.push(`${pad}menu:`);
         for (const c of s.choices) {
+          trivia(c.leading, pad + INDENT, out);
           out.push(`${pad}${INDENT}${q(c.text)}${c.cond ? ` if ${printExpr(c.cond)}` : ''}:`);
           printBlock(c.body, depth + 2, out);
         }
         break;
       case 'if':
         s.branches.forEach((b, i) => {
+          if (i > 0) trivia(b.leading, pad, out);
           if (b.cond === null) out.push(`${pad}else:`);
           else out.push(`${pad}${i === 0 ? 'if' : 'elif'} ${printExpr(b.cond)}:`);
           printBlock(b.body, depth + 1, out);
