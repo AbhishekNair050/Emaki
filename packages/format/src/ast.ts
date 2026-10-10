@@ -5,11 +5,20 @@ export interface Loc {
   line: number;
 }
 
-export interface CharacterDef { id: string; name: string; color: string | null; loc: Loc }
-export interface ImageDef { name: string; path: string; loc: Loc }
-export interface AudioDef { name: string; path: string; loc: Loc }
-export interface VarDef { name: string; init: Expr; loc: Loc }
-export interface LabelDef { name: string; body: Stmt[]; loc: Loc }
+/**
+ * Comments and blank lines written above a node, in order: "# text" for a
+ * comment, "" for a blank line. Kept so tools that rewrite a script (the
+ * formatter, the visual editor) never lose a writer's notes. Absent when empty.
+ */
+export interface Trivia {
+  leading?: string[];
+}
+
+export interface CharacterDef extends Trivia { id: string; name: string; color: string | null; loc: Loc }
+export interface ImageDef extends Trivia { name: string; path: string; loc: Loc }
+export interface AudioDef extends Trivia { name: string; path: string; loc: Loc }
+export interface VarDef extends Trivia { name: string; init: Expr; loc: Loc }
+export interface LabelDef extends Trivia { name: string; body: Stmt[]; loc: Loc }
 
 export interface Program {
   /** Frontmatter key/values (title, author, start, ...). Key order preserved. */
@@ -19,26 +28,28 @@ export interface Program {
   audio: AudioDef[];
   vars: VarDef[];
   labels: LabelDef[];
+  /** Comments after the last line of the file. */
+  trailing?: string[];
 }
 
 export type Channel = 'music' | 'sound' | 'voice';
 export type AssignOp = '=' | '+=' | '-=';
 
-export interface Choice {
+export interface Choice extends Trivia {
   text: string;
   cond: Expr | null;
   body: Stmt[];
   loc: Loc;
 }
 
-export interface IfBranch {
+export interface IfBranch extends Trivia {
   /** null for `else`. */
   cond: Expr | null;
   body: Stmt[];
   loc: Loc;
 }
 
-export type Stmt =
+export type Stmt = Trivia & (
   | { type: 'say'; who: string | null; attrs: string[]; text: string; loc: Loc }
   | { type: 'scene'; image: string | null; transition: string | null; loc: Loc }
   | { type: 'show'; tag: string; attrs: string[]; at: string | null; transition: string | null; loc: Loc }
@@ -52,7 +63,8 @@ export type Stmt =
   | { type: 'end'; loc: Loc }
   | { type: 'wait'; seconds: number; loc: Loc }
   | { type: 'menu'; choices: Choice[]; loc: Loc }
-  | { type: 'if'; branches: IfBranch[]; loc: Loc };
+  | { type: 'if'; branches: IfBranch[]; loc: Loc }
+);
 
 /** An audio reference: either a declared `audio` name or a literal path. */
 export type AssetRef = { kind: 'name'; name: string } | { kind: 'path'; path: string };

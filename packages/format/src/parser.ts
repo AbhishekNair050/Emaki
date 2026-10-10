@@ -6,7 +6,8 @@
  * once.
  */
 import type {
-  AssetRef, Channel, Choice, Diagnostic, IfBranch, LabelDef, Program, Stmt,
+  AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, Program, Stmt,
+  Trivia, VarDef,
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
 
@@ -15,6 +16,8 @@ interface Line {
   text: string;
   line: number;
   children: Line[];
+  /** Comments ("# ...") and blank lines ("") directly above this line. */
+  leading: string[];
 }
 
 export const KEYWORDS = new Set([
@@ -56,15 +59,27 @@ export function parse(source: string): ParseResult {
   }
 
   // --- Build an indentation tree ----------------------------------------
-  const root: Line = { indent: -1, text: '', line: 0, children: [] };
+  // Comments and blank lines are collected and attached to the next real line
+  // (consecutive blank lines collapse into one).
+  const root: Line = { indent: -1, text: '', line: 0, children: [], leading: [] };
   const stack: Line[] = [root];
+  let pending: string[] = [];
   for (let i = start; i < rawLines.length; i++) {
     const raw = rawLines[i];
-    if (raw.trim() === '' || raw.trimStart().startsWith('#')) continue;
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      if (pending[pending.length - 1] !== '') pending.push('');
+      continue;
+    }
+    if (trimmed.startsWith('#')) {
+      pending.push(trimmed);
+      continue;
+    }
     const lead = /^[ \t]*/.exec(raw)![0];
     if (lead.includes('\t')) err(i + 1, 'tab-indent', 'Use spaces for indentation, not tabs');
     const indent = lead.replace(/\t/g, '    ').length;
-    const node: Line = { indent, text: raw.trim(), line: i + 1, children: [] };
+    const node: Line = { indent, text: trimmed, line: i + 1, children: [], leading: pending };
+    pending = [];
     while (stack[stack.length - 1].indent >= indent) stack.pop();
     stack[stack.length - 1].children.push(node);
     stack.push(node);
@@ -72,6 +87,8 @@ export function parse(source: string): ParseResult {
 
   // --- Top level ---------------------------------------------------------
   for (const ln of root.children) parseTopLevel(ln);
+  const trailing = trimBlanks(pending);
+  if (trailing.length) program.trailing = trailing;
 
   return { program, diagnostics };
 
@@ -86,7 +103,7 @@ export function parse(source: string): ParseResult {
       if (!m) { err(ln.line, 'bad-label', `Expected 'label name:'`); return; }
       if (ln.children.length === 0) err(ln.line, 'empty-block', `Label '${m[1]}' has no lines`);
       const label: LabelDef = { name: m[1], body: parseBlock(ln.children), loc: { line: ln.line } };
-      program.labels.push(label);
+      program.labels.push(attach(label, ln, true));
       return;
     }
 
@@ -104,7 +121,7 @@ export function parse(source: string): ParseResult {
         else err(ln.line, 'bad-define', `Unknown option '${opt}' (supported: color=#rrggbb)`);
       }
       if (KEYWORDS.has(m[1])) { err(ln.line, 'reserved-name', `'${m[1]}' is a keyword and can't be a character id`); return; }
-      program.characters.push({ id: m[1], name: q.value, color, loc: { line: ln.line } });
+      program.characters.push(attach<CharacterDef>({ id: m[1], name: q.value, color, loc: { line: ln.line } }, ln, program.characters.length === 0));
       return;
     }
 
@@ -119,7 +136,8 @@ export function parse(source: string): ParseResult {
         err(ln.line, `bad-${word}`, `Names may only use letters, digits and _`);
         return;
       }
-      (word === 'image' ? program.images : program.audio).push({ name, path: q.value, loc: { line: ln.line } });
+      const list = word === 'image' ? program.images : program.audio;
+      list.push(attach<ImageDef | AudioDef>({ name, path: q.value, loc: { line: ln.line } }, ln, list.length === 0));
       return;
     }
 
@@ -127,7 +145,7 @@ export function parse(source: string): ParseResult {
       const m = /^var\s+([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(t);
       if (!m) { err(ln.line, 'bad-var', `Expected 'var name = value'`); return; }
       const e = safeExpr(m[2], ln.line);
-      if (e) program.vars.push({ name: m[1], init: e, loc: { line: ln.line } });
+      if (e) program.vars.push(attach<VarDef>({ name: m[1], init: e, loc: { line: ln.line } }, ln, program.vars.length === 0));
       return;
     }
 
@@ -153,7 +171,7 @@ export function parse(source: string): ParseResult {
           if (b) branches.push(b);
           if (nw === 'else') break;
         }
-        if (branches.length) out.push({ type: 'if', branches, loc: { line: ln.line } });
+        if (branches.length) out.push(attach<Stmt>({ type: 'if', branches, loc: { line: ln.line } }, ln, out.length === 0));
         continue;
       }
       if (word === 'elif' || word === 'else') {
@@ -162,7 +180,7 @@ export function parse(source: string): ParseResult {
       }
 
       const s = parseStmt(ln);
-      if (s) out.push(s);
+      if (s) out.push(attach(s, ln, out.length === 0));
     }
     return out;
   }
@@ -178,7 +196,9 @@ export function parse(source: string): ParseResult {
       if (!cond) return null;
     }
     if (ln.children.length === 0) err(ln.line, 'empty-block', `'${kind}' needs indented lines under it`);
-    return { cond, body: parseBlock(ln.children), loc: { line: ln.line } };
+    const branch: IfBranch = { cond, body: parseBlock(ln.children), loc: { line: ln.line } };
+    // The first branch's comments belong to the `if` statement itself.
+    return kind === 'if' ? branch : attach(branch, ln, false);
   }
 
   function parseStmt(ln: Line): Stmt | null {
@@ -191,7 +211,7 @@ export function parse(source: string): ParseResult {
       const choices: Choice[] = [];
       for (const c of ln.children) {
         const ch = parseChoice(c);
-        if (ch) choices.push(ch);
+        if (ch) choices.push(attach(ch, c, choices.length === 0));
       }
       // Only complain if there were no choice lines at all; a broken choice already has its own error.
       if (ln.children.length === 0) err(ln.line, 'empty-menu', 'Menu has no choices');
@@ -398,6 +418,25 @@ export function parse(source: string): ParseResult {
       throw e;
     }
   }
+}
+
+/**
+ * Copy a line's comments and blank lines onto its AST node. A blank line at
+ * the start of a block (or between top-level items, where the printer decides
+ * spacing) carries no meaning, so it is dropped; the AST stays canonical.
+ */
+function attach<T extends Trivia>(node: T, ln: Line, firstInBlock: boolean): T {
+  const t = firstInBlock && ln.leading[0] === '' ? ln.leading.slice(1) : ln.leading;
+  if (t.length) node.leading = t;
+  return node;
+}
+
+function trimBlanks(t: string[]): string[] {
+  let a = 0;
+  let b = t.length;
+  while (a < b && t[a] === '') a++;
+  while (b > a && t[b - 1] === '') b--;
+  return t.slice(a, b);
 }
 
 function firstWord(t: string): string {
