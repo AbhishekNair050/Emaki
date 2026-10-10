@@ -34,6 +34,9 @@ npm run build:demo   # static build in games/gullwing/dist (upload to itch.io as
 
 CLI: `npm run emaki -- check|build|graph|fmt <file.vn>`
 
+### Story map
+While `npm run dev` is running, a **story map** sits beside the game: every scene as a flowchart, with where you are highlighted. Click any scene to play from it, and edit your story's variables live to test other routes (set `trust` to 2, jump to the last scene, see which ending you get). Press `M` to show or hide it. It is a development tool only and is never included in a published build.
+
 ## What's here
 - **[Script syntax](docs/script-syntax.md)**: how to write a story
 - **[Story format](docs/story-format.md)**: the compiled JSON any runtime can play

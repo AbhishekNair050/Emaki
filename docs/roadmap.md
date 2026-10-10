@@ -14,7 +14,7 @@ What is done and what comes next.
 - Demo VN with 3 endings + generated placeholder art; 32 tests
 
 ## ▶ Milestone 1 — Make the core loop delightful (next)
-- [ ] **Flowchart view** (read-only first): render the story graph in the browser next to the player; click a node → jump there
+- [x] **Story map** (dev panel): flowchart of every scene beside the game, current scene highlighted, visited scenes tracked, click a scene to play from it, live-editable variables for testing routes
 - [ ] Comments preserved by the printer (blocker for any tool that writes .vn files)
 - [ ] Jump-to-line preview: `?line=52` starts the story at that line with chosen variable values
 - [ ] Text styling: `*italic*`, `**bold**`, colour tags

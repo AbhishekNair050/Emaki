@@ -44,3 +44,9 @@ v0 player is plain DOM: accessible, crisp text, tiny (≈13 KB gzipped incl. eng
 
 ### D-012 — Comments are full-line `#` only; formatter drops them (provisional)
 Inline comments conflict with dialogue text containing `#`. The printer doesn't preserve comments yet — must fix before the visual editor writes files (the round-trip promise includes comments).
+
+### D-013 — The story map is a dev-only tool (accepted)
+The flowchart of scenes, play-from-here and live variable editing exist to help writers test routes. They are loaded lazily on the dev server only: the Vite plugin emits the story graph only when serving, and the map module sits behind `import.meta.env.DEV`, so published games never ship a spoiler map of their own routes or the extra code. A player-facing route chart (as some VNs offer after completion) would be a separate, opt-in feature.
+
+### D-014 — Flowchart layout is home-grown, not a dependency (accepted)
+A small Sugiyama-style layered layout (back-edge detection, longest-path layering, barycenter ordering) in `player-web/src/map/layout.ts`. Story graphs are small (tens to a few hundred labels), so a ~200-line pure function beats pulling in dagre/elkjs. It is DOM-free and tested, so the future editor can reuse it. Revisit if large stories need better edge routing.

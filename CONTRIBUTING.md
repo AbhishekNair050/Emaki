@@ -12,7 +12,7 @@ Emaki is an open-source visual novel engine. Its goal is to make visual novel de
 ```
 packages/format      parser, compiler, expression language, printer, graph  (no deps)
 packages/runtime     headless VM: Runner (steps, rollback, save/load, resume) (depends on format)
-packages/player-web  DOM player + Vite plugin that compiles story.vn live
+packages/player-web  DOM player + Vite plugin that compiles story.vn live + story map dev panel (src/map)
 packages/cli         emaki check | build | graph | fmt
 games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ + tools/gen-art.mjs)
 ```
