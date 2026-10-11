@@ -13,6 +13,7 @@ import {
   type CompiledChoice, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
+import { parseMarkup, type Span } from './markup.ts';
 import { parse } from './parser.ts';
 
 export const TRANSITIONS = ['fade', 'dissolve', 'none'];
@@ -125,6 +126,13 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     }
   };
 
+  /** Validate markup; plain text always, spans only when there is styling. */
+  const styledText = (raw: string, line: number): { text: string; spans?: Span[] } => {
+    const m = parseMarkup(raw);
+    if (m.error) error(line, 'bad-markup', m.error);
+    return m.styled ? { text: m.plain, spans: m.spans } : { text: m.plain };
+  };
+
   const emitBlock = (stmts: Stmt[], label: string): void => {
     for (const s of stmts) emitStmt(s, label);
   };
@@ -141,7 +149,8 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
           if (!images[name]) error(s.loc.line, 'unknown-image', `No image named '${name}'`);
         }
         checkText(s.text, s.loc.line);
-        code.push({ op: 'say', id: lineId(label, `${s.who ?? ''}|${s.text}`), who: s.who, attrs: s.attrs, text: s.text, src });
+        const styled = styledText(s.text, s.loc.line);
+        code.push({ op: 'say', id: lineId(label, `${s.who ?? ''}|${s.text}`), who: s.who, attrs: s.attrs, ...styled, src });
         return;
       }
       case 'scene': {
@@ -210,10 +219,10 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         const choices: CompiledChoice[] = s.choices.map((c) => {
           if (c.cond) checkVars(c.cond, c.loc.line);
           checkText(c.text, c.loc.line);
-          return { id: '', text: c.text, cond: c.cond, target: -1 };
+          return { id: '', ...styledText(c.text, c.loc.line), cond: c.cond, target: -1 };
         });
         const menuId = lineId(label, `menu|${s.choices.map((c) => c.text).join('|')}`);
-        choices.forEach((c) => { c.id = lineId(label, `choice|${c.text}`); });
+        choices.forEach((c, i) => { c.id = lineId(label, `choice|${s.choices[i].text}`); });
         code.push({ op: 'menu', id: menuId, choices, src });
         const exits: Array<{ target: number }> = [];
         s.choices.forEach((c, i) => {

@@ -7,6 +7,7 @@
  */
 import type { Channel } from './ast.ts';
 import type { Expr, Value } from './expr.ts';
+import type { Span } from './markup.ts';
 
 export const FORMAT_ID = 'emaki-story';
 export const FORMAT_VERSION = 1;
@@ -19,7 +20,8 @@ export interface SrcRef {
 }
 
 export type Instr =
-  | { op: 'say'; id: string; who: string | null; attrs: string[]; text: string; src: SrcRef }
+  /** `text` has markup removed; `spans` (only when styled) carries bold/italic/colour runs. */
+  | { op: 'say'; id: string; who: string | null; attrs: string[]; text: string; spans?: Span[]; src: SrcRef }
   | { op: 'scene'; image: string | null; transition: string | null; src: SrcRef }
   | { op: 'show'; tag: string; attrs: string[] | null; at: string | null; transition: string | null; src: SrcRef }
   | { op: 'hide'; tag: string; transition: string | null; src: SrcRef }
@@ -37,6 +39,7 @@ export type Instr =
 export interface CompiledChoice {
   id: string;
   text: string;
+  spans?: Span[];
   cond: Expr | null;
   target: number;
 }
