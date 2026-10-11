@@ -125,4 +125,95 @@ describe('printer round-trip', () => {
     const once = print(parse(demo).program);
     expect(print(parse(once).program)).toBe(once);
   });
+
+  it('the demo story is already in canonical form', () => {
+    expect(print(parse(demo).program)).toBe(demo.replace(/\r\n?/g, '\n'));
+  });
+});
+
+describe('comments and blank lines', () => {
+  // Canonical text with comments in every position the format allows.
+  const canonical = `---
+title: Comments
+---
+
+# Cast
+define a "Alice"
+define b "Bob"
+
+image room = "room.png"
+
+# Variables
+var n = 0
+# Mood starts neutral
+var mood = "neutral"
+
+# The opening scene.
+# Two lines of notes.
+label start:
+  # Set the stage
+  scene room
+  "First line."
+
+  # A new beat after a blank line
+  a: Hello.
+  menu:
+    # The safe option
+    "Stay":
+      set n += 1
+
+    # The bold option
+    "Go" if n > 0:
+      # TODO: write this branch
+      b: Off we go.
+  if n > 1:
+    "Lots."
+
+  # Only when n is exactly 1
+  elif n == 1:
+    "One."
+  # Everything else
+  else:
+    "None."
+
+label second:
+  "Done."
+
+# Notes at the end of the file.
+`;
+
+  it('keeps every comment and blank line, byte for byte', () => {
+    const { program, diagnostics } = parse(canonical);
+    expect(diagnostics).toEqual([]);
+    expect(print(program)).toBe(canonical);
+  });
+
+  it('attaches comments to the line that follows them', () => {
+    const { program } = parse(canonical);
+    expect(program.labels[0].leading).toEqual(['# The opening scene.', '# Two lines of notes.']);
+    const body = program.labels[0].body;
+    expect(body[0].leading).toEqual(['# Set the stage']);
+    expect(body[2].leading).toEqual(['', '# A new beat after a blank line']);
+    const menu = body[3];
+    if (menu.type !== 'menu') throw new Error('expected a menu');
+    expect(menu.choices[1].leading).toEqual(['', '# The bold option']);
+    expect(menu.choices[1].body[0].leading).toEqual(['# TODO: write this branch']);
+    const ifs = body[4];
+    if (ifs.type !== 'if') throw new Error('expected an if');
+    expect(ifs.branches[1].leading).toEqual(['', '# Only when n is exactly 1']);
+    expect(program.trailing).toEqual(['# Notes at the end of the file.']);
+  });
+
+  it('normalizes messy spacing into canonical form', () => {
+    const messy = '\n\n# cast\ndefine a "A"\n\n\n\nlabel start:\n\n  a: Hi.\n\n\n\n  "Bye."\nlabel next:\n  "x"\n\n\n';
+    const once = print(parse(messy).program);
+    expect(once).toBe('# cast\ndefine a "A"\n\nlabel start:\n  a: Hi.\n\n  "Bye."\n\nlabel next:\n  "x"\n');
+    expect(print(parse(once).program)).toBe(once);
+  });
+
+  it('does not change what the story compiles to', () => {
+    const plain = compile(canonical.replace(/^\s*#.*$/gm, '')).story!;
+    const commented = compile(canonical).story!;
+    expect(commented.code).toEqual(plain.code.map((i, n) => ({ ...i, src: commented.code[n].src })));
+  });
 });
