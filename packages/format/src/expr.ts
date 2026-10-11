@@ -86,7 +86,9 @@ function tokenize(src: string): Tok[] {
 
 /**
  * Read a double-quoted string starting at `start` (which must be a quote).
- * Supports \" \\ \n escapes. Shared with the script parser.
+ * Supports \" \\ \n escapes. Any other backslash sequence is kept as written
+ * (e.g. `\*`), so text-styling escapes survive quoting. Shared with the
+ * script parser.
  */
 export function readQuoted(src: string, start: number): { value: string; end: number } {
   let out = '';
@@ -97,7 +99,8 @@ export function readQuoted(src: string, start: number): { value: string; end: nu
       const n = src[i + 1];
       if (n === 'n') out += '\n';
       else if (n === undefined) break;
-      else out += n;
+      else if (n === '"' || n === '\\') out += n;
+      else out += '\\' + n;
       i += 2;
       continue;
     }
