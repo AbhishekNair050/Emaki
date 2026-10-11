@@ -5,7 +5,8 @@
  *   emaki check <story.vn>            report errors and warnings
  *   emaki build <story.vn> [out.json] compile to the runtime format
  *   emaki graph <story.vn>            print a Mermaid flowchart of labels
- *   emaki fmt <story.vn> [--write]    print (or rewrite) in canonical form
+ *   emaki fmt <story.vn> [--write|--check]  print, rewrite, or verify canonical form
+ *                                     (comments and blank lines are kept)
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -17,7 +18,7 @@ const USAGE = `Usage:
   emaki check <story.vn>
   emaki build <story.vn> [out.json]
   emaki graph <story.vn>
-  emaki fmt   <story.vn> [--write]`;
+  emaki fmt   <story.vn> [--write | --check]`;
 
 if (!cmd || !file || cmd === 'help' || cmd === '--help') {
   console.log(USAGE);
@@ -85,9 +86,21 @@ switch (cmd) {
       process.exit(1);
     }
     const out = print(program);
+    const formatted = out === source.replace(/\r\n?/g, '\n');
+    if (rest.includes('--check')) {
+      if (formatted) {
+        console.log(c('32', `✓ ${file} is formatted`));
+        break;
+      }
+      console.log(`${file} is not formatted. Run: emaki fmt ${file} --write`);
+      process.exit(1);
+    }
     if (rest.includes('--write')) {
-      writeFileSync(file, out);
-      console.log(`Formatted ${file} (note: comments are not preserved yet)`);
+      if (formatted) console.log(`${file} was already formatted`);
+      else {
+        writeFileSync(file, out);
+        console.log(`Formatted ${file}`);
+      }
     } else process.stdout.write(out);
     break;
   }

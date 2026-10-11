@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "emaki": "node packages/cli/src/main.ts",
     "check": "node packages/cli/src/main.ts check games/gullwing/story.vn",
+    "fmt": "node packages/cli/src/main.ts fmt games/gullwing/story.vn --write",
+    "fmt:check": "node packages/cli/src/main.ts fmt games/gullwing/story.vn --check",
     "dev": "vite --config packages/player-web/vite.config.ts",
     "build:demo": "vite build --config packages/player-web/vite.config.ts",
     "art": "node games/gullwing/tools/gen-art.mjs"
