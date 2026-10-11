@@ -52,7 +52,7 @@ Between `---` lines at the very top: `key: value` pairs.
 | `var trust = 0` | A variable with its starting value. Numbers, `"text"`, `true`/`false`. Must be declared before use. |
 | `label name:` | A scene of your story. Everything indented under it runs in order. |
 
-Full-line comments start with `#`.
+Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, the visual editor) keep your comments and blank lines.
 
 ## Story lines (indented under a label)
 | Line | Meaning |
@@ -105,4 +105,4 @@ Operators: `+ - * / %`, `== != < <= > >=`, `and or not`, parentheses. Text can b
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Text styling (bold/italic/colour), custom positions and animations, layered sprites, NVL mode, voice-line auto-mapping, localization files, explicit line ids, inline comments, plugins.
+Text styling (bold/italic/colour), custom positions and animations, layered sprites, NVL mode, voice-line auto-mapping, localization files, explicit line ids, inline (end-of-line) comments, plugins.

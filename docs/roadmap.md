@@ -15,7 +15,7 @@ What is done and what comes next.
 
 ## ▶ Milestone 1 — Make the core loop delightful (next)
 - [x] **Story map** (dev panel): flowchart of every scene beside the game, current scene highlighted, visited scenes tracked, click a scene to play from it, live-editable variables for testing routes
-- [ ] Comments preserved by the printer (blocker for any tool that writes .vn files)
+- [x] Comments and blank lines preserved by the formatter (`emaki fmt`, `--check` in CI)
 - [ ] Jump-to-line preview: `?line=52` starts the story at that line with chosen variable values
 - [ ] Text styling: `*italic*`, `**bold**`, colour tags
 - [ ] Settings screen: text speed, auto speed, volume, font size, dyslexia-friendly font

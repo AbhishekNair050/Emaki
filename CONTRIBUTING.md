@@ -21,6 +21,9 @@ games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ 
 - `npm test`: vitest (format + runtime). Must stay green.
 - `npm run typecheck`: tsc, strict.
 - `npm run check`: compile the demo story and report diagnostics.
+- `npm run fmt` / `npm run fmt:check`: format the demo story / verify it is formatted.
+
+CI (`.github/workflows/ci.yml`) runs typecheck, tests, check, fmt:check and the demo build on every push and pull request.
 - `npm run dev`: play the demo with live reload (edit story.vn and it resumes at the same line).
 - `npm run build:demo`: static build to games/gullwing/dist (itch.io-ready).
 - `npm run emaki -- graph games/gullwing/story.vn`: Mermaid flowchart.

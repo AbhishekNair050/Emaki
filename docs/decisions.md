@@ -42,11 +42,16 @@ v0 player is plain DOM: accessible, crisp text, tiny (≈13 KB gzipped incl. eng
 ### D-011 — Sprite attributes replace, they don't merge (provisional)
 `show mira smile` then `mira sad: ...` → attrs become `[sad]`. Simpler than Ren'Py's attribute merging; revisit when layered sprites (outfit + expression) arrive.
 
-### D-012 — Comments are full-line `#` only; formatter drops them (provisional)
-Inline comments conflict with dialogue text containing `#`. The printer doesn't preserve comments yet — must fix before the visual editor writes files (the round-trip promise includes comments).
+### D-012 — Comments are full-line `#` only (accepted)
+Inline comments would conflict with dialogue text containing `#` ("mira: Room #4"), so a comment is always a whole line. Comments are preserved by the formatter; see D-015.
 
 ### D-013 — The story map is a dev-only tool (accepted)
 The flowchart of scenes, play-from-here and live variable editing exist to help writers test routes. They are loaded lazily on the dev server only: the Vite plugin emits the story graph only when serving, and the map module sits behind `import.meta.env.DEV`, so published games never ship a spoiler map of their own routes or the extra code. A player-facing route chart (as some VNs offer after completion) would be a separate, opt-in feature.
 
 ### D-014 — Flowchart layout is home-grown, not a dependency (accepted)
 A small Sugiyama-style layered layout (back-edge detection, longest-path layering, barycenter ordering) in `player-web/src/map/layout.ts`. Story graphs are small (tens to a few hundred labels), so a ~200-line pure function beats pulling in dagre/elkjs. It is DOM-free and tested, so the future editor can reuse it. Revisit if large stories need better edge routing.
+
+### D-015 — Comments and blank lines live in the AST as "leading trivia" (accepted)
+Every node (declaration, label, statement, menu choice, elif/else branch) can carry `leading: string[]`: the comments ("# ...") and blank lines ("") written directly above it. Comments after the last line go in `Program.trailing`. The printer writes them back, so the formatter and the future visual editor never lose a writer's notes.
+The AST is kept canonical so `parse(print(ast))` equals `ast`: consecutive blank lines collapse to one, and a blank line is dropped where the printer always puts one anyway (start of a block, before each label, before the first item of each declaration group). Canonical files round-trip byte for byte (`print(parse(text)) === text`), and CI checks the demo with `emaki fmt --check`.
+A comment attaches to the next line regardless of its indentation, so a note left at the end of a block moves to the line after the block when formatted. Simple and predictable; revisit if writers find it surprising.

@@ -27,8 +27,9 @@ Requires Node 22.18+.
 ```sh
 npm install
 npm run dev          # play the demo; edit games/gullwing/story.vn and it reloads at the same line
-npm test             # 32 tests
+npm test             # run the test suite
 npm run check        # lint the demo story
+npm run fmt          # format the demo story (keeps comments)
 npm run build:demo   # static build in games/gullwing/dist (upload to itch.io as HTML)
 ```
 
