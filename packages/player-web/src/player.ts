@@ -5,16 +5,17 @@
  * crisp text at any size, tiny download. A WebGL renderer can implement the
  * same Effect/Block contract later for shaders and particle effects.
  */
-import type { CompiledStory, Value } from '@emaki/format';
+import type { CompiledStory, Span, Value } from '@emaki/format';
 import {
   Runner, StoryError,
   type Block, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
 } from '@emaki/runtime';
+import {
+  DEFAULT_SETTINGS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
+} from './settings.ts';
 
 const POSITIONS: Record<string, string> = { left: '22%', center: '50%', right: '78%' };
 const SLOT_COUNT = 3;
-const CHARS_PER_SECOND = 45;
-const AUTO_DELAY_MS = 1400;
 const AUTO_PER_CHAR_MS = 28;
 const CHOICE_GUARD_MS = 350;
 
@@ -54,6 +55,7 @@ export class Player {
   private mode: Mode = 'title';
   private typingTimer = 0;
   private fullText = '';
+  private fullSpans: Span[] | null = null;
   private shownChars = 0;
   private auto = false;
   private skip = false;
@@ -62,13 +64,15 @@ export class Player {
   private busy = false;
   private menuShownAt = 0;
   private music: HTMLAudioElement | null = null;
-  private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  private settings: Settings;
+  private readonly systemReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(root: HTMLElement, story: CompiledStory, opts: PlayerOptions = {}) {
     this.story = story;
     this.runner = new Runner(story);
     this.opts = opts;
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
+    this.settings = loadSettings(this.storeKey + ':settings');
 
     this.stage = el('div', 'stage');
     this.bgLayer = el('div', 'layer bg-layer');
@@ -100,11 +104,13 @@ export class Player {
       this.skipBtn,
       button('Save', () => this.showSlots('save')),
       button('Load', () => this.showSlots('load')),
+      button('Settings', () => this.showSettings(), 'Text speed, volume, text size (O)'),
       button('Menu', () => this.confirmTitle()),
     );
 
     this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.textbox, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
     root.replaceChildren(this.stage);
+    this.applySettings();
 
     this.stage.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('button, .overlay.open')) return;
@@ -250,6 +256,7 @@ export class Player {
         this.menuShownAt = instant ? 0 : performance.now();
         b.choices.forEach((c, i) => {
           const btn = button(c.text, () => this.choose(c.index));
+          if (c.spans) btn.replaceChildren(...spanNodes(c.spans));
           btn.className = 'choice';
           btn.dataset.key = String(i + 1);
           this.choicesEl.append(btn);
@@ -281,27 +288,33 @@ export class Player {
       // Static redisplay (behind a menu): no typing, no auto/skip timers.
       window.clearInterval(this.typingTimer);
       this.fullText = b.text;
+      this.fullSpans = b.spans ?? null;
       this.shownChars = b.text.length;
-      this.textEl.textContent = b.text;
+      this.renderText();
       return;
     }
-    this.typeText(b.text, instant);
+    this.typeText(b.text, b.spans ?? null, instant || this.settings.textSpeed >= INSTANT_SPEED);
+  }
+
+  private get reducedMotion(): boolean {
+    return this.settings.motion === 'reduced' || (this.settings.motion === 'system' && this.systemReducedMotion);
   }
 
   private get isTyping(): boolean {
     return this.shownChars < this.fullText.length;
   }
 
-  private typeText(text: string, instant: boolean): void {
+  private typeText(text: string, spans: Span[] | null, instant: boolean): void {
     window.clearInterval(this.typingTimer);
     this.fullText = text;
+    this.fullSpans = spans;
     this.shownChars = instant ? text.length : 0;
-    this.textEl.textContent = text.slice(0, this.shownChars);
+    this.renderText();
     if (instant) { this.onTextDone(); return; }
-    const step = 1000 / CHARS_PER_SECOND;
+    const step = 1000 / this.settings.textSpeed;
     this.typingTimer = window.setInterval(() => {
       this.shownChars++;
-      this.textEl.textContent = this.fullText.slice(0, this.shownChars);
+      this.renderText();
       if (!this.isTyping) {
         window.clearInterval(this.typingTimer);
         this.onTextDone();
@@ -309,11 +322,17 @@ export class Player {
     }, step);
   }
 
+  /** Draw the first `shownChars` characters, keeping bold/italic/colour runs. */
+  private renderText(): void {
+    if (!this.fullSpans) this.textEl.textContent = this.fullText.slice(0, this.shownChars);
+    else this.textEl.replaceChildren(...spanNodes(this.fullSpans, this.shownChars));
+  }
+
   private finishTyping(): void {
     if (!this.isTyping) return;
     window.clearInterval(this.typingTimer);
     this.shownChars = this.fullText.length;
-    this.textEl.textContent = this.fullText;
+    this.renderText();
     this.onTextDone();
   }
 
@@ -322,7 +341,8 @@ export class Player {
     if (this.skip) {
       this.pendingTimer = window.setTimeout(() => this.onAdvance(), 40);
     } else if (this.auto) {
-      this.pendingTimer = window.setTimeout(() => this.onAdvance(), AUTO_DELAY_MS + this.fullText.length * AUTO_PER_CHAR_MS);
+      const wait = this.settings.autoDelay * 1000 + this.fullText.length * AUTO_PER_CHAR_MS;
+      this.pendingTimer = window.setTimeout(() => this.onAdvance(), wait);
     }
   }
 
@@ -402,7 +422,7 @@ export class Player {
       }
       case 'play':
         if (fx.channel === 'music') this.playMusic(fx.path, fx.loop);
-        else playOnce(fx.path);
+        else playOnce(fx.path, this.settings.soundVolume);
         return;
       case 'stop':
         if (fx.channel === 'music') this.stopMusic();
@@ -449,7 +469,7 @@ export class Player {
     const a = new Audio(asset(path));
     a.dataset.path = path;
     a.loop = loop;
-    a.volume = 0.7;
+    a.volume = this.settings.musicVolume;
     a.play().catch(() => { /* autoplay blocked or file missing: stay silent */ });
     this.music = a;
   }
@@ -503,6 +523,7 @@ export class Player {
     const menu = el('div', 'title-menu');
     menu.append(button('Start', () => this.start()));
     if (hasSaves) menu.append(button('Load', () => this.showSlots('load')));
+    menu.append(button('Settings', () => this.showSettings()));
     this.openOverlay('title-screen',
       el('h1', 'title', this.story.meta.title ?? 'Untitled'),
       ...(this.story.meta.author ? [el('p', 'byline', this.story.meta.author)] : []),
@@ -541,7 +562,10 @@ export class Player {
         n.style.color = b.who.color ?? '';
         li.append(n);
       }
-      li.append(el('span', '', b.text));
+      const line = el('span');
+      if (b.spans) line.append(...spanNodes(b.spans));
+      else line.textContent = b.text;
+      li.append(line);
       list.append(li);
     }
     this.openOverlay('panel log-panel', el('h2', '', 'History'), list, button('Close', () => this.closeOverlay()));
@@ -556,6 +580,85 @@ export class Player {
       if (!raw) return null;
       try { return JSON.parse(raw); } catch { return null; }
     });
+  }
+
+  // ---------------------------------------------------------- settings
+
+  /** Push settings into CSS variables and live audio. */
+  private applySettings(): void {
+    const s = this.settings;
+    this.stage.style.setProperty('--text-scale', String(s.textScale));
+    this.stage.style.setProperty('--box-alpha', String(s.boxOpacity));
+    this.stage.classList.toggle('font-sans', s.font === 'sans');
+    this.stage.classList.toggle('reduced-motion', this.reducedMotion);
+    this.stage.classList.toggle('full-motion', s.motion === 'full');
+    if (this.music) this.music.volume = s.musicVolume;
+  }
+
+  private updateSettings(patch: Partial<Settings>): void {
+    this.settings = sanitizeSettings({ ...this.settings, ...patch });
+    this.applySettings();
+    saveSettings(this.storeKey + ':settings', this.settings);
+  }
+
+  private showSettings(): void {
+    const fromTitle = this.mode === 'title';
+    const form = el('div', 'settings');
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+    const slider = (key: keyof typeof RANGES, label: string, show: (v: number) => string) => {
+      const id = `set-${key}`;
+      const lab = el('label', '', label);
+      lab.htmlFor = id;
+      const input = el('input');
+      input.type = 'range';
+      input.id = id;
+      const { min, max, step } = RANGES[key];
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(this.settings[key]);
+      const out = el('output', '', show(this.settings[key]));
+      out.htmlFor.add(id);
+      input.addEventListener('input', () => {
+        this.updateSettings({ [key]: Number(input.value) });
+        out.textContent = show(this.settings[key]);
+      });
+      form.append(lab, input, out);
+    };
+
+    const choice = <K extends 'font' | 'motion'>(key: K, label: string, options: Array<[Settings[K], string]>) => {
+      const id = `set-${key}`;
+      const lab = el('label', '', label);
+      lab.htmlFor = id;
+      const select = el('select');
+      select.id = id;
+      for (const [value, text] of options) {
+        const o = el('option', '', text);
+        o.value = value;
+        o.selected = this.settings[key] === value;
+        select.append(o);
+      }
+      select.addEventListener('change', () => this.updateSettings({ [key]: select.value } as Partial<Settings>));
+      form.append(lab, select, el('span'));
+    };
+
+    slider('textSpeed', 'Text speed', (v) => (v >= INSTANT_SPEED ? 'Instant' : `${v} letters/s`));
+    slider('autoDelay', 'Auto-advance wait', (v) => `${v.toFixed(2).replace(/0$/, '')} s`);
+    slider('musicVolume', 'Music volume', pct);
+    slider('soundVolume', 'Sound volume', pct);
+    slider('textScale', 'Text size', pct);
+    slider('boxOpacity', 'Text box opacity', pct);
+    choice('font', 'Font', [['serif', 'Book (serif)'], ['sans', 'Clean (sans-serif)']]);
+    choice('motion', 'Animations', [['system', 'Follow my device'], ['full', 'On'], ['reduced', 'Reduced']]);
+
+    const preview = el('p', 'settings-preview', 'The light sweeps out over the black water, and for a moment the whole bay is silver.');
+    const done = () => (fromTitle ? this.showTitle() : this.closeOverlay());
+    const reset = button('Reset to defaults', () => {
+      this.updateSettings({ ...DEFAULT_SETTINGS });
+      this.showSettings();
+    });
+    this.openOverlay('panel settings-panel', el('h2', '', 'Settings'), form, preview, row(reset, button('Done', done)));
   }
 
   private showSlots(kind: 'save' | 'load'): void {
@@ -627,6 +730,7 @@ export class Player {
       case 's': this.toggleSkip(); break;
       case 'l': this.showLog(); break;
       case 'h': this.stage.classList.toggle('hide-ui'); break;
+      case 'o': this.showSettings(); break;
     }
   }
 
@@ -685,6 +789,28 @@ function cssEscape(s: string): string {
   return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/"/g, '\\"');
 }
 
+/**
+ * DOM nodes for styled text, cut off after `limit` characters (for the
+ * typewriter effect). Colours were validated by the compiler.
+ */
+function spanNodes(spans: Span[], limit = Infinity): Node[] {
+  const nodes: Node[] = [];
+  let left = limit;
+  for (const sp of spans) {
+    if (left <= 0) break;
+    const text = sp.text.length > left ? sp.text.slice(0, left) : sp.text;
+    left -= text.length;
+    if (!sp.b && !sp.i && !sp.color) {
+      nodes.push(document.createTextNode(text));
+      continue;
+    }
+    const e = el('span', [sp.b && 'rt-b', sp.i && 'rt-i'].filter(Boolean).join(' '), text);
+    if (sp.color) e.style.color = sp.color;
+    nodes.push(e);
+  }
+  return nodes;
+}
+
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
@@ -704,8 +830,10 @@ async function fadeOutAndRemove(node: HTMLElement, ms: number): Promise<void> {
   node.remove();
 }
 
-function playOnce(path: string): void {
-  new Audio(asset(path)).play().catch(() => { /* ignore */ });
+function playOnce(path: string, volume: number): void {
+  const a = new Audio(asset(path));
+  a.volume = volume;
+  a.play().catch(() => { /* ignore */ });
 }
 
 /** localStorage/sessionStorage that never throws (private mode, blocked storage). */
