@@ -204,6 +204,20 @@ label sub:
     expect(() => r.setVar('trsut', 1)).toThrow(StoryError);
   });
 
+  it('fills variables into styled spans and choices', () => {
+    const r = new Runner(story(`define a "A"
+var who = "Mira"
+label start:
+  a: Hello, **{who}**!
+  menu:
+    "*Wave* at {who}":
+      end
+`));
+    expect(r.start().block).toMatchObject({ text: 'Hello, Mira!', spans: [{ text: 'Hello, ' }, { text: 'Mira', b: true }, { text: '!' }] });
+    const menu = r.advance().block;
+    expect(menu).toMatchObject({ type: 'menu', choices: [{ text: 'Wave at Mira', spans: [{ text: 'Wave', i: true }, { text: ' at Mira' }] }] });
+  });
+
   it('rejects garbage saves', () => {
     const r = new Runner(story(src));
     expect(r.load({} as never).ok).toBe(false);

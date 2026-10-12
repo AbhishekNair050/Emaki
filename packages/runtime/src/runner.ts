@@ -8,7 +8,7 @@
  */
 import {
   EvalError, evaluate, truthy,
-  type CompiledStory, type Instr, type Value, type Channel,
+  type CompiledStory, type Instr, type Value, type Channel, type Span,
 } from '@emaki/format';
 
 export interface SpriteState {
@@ -39,7 +39,16 @@ export interface RunState {
 }
 
 /** `label` is the story label the line belongs to (for maps, analytics, debugging). */
-export type SayBlock = { type: 'say'; id: string; who: Speaker | null; text: string; line: number; label: string };
+export type SayBlock = {
+  type: 'say'; id: string; who: Speaker | null;
+  /** Plain text (markup removed, variables filled in). */
+  text: string;
+  /** Styled runs, only when the line uses bold/italic/colour. */
+  spans?: Span[];
+  line: number; label: string;
+};
+
+export interface ChoiceOption { index: number; id: string; text: string; spans?: Span[] }
 
 export type Effect =
   | { type: 'scene'; bg: string | null; path: string | null; transition: string | null }
@@ -56,7 +65,7 @@ export interface Speaker {
 
 export type Block =
   | SayBlock
-  | { type: 'menu'; id: string; choices: Array<{ index: number; id: string; text: string }>; line: number; label: string }
+  | { type: 'menu'; id: string; choices: ChoiceOption[]; line: number; label: string }
   | { type: 'wait'; seconds: number; line: number; label: string }
   | { type: 'end' };
 
@@ -311,6 +320,7 @@ export class Runner {
             id: ins.id,
             who: ins.who && c ? { id: ins.who, name: c.name, color: c.color } : null,
             text: this.interpolate(ins.text, ins),
+            ...(ins.spans ? { spans: this.interpolateSpans(ins.spans, ins) } : {}),
             line: ins.src.line,
             label: ins.src.label,
           }, effects);
@@ -319,7 +329,10 @@ export class Runner {
           const choices = ins.choices
             .map((c, index) => ({ c, index }))
             .filter(({ c }) => !c.cond || truthy(this.eval(c.cond, ins)))
-            .map(({ c, index }) => ({ index, id: c.id, text: this.interpolate(c.text, ins) }));
+            .map(({ c, index }): ChoiceOption => ({
+              index, id: c.id, text: this.interpolate(c.text, ins),
+              ...(c.spans ? { spans: this.interpolateSpans(c.spans, ins) } : {}),
+            }));
           if (choices.length === 0) {
             throw new StoryError('Every choice in this menu is hidden by its condition', ins.src.line);
           }
@@ -422,6 +435,10 @@ export class Runner {
       if (err instanceof EvalError) throw new StoryError(err.message, ins.src.line);
       throw err;
     }
+  }
+
+  private interpolateSpans(spans: Span[], ins: Instr): Span[] {
+    return spans.map((sp) => ({ ...sp, text: this.interpolate(sp.text, ins) }));
   }
 
   private interpolate(text: string, ins: Instr): string {
