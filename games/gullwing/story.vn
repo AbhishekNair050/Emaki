@@ -37,7 +37,7 @@ label arrival:
   "She's waiting at the gate in an oilskin coat, as if she'd known to the minute when I'd arrive."
   mira: You're Ren.
   ren: That's me. Relief assistant, as of—
-  mira: You're early. Nobody's ever early.
+  mira: You're early. *Nobody's* ever early.
 
   menu:
     "The driver wanted to be home before the storm.":
@@ -75,14 +75,14 @@ label kitchen_talk:
   else:
     mira smile: You poured me one. That's a start.
     mira stern: Drink it fast.
-  mira: Up to the lamp room. Now.
+  mira: Up to the lamp room. **Now.**
   jump lamp_room_trouble
 
 label lamp_room_trouble:
   scene lamp_room with fade
   show mira stern at left with dissolve
   "The lens is taller than I am, a beehive of glass that turns on a bath of mercury."
-  "Tonight it isn't turning."
+  "Tonight it *isn't* turning."
   mira: Clockwork's jammed. The weight's dropped and the governor's stuck.
   radio: Gullwing, Gullwing, this is the Marguerite. We've lost our plotter. Do you read?
   mira: That's Tom Halloran's boat. He'll be steering by our light, and our light is standing still.
@@ -115,7 +115,7 @@ label lamp_room_trouble:
 label crank_the_lamp:
   "The crank is cold and stiff, then suddenly it isn't."
   "One turn. Ten. Forty. My shoulders burn."
-  "The lens shudders, then turns. Light sweeps out over the black water."
+  "The lens shudders, then turns. [color=#ffd98a]Light sweeps out over the black water.[/color]"
   set lamp_fixed = true
   return
 
@@ -141,7 +141,7 @@ label ending_two_keepers:
   mira smile: I'm still tired. But I think I'd like to see whether you're any good at this.
   "She takes the letter from her pocket and lets the wind have it."
   mira: One more year. I'll teach you the rocks.
-  "Ending: Two Keepers."
+  "Ending: [color=#e8b04b]**Two Keepers**[/color]."
   end
 
 label ending_light_holds:
@@ -150,7 +150,7 @@ label ending_light_holds:
   mira sad: But I meant what I wrote. I'm done at the end of the month.
   "She hands me the logbook. Forty years of weather, in her careful hand."
   mira neutral: Keep it better than I did.
-  "Ending: The Light Holds."
+  "Ending: [color=#e8b04b]**The Light Holds**[/color]."
   end
 
 label ending_rough_water:
@@ -158,5 +158,5 @@ label ending_rough_water:
   "Everyone is alive."
   mira: Everyone comes home. That's the job. The rest is learning.
   mira sad: You'll learn the rocks. I did.
-  "Ending: Rough Water."
+  "Ending: [color=#e8b04b]**Rough Water**[/color]."
   end
