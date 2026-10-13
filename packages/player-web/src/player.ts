@@ -14,7 +14,8 @@ import {
   DEFAULT_SETTINGS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 
-const POSITIONS: Record<string, string> = { left: '22%', center: '50%', right: '78%' };
+/** Sprite positions are CSS variables so each layout (landscape, portrait) can place them. */
+const POSITIONS: Record<string, string> = { left: 'var(--pos-left)', center: 'var(--pos-center)', right: 'var(--pos-right)' };
 const SLOT_COUNT = 3;
 const AUTO_PER_CHAR_MS = 28;
 const CHOICE_GUARD_MS = 350;
@@ -109,6 +110,7 @@ export class Player {
     );
 
     this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.textbox, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
+    root.classList.add('stage-host');
     root.replaceChildren(this.stage);
     this.applySettings();
 
@@ -404,7 +406,7 @@ export class Player {
           img = el('img', 'sprite') as HTMLImageElement;
           img.dataset.tag = fx.tag;
           img.alt = '';
-          img.style.left = POSITIONS[fx.at] ?? '50%';
+          img.style.left = POSITIONS[fx.at] ?? POSITIONS.center!;
           img.src = asset(fx.path);
           img.style.opacity = ms ? '0' : '1';
           this.spriteLayer.append(img);
@@ -456,7 +458,7 @@ export class Player {
       img.dataset.tag = sp.tag;
       img.alt = '';
       img.src = asset(path);
-      img.style.left = POSITIONS[sp.at] ?? '50%';
+      img.style.left = POSITIONS[sp.at] ?? POSITIONS.center!;
       this.spriteLayer.append(img);
     }
   }
