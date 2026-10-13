@@ -71,7 +71,7 @@ html, body {
   position: absolute;
   left: 4%;
   right: 4%;
-  bottom: 3.5%;
+  bottom: max(3.5%, 24px); /* short screens: keep clear of the quick menu, whose text has a minimum size */
   min-height: 25%;
   padding: calc(3.2 * var(--u)) 3cqw calc(3.6 * var(--u));
   background: linear-gradient(180deg, rgb(10 14 22 / calc(var(--box-alpha, 0.88) * 0.82)), rgb(10 14 22 / var(--box-alpha, 0.88)));
