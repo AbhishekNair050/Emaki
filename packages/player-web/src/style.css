@@ -310,3 +310,52 @@ html, body {
   text-align: left;
 }
 
+/* ---- Portrait (phones held upright, narrow windows) ----
+ * The stage fills the screen instead of shrinking to a 16:9 strip. Backgrounds crop to the
+ * centre, characters stand above a full-width textbox, and the quick menu sits below it. */
+@container stage-host (aspect-ratio < 4 / 5) {
+  .stage {
+    --u: min(0.62cqh, 1.3cqw);
+    --pos-left: 24%;
+    --pos-right: 76%;
+    width: 100cqw;
+    height: 100cqh;
+    aspect-ratio: auto;
+  }
+  .sprite { height: 62%; bottom: 17%; }
+  .textbox {
+    left: 3%;
+    right: 3%;
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 7 * var(--u) + 14px);
+    min-height: 16%;
+    padding: calc(4.2 * var(--u)) 5cqw calc(4.6 * var(--u));
+  }
+  .namebox { left: 4cqw; padding: calc(0.8 * var(--u)) 3.4cqw; }
+  .next-indicator { right: 4cqw; }
+  .choices { inset: 0 0 34% 0; gap: calc(2.4 * var(--u)); }
+  .choice { width: 90%; padding: calc(3 * var(--u)) 5cqw; }
+  .quickmenu {
+    left: 0;
+    right: 0;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    justify-content: space-evenly;
+    gap: 0;
+  }
+  .quickmenu button { padding: calc(1.6 * var(--u)) 0.8cqw; letter-spacing: 0.02em; }
+  .overlay.open { padding: calc(6 * var(--u)) 5cqw max(calc(6 * var(--u)), env(safe-area-inset-bottom)); }
+  .overlay button { min-width: 60cqw; padding: calc(2.6 * var(--u)) 5cqw; }
+  .overlay .row { gap: calc(2 * var(--u)) 3cqw; }
+  .overlay .row button { min-width: 40cqw; }
+  .title-screen .title { max-width: 92%; }
+  .slots, .log { width: 100%; }
+  /* Settings: name and value on one line, the control full width beneath. */
+  .settings {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-auto-flow: row dense;
+    gap: calc(1 * var(--u)) 3cqw;
+    width: 100%;
+  }
+  .settings input, .settings select { grid-column: 1 / -1; margin-bottom: calc(1.6 * var(--u)); }
+  .settings output { grid-column: 2; text-align: right; }
+  .overlay .settings-preview { width: 100%; padding: calc(2.4 * var(--u)) 5cqw; }
+}
