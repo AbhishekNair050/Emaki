@@ -24,8 +24,8 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 
 | op | fields | blocks? | semantics |
 |---|---|---|---|
-| `say` | `id, who (char id or null), attrs[], text` | **yes** | If `attrs` non-empty and `who` is on screen, set its attrs. Interpolate `{var}` (`{{`/`}}` escape). Show line. pc+1. |
-| `menu` | `id, choices[{id, text, cond (expr or null), target}]` | **yes** | Offer choices whose `cond` is truthy (keep original indices). On pick: pc = choice.target. Error if none visible. |
+| `say` | `id, who (char id or null), attrs[], text, spans?` | **yes** | If `attrs` non-empty and `who` is on screen, set its attrs. Interpolate `{var}` (`{{`/`}}` escape) in `text` and in each span. Show line. pc+1. |
+| `menu` | `id, choices[{id, text, spans?, cond (expr or null), target}]` | **yes** | Offer choices whose `cond` is truthy (keep original indices). On pick: pc = choice.target. Error if none visible. |
 | `wait` | `seconds` | **yes** | Pause. pc+1. |
 | `scene` | `image (name, "black" or null), transition` | no | Background = image (`black`/null = none); remove all sprites. |
 | `show` | `tag, attrs (array or null), at (null/"left"/"center"/"right"), transition` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. |
@@ -40,6 +40,9 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `end` | — | no | Story ends. |
 
 A runtime should guard against loops that execute many instructions without blocking (reference: 100,000).
+
+## Styled text
+`text` is always plain, with markup removed. When a line uses styling, `spans` is also present: an array of `{ text, b?: true, i?: true, color?: string }` runs that join to make `text`. Runtimes without styling support can ignore `spans`. `color` is a hex code or a plain colour name, validated by the compiler.
 
 ## Expressions
 JSON trees, `k` = kind:

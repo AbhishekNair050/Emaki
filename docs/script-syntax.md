@@ -97,6 +97,19 @@ else:
 ```
 Operators: `+ - * / %`, `== != < <= > >=`, `and or not`, parentheses. Text can be joined with `+`.
 
+## Styling text
+Works in dialogue, narration and choices.
+
+| You write | Players see |
+|---|---|
+| `I *never* said that.` | I *never* said that. |
+| `This is **important**.` | This is **important**. |
+| `***Run!***` | bold and italic |
+| `The [color=#e8b04b]lamp[/color] dies.` | "lamp" in gold (a hex code, or a colour name like `gold`) |
+| `Room 5 \* 3` | Room 5 * 3 |
+
+A backslash shows `*`, `[`, `]` or `\` literally. Ordinary square brackets are just text; only `[color=...]` and `[/color]` are special. Inside italic narration, `*emphasis*` turns upright so it still stands out. An unclosed `*` or `[color]` is reported with its line number.
+
 ## Variables in text
 `mira: You've earned {trust} points of my trust.` Use `{{` and `}}` for literal braces.
 
@@ -105,4 +118,4 @@ Operators: `+ - * / %`, `== != < <= > >=`, `and or not`, parentheses. Text can b
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Text styling (bold/italic/colour), custom positions and animations, layered sprites, NVL mode, voice-line auto-mapping, localization files, explicit line ids, inline (end-of-line) comments, plugins.
+Custom positions and animations, layered sprites, NVL mode, voice-line auto-mapping, localization files, explicit line ids, inline (end-of-line) comments, plugins.
