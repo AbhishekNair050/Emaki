@@ -61,3 +61,7 @@ A comment attaches to the next line regardless of its indentation, so a note lef
 
 ### D-017 — Player settings are per game, validated, and applied through CSS variables (accepted)
 Text speed, auto-advance wait, volumes, text size, text box opacity, font and animations. Stored in localStorage per game title; every value is clamped or defaulted on load, so a bad stored value can't break the player. Visuals are driven by CSS variables and classes on the stage, so themes can restyle without touching code. "Animations: follow my device" is the default, respecting `prefers-reduced-motion`.
+
+### D-018 — The stage adapts to its host: 16:9 letterbox when wide, full-screen portrait when tall (accepted)
+The player marks the element it mounts into as a CSS size container and lays out from the host's shape, not the window's, so the dev story map, an embed or a phone all behave the same. Hosts taller than 4:5 get the portrait layout: the stage fills the host, backgrounds crop to the centre, characters stand above a full-width textbox, and the quick menu sits below it in one row. Everything inside sizes off one unit, `--u` (1% of stage height in landscape; tied to the width in portrait), and sprite positions are CSS variables (`--pos-left/center/right`), so a theme can retune either layout without code. Games are still authored for 16:9; per-image focal points for portrait cropping can come later.
+

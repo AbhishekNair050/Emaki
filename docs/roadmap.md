@@ -20,7 +20,7 @@ What is done and what comes next.
 - [x] Text styling: `*italic*`, `**bold**`, `[color=...]`, with escapes and friendly errors
 - [x] Settings screen: text speed (incl. instant), auto-advance wait, music/sound volume, text size, text box opacity, font, animations; saved per game
 - [ ] Bundled highly legible font option (e.g. Atkinson Hyperlegible or OpenDyslexic, both OFL-licensed)
-- [ ] Portrait phone layout (currently letterboxed tiny)
+- [x] Portrait phone layout: the stage fills the screen when held upright; landscape stays 16:9
 - [ ] Preload images for the next scene
 - [ ] VS Code extension: syntax highlighting + diagnostics (reuse the compiler)
 - [ ] Demo: add music/ambience (CC0) to exercise audio
