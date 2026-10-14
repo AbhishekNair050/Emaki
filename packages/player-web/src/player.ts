@@ -13,12 +13,15 @@ import {
 import {
   DEFAULT_SETTINGS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
+import { ImagePreloader } from './preload.ts';
 
 /** Sprite positions are CSS variables so each layout (landscape, portrait) can place them. */
 const POSITIONS: Record<string, string> = { left: 'var(--pos-left)', center: 'var(--pos-center)', right: 'var(--pos-right)' };
 const SLOT_COUNT = 3;
 const AUTO_PER_CHAR_MS = 28;
 const CHOICE_GUARD_MS = 350;
+/** How long a transition may wait for its image to finish loading before going ahead anyway. */
+const IMAGE_WAIT_MS = 1500;
 
 type Mode = 'title' | 'playing' | 'ended';
 
@@ -66,6 +69,7 @@ export class Player {
   private menuShownAt = 0;
   private music: HTMLAudioElement | null = null;
   private settings: Settings;
+  private readonly images = new ImagePreloader();
   private readonly systemReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(root: HTMLElement, story: CompiledStory, opts: PlayerOptions = {}) {
@@ -227,6 +231,13 @@ export class Player {
     this.choicesEl.replaceChildren();
     this.busy = true;
     try {
+      // Hold the step (briefly) until its pictures are ready, so nothing fades in half-loaded.
+      const needed = step.effects.flatMap((fx) => (fx.type === 'scene' || fx.type === 'show') && fx.path ? [asset(fx.path)] : []);
+      this.images.want(needed);
+      this.preloadAhead();
+      const wait = instant || this.skip ? 0 : IMAGE_WAIT_MS;
+      await Promise.all(needed.map((url) => this.images.ready(url, wait)));
+      if (my !== this.epoch) return;
       for (const fx of step.effects) {
         await this.applyEffect(fx, instant || this.skip);
         if (my !== this.epoch) return;
@@ -235,6 +246,11 @@ export class Player {
       if (my === this.epoch) this.busy = false;
     }
     this.renderBlock(step.block, instant);
+  }
+
+  /** Start loading the images the next few lines might show, down every branch. */
+  private preloadAhead(): void {
+    this.images.want(this.runner.upcomingImages().map(asset));
   }
 
   private renderBlock(b: Block, instant: boolean): void {
@@ -520,6 +536,7 @@ export class Player {
     this.spriteLayer.replaceChildren();
     const titleBg = this.story.meta.title_image;
     void this.setBackground(titleBg ?? null, 0);
+    this.images.want(new Runner(this.story).upcomingImages().map(asset)); // the opening scene
 
     const hasSaves = this.slots().some(Boolean);
     const menu = el('div', 'title-menu');
