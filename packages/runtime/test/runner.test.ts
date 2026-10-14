@@ -218,6 +218,32 @@ label start:
     expect(menu).toMatchObject({ type: 'menu', choices: [{ text: 'Wave at Mira', spans: [{ text: 'Wave', i: true }, { text: ' at Mira' }] }] });
   });
 
+  it('looks ahead for images to preload, nearest first, down every branch', () => {
+    const r = new Runner(demo);
+    // Before starting: the opening background and Mira come into view within a few lines.
+    expect(r.upcomingImages(4)).toEqual(['bg/cliff_road_dusk.svg', 'sprites/mira_neutral.svg']);
+    r.start();
+    for (let i = 0; i < 6; i++) r.advance(); // "You're early." — the first menu is next
+    const ahead = r.upcomingImages(3);
+    // Menu → a choice's first line (1) → the shared line after the menu (2) → jump into the kitchen (3).
+    // Both branches are followed, so the smile that only one of them shows is included.
+    expect(ahead).toContain('sprites/mira_smile.svg');
+    expect(ahead).toContain('bg/kitchen_night.svg');
+    expect(ahead).not.toContain('bg/lamp_room.svg');
+    expect(r.upcomingImages(0)).toEqual([]); // just the menu itself: nothing to load yet
+  });
+
+  it('looks ahead through calls and back out again', () => {
+    const r = new Runner(story([
+      'image a = "a.png"', 'image b = "b.png"', 'image c = "c.png"',
+      'label start:', '  "One."', '  call sub', '  scene c', '  "Three."',
+      'label sub:', '  scene a', '  "Two."', '  scene b',
+    ].join('\n')));
+    r.start();
+    expect(r.upcomingImages(0)).toEqual(['a.png']); // before "Two."
+    expect(r.upcomingImages(1)).toEqual(['a.png', 'b.png', 'c.png']); // after it, and back in the caller
+  });
+
   it('rejects garbage saves', () => {
     const r = new Runner(story(src));
     expect(r.load({} as never).ok).toBe(false);

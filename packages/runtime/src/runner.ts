@@ -94,6 +94,8 @@ export class StoryError extends Error {
 
 /** Max instructions executed between two blocking events before we assume an infinite loop. */
 const STEP_LIMIT = 100_000;
+/** Instructions the preload lookahead may visit; keeps it cheap on huge stories. */
+const LOOKAHEAD_INSTRUCTIONS = 2_000;
 const DEFAULT_POSITION = 'center';
 
 interface HistoryEntry {
@@ -211,6 +213,81 @@ export class Runner {
 
   spritePath(s: SpriteState): string | null {
     return this.resolveSprite(s.tag, s.attrs);
+  }
+
+  /**
+   * Image paths the story may need soon, nearest first, for preloading.
+   *
+   * Looks ahead from the current position without running anything: every
+   * branch of conditions and menus is followed, calls are entered and
+   * returned from, and the search stops `maxBlocks` lines/menus/waits away.
+   * Over-fetching a little is fine; what matters is that the next scene's
+   * images are already loaded when the player gets there.
+   */
+  upcomingImages(maxBlocks = 4): string[] {
+    const code = this.story.code;
+    const onScreen = new Set(this.state.scene.sprites.map((s) => s.tag));
+    const found = new Set<string>();
+    const add = (path: string | null | undefined) => { if (path) found.add(path); };
+    // Buckets by distance (blocks passed), so nearer images come first.
+    const buckets: Array<Array<{ pc: number; stack: number[] }>> = [[{ pc: this.state.pc, stack: [...this.state.stack] }]];
+    const seen = new Set<string>();
+    let budget = LOOKAHEAD_INSTRUCTIONS;
+
+    for (let cost = 0; cost <= maxBlocks && cost < buckets.length; cost++) {
+      const queue = buckets[cost]!;
+      const push = (pc: number, stack: number[], dist: number) => {
+        if (dist > maxBlocks) return;
+        (buckets[dist] ??= []).push({ pc, stack });
+      };
+      while (queue.length && budget-- > 0) {
+        const { pc, stack } = queue.shift()!;
+        const key = pc + ':' + stack.join(',');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const ins = code[pc];
+        if (!ins) continue;
+        switch (ins.op) {
+          case 'say':
+            if (ins.who && ins.attrs.length) add(this.resolveSprite(ins.who, ins.attrs));
+            push(pc + 1, stack, cost + 1);
+            break;
+          case 'menu':
+            for (const c of ins.choices) push(c.target, stack, cost + 1);
+            break;
+          case 'wait':
+            push(pc + 1, stack, cost + 1);
+            break;
+          case 'scene':
+            add(this.imagePath(ins.image));
+            push(pc + 1, stack, cost);
+            break;
+          case 'show':
+            if (ins.attrs) add(this.resolveSprite(ins.tag, ins.attrs));
+            else if (!onScreen.has(ins.tag)) add(this.resolveSprite(ins.tag, this.defaultAttrs(ins.tag)));
+            push(pc + 1, stack, cost);
+            break;
+          case 'jump':
+            push(ins.target, stack, cost);
+            break;
+          case 'jumpIfNot':
+            push(pc + 1, stack, cost);
+            push(ins.target, stack, cost);
+            break;
+          case 'call':
+            push(ins.target, [...stack, pc + 1], cost);
+            break;
+          case 'return':
+            if (stack.length) push(stack[stack.length - 1]!, stack.slice(0, -1), cost);
+            break;
+          case 'end':
+            break;
+          default:
+            push(pc + 1, stack, cost);
+        }
+      }
+    }
+    return [...found];
   }
 
   save(): SaveData {
