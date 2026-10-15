@@ -36,3 +36,6 @@ jobs:
 
       - name: Build demo
         run: npm run build:demo
+
+      - name: Build VS Code extension
+        run: npm run build:vscode
