@@ -1,0 +1,28 @@
+# Emaki for VS Code
+
+Write [Emaki](https://github.com/AbhishekNair050/Emaki) visual novel scripts (`.vn`) with:
+
+- **Highlighting** for the header, characters, images, labels, dialogue, choices, conditions and text styling (`*italic*`, `**bold**`, `[color=...]`, `{variables}`).
+- **Errors as you type**: the same checks as `emaki check`, underlining the exact name that's wrong, with "did you mean" suggestions.
+- **Go to definition** and **find all references** for labels, characters, images, audio and variables (F12 / Shift+F12).
+- **Hover** a name to see what it is: a character's display name, an image's file, a variable's starting value, how much dialogue a label has.
+- **Completion**: label names after `jump`/`call`, backgrounds after `scene`, sprites and their expressions after `show` or a speaker's name, transitions after `with`, positions after `at`, variables in `set`, `if` and `{...}`.
+- **Outline** of every label, character, image and variable (Ctrl+Shift+O), and folding by indentation.
+- **Format document** (Shift+Alt+F) using `emaki fmt`, which keeps your comments. Scripts with errors are never reformatted.
+
+Comment a line with Ctrl+/. Indentation is two spaces.
+
+## Install from source
+Not on the Marketplace yet. From the repository root:
+
+```sh
+npm install
+npm run build:vscode                 # bundles to packages/vscode/dist/extension.cjs
+npm run package -w emaki-vscode      # makes emaki-vscode-0.1.0.vsix
+code --install-extension packages/vscode/emaki-vscode-0.1.0.vsix
+```
+
+To try changes without installing, open `packages/vscode` in VS Code and press F5 (Run Extension).
+
+## How it's built
+`src/language.ts` has the features as plain functions over text (no VS Code API), tested in `test/language.test.ts`; `src/extension.ts` adapts them to VS Code. The grammar in `syntaxes/` is tested with the same TextMate engine VS Code uses (`test/grammar.test.ts`). The compiler is bundled in, so nothing else needs to be installed.
