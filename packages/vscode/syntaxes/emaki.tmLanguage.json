@@ -1,0 +1,556 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Emaki",
+  "scopeName": "source.emaki",
+  "patterns": [
+    {
+      "include": "#frontmatter"
+    },
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#define"
+    },
+    {
+      "include": "#asset"
+    },
+    {
+      "include": "#var"
+    },
+    {
+      "include": "#label"
+    },
+    {
+      "include": "#statement"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.emaki",
+      "match": "^\\s*(#).*$",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.comment.emaki"
+        }
+      }
+    },
+    "frontmatter": {
+      "name": "meta.embedded.block.frontmatter.emaki",
+      "begin": "\\A(---)\\s*$",
+      "end": "^(---)\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.emaki"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.end.emaki"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "match": "^\\s*(start)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*$",
+          "captures": {
+            "1": {
+              "name": "entity.name.tag.emaki"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.emaki"
+            },
+            "3": {
+              "name": "entity.name.function.label.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s*([\\w-]+)\\s*(:)\\s*(.*)$",
+          "captures": {
+            "1": {
+              "name": "entity.name.tag.emaki"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.emaki"
+            },
+            "3": {
+              "name": "string.unquoted.emaki"
+            }
+          }
+        }
+      ]
+    },
+    "define": {
+      "match": "^(define)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")(?:\\s+(color)(=)(#[0-9A-Fa-f]{3,8}|[A-Za-z_][A-Za-z0-9_]*))?",
+      "captures": {
+        "1": {
+          "name": "keyword.other.define.emaki"
+        },
+        "2": {
+          "name": "entity.name.type.character.emaki"
+        },
+        "3": {
+          "name": "string.quoted.double.emaki"
+        },
+        "4": {
+          "name": "variable.parameter.emaki"
+        },
+        "5": {
+          "name": "keyword.operator.assignment.emaki"
+        },
+        "6": {
+          "name": "constant.other.color.emaki"
+        }
+      }
+    },
+    "asset": {
+      "match": "^(image|audio)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+[A-Za-z_][A-Za-z0-9_]*)*)\\s*(=)\\s*(\"(?:[^\"\\\\]|\\\\.)*\")",
+      "captures": {
+        "1": {
+          "name": "keyword.other.$1.emaki"
+        },
+        "2": {
+          "name": "entity.name.type.asset.emaki"
+        },
+        "3": {
+          "name": "keyword.operator.assignment.emaki"
+        },
+        "4": {
+          "name": "string.quoted.double.path.emaki"
+        }
+      }
+    },
+    "var": {
+      "begin": "^(var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.other.var.emaki"
+        },
+        "2": {
+          "name": "variable.other.declaration.emaki"
+        },
+        "3": {
+          "name": "keyword.operator.assignment.emaki"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#expression"
+        }
+      ]
+    },
+    "label": {
+      "match": "^(label)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "captures": {
+        "1": {
+          "name": "storage.type.label.emaki"
+        },
+        "2": {
+          "name": "entity.name.function.label.emaki"
+        },
+        "3": {
+          "name": "punctuation.section.label.emaki"
+        }
+      }
+    },
+    "statement": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "match": "^\\s+(scene)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!with\\b)[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.scene.emaki"
+            },
+            "2": {
+              "name": "entity.name.type.asset.emaki"
+            },
+            "3": {
+              "name": "keyword.other.with.emaki"
+            },
+            "4": {
+              "name": "constant.language.transition.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(show)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!(?:at|with)\\b)[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(at)\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.show.emaki"
+            },
+            "2": {
+              "name": "entity.name.type.asset.emaki"
+            },
+            "3": {
+              "name": "keyword.other.at.emaki"
+            },
+            "4": {
+              "name": "constant.language.position.emaki"
+            },
+            "5": {
+              "name": "keyword.other.with.emaki"
+            },
+            "6": {
+              "name": "constant.language.transition.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(hide)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.hide.emaki"
+            },
+            "2": {
+              "name": "entity.name.type.asset.emaki"
+            },
+            "3": {
+              "name": "keyword.other.with.emaki"
+            },
+            "4": {
+              "name": "constant.language.transition.emaki"
+            }
+          }
+        },
+        {
+          "begin": "^\\s+(play|stop)\\s+(music|sound|voice)\\b",
+          "end": "$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.$1.emaki"
+            },
+            "2": {
+              "name": "support.type.channel.emaki"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#string"
+            },
+            {
+              "match": "\\b(loop|noloop|fade)\\b",
+              "name": "keyword.other.option.emaki"
+            },
+            {
+              "include": "#number"
+            },
+            {
+              "match": "[A-Za-z_][A-Za-z0-9_]*",
+              "name": "entity.name.type.asset.emaki"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s+(set)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=|\\+=|-=)",
+          "end": "$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.set.emaki"
+            },
+            "2": {
+              "name": "variable.other.emaki"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.emaki"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#expression"
+            }
+          ]
+        },
+        {
+          "match": "^\\s+(jump|call)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.control.flow.$1.emaki"
+            },
+            "2": {
+              "name": "entity.name.function.label.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(return|end)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.control.flow.$1.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(wait)\\s+(\\d+(?:\\.\\d+)?)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.wait.emaki"
+            },
+            "2": {
+              "name": "constant.numeric.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(menu)\\s*(:)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.control.menu.emaki"
+            },
+            "2": {
+              "name": "punctuation.section.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(else)\\s*(:)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.control.conditional.emaki"
+            },
+            "2": {
+              "name": "punctuation.section.emaki"
+            }
+          }
+        },
+        {
+          "begin": "^\\s+(if|elif)\\b",
+          "end": "(:)\\s*$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.conditional.emaki"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.emaki"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#expression"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s+(?=\".*\"\\s*(?:if\\b.*)?:\\s*$)",
+          "end": "(:)\\s*$",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.choice.emaki"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#dialogue-string"
+            },
+            {
+              "begin": "\\b(if)\\b",
+              "end": "(?=:\\s*$)",
+              "beginCaptures": {
+                "1": {
+                  "name": "keyword.control.conditional.emaki"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "#expression"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "begin": "^\\s+(?=\")",
+          "end": "$",
+          "patterns": [
+            {
+              "include": "#dialogue-string"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s+([A-Za-z_][A-Za-z0-9_]*)((?:\\s+[A-Za-z_][A-Za-z0-9_]*)*)\\s*(:)\\s*",
+          "end": "$",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.type.character.emaki"
+            },
+            "2": {
+              "name": "entity.other.attribute-name.emaki"
+            },
+            "3": {
+              "name": "punctuation.separator.dialogue.emaki"
+            }
+          },
+          "contentName": "string.unquoted.dialogue.emaki",
+          "patterns": [
+            {
+              "include": "#dialogue-string"
+            },
+            {
+              "include": "#text"
+            }
+          ]
+        }
+      ]
+    },
+    "dialogue-string": {
+      "name": "string.quoted.double.dialogue.emaki",
+      "begin": "\"",
+      "end": "\"|$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.emaki"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.emaki"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#text"
+        }
+      ]
+    },
+    "text": {
+      "patterns": [
+        {
+          "match": "\\\\[*\\[\\]\\\\\"n]",
+          "name": "constant.character.escape.emaki"
+        },
+        {
+          "match": "\\{\\{|\\}\\}",
+          "name": "constant.character.escape.emaki"
+        },
+        {
+          "match": "(\\{)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\})",
+          "name": "meta.interpolation.emaki",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.interpolation.begin.emaki"
+            },
+            "2": {
+              "name": "variable.other.emaki"
+            },
+            "3": {
+              "name": "punctuation.section.interpolation.end.emaki"
+            }
+          }
+        },
+        {
+          "match": "(\\*\\*\\*)(?=\\S)(.+?)(?<=\\S)(\\*\\*\\*)",
+          "name": "markup.bold.emaki markup.italic.emaki",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.markup.emaki"
+            },
+            "3": {
+              "name": "punctuation.definition.markup.emaki"
+            }
+          }
+        },
+        {
+          "match": "(\\*\\*)(?=\\S)(.+?)(?<=\\S)(\\*\\*)",
+          "name": "markup.bold.emaki",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.bold.emaki"
+            },
+            "3": {
+              "name": "punctuation.definition.bold.emaki"
+            }
+          }
+        },
+        {
+          "match": "(\\*)(?=[^\\s*])(.+?)(?<=[^\\s\\\\])(\\*)",
+          "name": "markup.italic.emaki",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.italic.emaki"
+            },
+            "3": {
+              "name": "punctuation.definition.italic.emaki"
+            }
+          }
+        },
+        {
+          "match": "(\\[)(color)(=)([^\\]]*)(\\])|(\\[)(/color)(\\])",
+          "name": "meta.tag.color.emaki",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.tag.emaki"
+            },
+            "2": {
+              "name": "entity.name.tag.emaki"
+            },
+            "3": {
+              "name": "punctuation.separator.emaki"
+            },
+            "4": {
+              "name": "constant.other.color.emaki"
+            },
+            "5": {
+              "name": "punctuation.definition.tag.emaki"
+            },
+            "6": {
+              "name": "punctuation.definition.tag.emaki"
+            },
+            "7": {
+              "name": "entity.name.tag.emaki"
+            },
+            "8": {
+              "name": "punctuation.definition.tag.emaki"
+            }
+          }
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.emaki",
+      "match": "\"(?:[^\"\\\\]|\\\\.)*\""
+    },
+    "number": {
+      "name": "constant.numeric.emaki",
+      "match": "\\b\\d+(?:\\.\\d+)?\\b"
+    },
+    "expression": {
+      "patterns": [
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#number"
+        },
+        {
+          "match": "\\b(true|false)\\b",
+          "name": "constant.language.boolean.emaki"
+        },
+        {
+          "match": "\\b(and|or|not)\\b",
+          "name": "keyword.operator.logical.emaki"
+        },
+        {
+          "match": "==|!=|<=|>=|<|>",
+          "name": "keyword.operator.comparison.emaki"
+        },
+        {
+          "match": "[-+*/%]",
+          "name": "keyword.operator.arithmetic.emaki"
+        },
+        {
+          "match": "[A-Za-z_][A-Za-z0-9_]*",
+          "name": "variable.other.emaki"
+        }
+      ]
+    }
+  }
+}
