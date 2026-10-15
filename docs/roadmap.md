@@ -22,7 +22,7 @@ What is done and what comes next.
 - [ ] Bundled highly legible font option (e.g. Atkinson Hyperlegible or OpenDyslexic, both OFL-licensed)
 - [x] Portrait phone layout: the stage fills the screen when held upright; landscape stays 16:9
 - [x] Preload images for the next scene (every branch a few lines ahead; transitions wait briefly for slow images)
-- [ ] VS Code extension: syntax highlighting + diagnostics (reuse the compiler)
+- [x] VS Code extension: highlighting, live diagnostics, go to definition, references, hover, completion, outline, formatting (reuses the compiler)
 - [ ] Demo: add music/ambience (CC0) to exercise audio
 
 ## Milestone 2 — The editor (the differentiator)

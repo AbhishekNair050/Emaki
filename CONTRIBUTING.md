@@ -14,6 +14,7 @@ packages/format      parser, compiler, expression language, printer, graph  (no 
 packages/runtime     headless VM: Runner (steps, rollback, save/load, resume) (depends on format)
 packages/player-web  DOM player + Vite plugin that compiles story.vn live + story map dev panel (src/map)
 packages/cli         emaki check | build | graph | fmt
+packages/vscode      VS Code extension: src/language.ts (editor-agnostic features) + grammar; bundled by esbuild
 games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ + tools/gen-art.mjs)
 ```
 
@@ -26,6 +27,7 @@ games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ 
 CI (`.github/workflows/ci.yml`) runs typecheck, tests, check, fmt:check and the demo build on every push and pull request.
 - `npm run dev`: play the demo with live reload (edit story.vn and it resumes at the same line).
 - `npm run build:demo`: static build to games/gullwing/dist (itch.io-ready).
+- `npm run build:vscode`: bundle the VS Code extension (the one package with a build step, because VS Code can't run .ts).
 - `npm run emaki -- graph games/gullwing/story.vn`: Mermaid flowchart.
 - `npm run art`: regenerate the demo's placeholder SVGs.
 
