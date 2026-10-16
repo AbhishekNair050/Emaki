@@ -142,6 +142,64 @@ export class Runner {
     return this.run();
   }
 
+  /**
+   * Start at a line of the script (1-based), for previewing while writing.
+   *
+   * Begins at the first instruction on or after that line. The picture and
+   * music are rebuilt by replaying the visual statements of that label from
+   * its top down to the line, ignoring conditions and menus (if two branches
+   * both change the background, the later one wins), so the preview opens on
+   * the right scene instead of a black screen. Only declared variables in
+   * `vars` are applied; the rest keep their starting values.
+   */
+  startAtLine(line: number, opts: { vars?: Record<string, Value> } = {}): Step {
+    const code = this.story.code;
+    let pc = -1;
+    for (let i = 0; i < code.length; i++) {
+      const ins = code[i]!;
+      // The compiler ends every label with a return tagged with the label's own line; skip those.
+      const first = code[this.story.labels[ins.src.label] ?? i]!;
+      if (ins.op === 'return' && ins.src.line < first.src.line) continue;
+      const l = ins.src.line;
+      if (l >= line && (pc < 0 || l < code[pc]!.src.line)) pc = i;
+    }
+    if (pc < 0) throw new StoryError(`Line ${line} is past the end of the story`, null);
+    const label = code[pc]!.src.label;
+    const from = this.story.labels[label] ?? pc;
+
+    this.state = this.initialState();
+    for (const [name, v] of Object.entries(opts.vars ?? {})) {
+      if (Object.prototype.hasOwnProperty.call(this.story.vars, name)) this.state.vars[name] = v;
+    }
+    const scene = this.state.scene;
+    for (let i = from; i < pc; i++) {
+      const ins = code[i]!;
+      if (ins.op === 'scene') {
+        scene.bg = ins.image === 'black' ? null : ins.image;
+        scene.sprites = [];
+      } else if (ins.op === 'show') {
+        const sp = scene.sprites.find((x) => x.tag === ins.tag);
+        if (!sp) scene.sprites.push({ tag: ins.tag, attrs: ins.attrs ?? this.defaultAttrs(ins.tag), at: ins.at ?? DEFAULT_POSITION });
+        else {
+          if (ins.attrs) sp.attrs = [...ins.attrs];
+          if (ins.at) sp.at = ins.at;
+        }
+      } else if (ins.op === 'hide') {
+        scene.sprites = scene.sprites.filter((x) => x.tag !== ins.tag);
+      } else if (ins.op === 'say' && ins.who && ins.attrs.length) {
+        const sp = scene.sprites.find((x) => x.tag === ins.who);
+        if (sp) sp.attrs = [...ins.attrs];
+      } else if (ins.op === 'play' && ins.channel === 'music') {
+        this.state.audio.music = { path: ins.path, loop: ins.loop };
+      } else if (ins.op === 'stop' && ins.channel === 'music') {
+        this.state.audio.music = null;
+      }
+    }
+    this.state.pc = pc;
+    this.history = [];
+    return this.run();
+  }
+
   /** Change a declared variable (testing aid). Throws for unknown names. */
   setVar(name: string, value: Value): void {
     if (!Object.prototype.hasOwnProperty.call(this.story.vars, name)) {

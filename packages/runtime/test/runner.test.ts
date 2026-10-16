@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { compile } from '@emaki/format';
-import { Runner, StoryError, type Block, type Step } from '../src/index.ts';
+import { Runner, StoryError, type Block, type SayBlock, type Step } from '../src/index.ts';
 
 const demoSrc = readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8');
 const demo = compile(demoSrc).story!;
@@ -194,6 +194,25 @@ label sub:
     while (b.type !== 'end') b = r.advance().block;
     expect(r.log.at(-1)!.text).toBe('Ending: Two Keepers.');
     expect(() => r.startAt('nowhere')).toThrow(StoryError);
+  });
+
+  it('starts at a script line, with the scene rebuilt from the top of its label', () => {
+    const r = new Runner(demo);
+    const step = r.startAtLine(57);
+    expect(step.block).toMatchObject({ type: 'say', line: 57, label: 'kitchen_talk' });
+    expect(r.scene()).toEqual({ bg: 'kitchen', sprites: [{ tag: 'mira', attrs: ['neutral'], at: 'right' }] });
+    // A blank or declaration line starts at the next thing that happens.
+    expect(r.startAtLine(52).block).toMatchObject({ line: 56, label: 'kitchen_talk' });
+    expect(() => r.startAtLine(10_000)).toThrow(/past the end/);
+  });
+
+  it('applies chosen variables when starting at a line', () => {
+    const r = new Runner(demo);
+    expect(r.startAtLine(72, { vars: { read_letter: true, nope: 1 } }).block).toMatchObject({ line: 72 });
+    expect((r.advance().block as SayBlock).text).toMatch(/^Her eyes go to the letter/);
+    expect(r.vars).not.toHaveProperty('nope');
+    expect(r.startAtLine(72).block).toMatchObject({ line: 72 });
+    expect(r.advance().block).toMatchObject({ who: { id: 'mira' }, text: "You poured me one. That's a start." });
   });
 
   it('lets tools change declared variables only', () => {
