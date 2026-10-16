@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
+import { parsePreview } from './preview.ts';
 
 /** Sprite positions are CSS variables so each layout (landscape, portrait) can place them. */
 const POSITIONS: Record<string, string> = { left: 'var(--pos-left)', center: 'var(--pos-center)', right: 'var(--pos-right)' };
@@ -131,11 +132,13 @@ export class Player {
 
   boot(): void {
     if (this.opts.dev) {
-      const stash = storage.get(this.storeKey + ':dev-resume', true);
+      const raw = storage.get(this.storeKey + ':dev-resume', true);
       storage.remove(this.storeKey + ':dev-resume', true);
-      if (stash) {
+      const stash = raw ? parseStash(raw) : null;
+      // Resume after a reload, unless the address changed (e.g. a new ?line= preview link).
+      if (stash && stash.search === location.search) {
         try {
-          const step = this.runner.resume(JSON.parse(stash) as SaveData);
+          const step = this.runner.resume(stash.save);
           if (step) {
             this.enterPlaying();
             this.syncScene(this.runner.scene());
@@ -147,6 +150,13 @@ export class Player {
           console.warn('Could not resume after reload', err);
         }
       }
+    }
+    const preview = this.opts.dev ? parsePreview(location.search, this.story.vars) : null;
+    if (preview) {
+      this.jumpToLine(preview.line, preview.vars);
+      const ignored = preview.ignored.length ? ` (ignored: ${preview.ignored.join(', ')})` : '';
+      this.toast(`Previewing from story.vn line ${preview.line}${ignored}`);
+      return;
     }
     this.showTitle();
   }
@@ -168,6 +178,25 @@ export class Player {
     this.busy = false;
     this.syncScene(scene ?? { bg: null, sprites: [] });
     this.guard(() => this.present(this.runner.startAt(label, { vars, scene })));
+  }
+
+  /**
+   * Play from a line of the script (dev preview). Uses the given variables, or
+   * keeps the current ones; the scene is rebuilt from the top of the label.
+   */
+  jumpToLine(line: number, vars?: Record<string, Value>): void {
+    const keep = vars ?? (this.mode === 'title' ? {} : { ...this.runner.vars });
+    this.enterPlaying();
+    this.auto = this.skip = false;
+    this.updateToggles();
+    this.epoch++;
+    this.busy = false;
+    this.guard(() => {
+      const step = this.runner.startAtLine(line, { vars: keep });
+      this.syncScene(this.runner.scene());
+      this.syncMusic();
+      return this.present(step, true);
+    });
   }
 
   setVar(name: string, value: Value): void {
@@ -720,7 +749,8 @@ export class Player {
 
   private devStash(): void {
     if (!this.opts.dev || this.mode !== 'playing' || !this.runner.block) return;
-    try { storage.set(this.storeKey + ':dev-resume', JSON.stringify(this.runner.save()), true); } catch { /* ignore */ }
+    const stash: DevStash = { search: location.search, save: this.runner.save() };
+    try { storage.set(this.storeKey + ':dev-resume', JSON.stringify(stash), true); } catch { /* ignore */ }
   }
 
   // ---------------------------------------------------------- input & misc
@@ -778,6 +808,22 @@ export class Player {
 }
 
 // ------------------------------------------------------------------ helpers
+
+/** What the dev server keeps across a live reload. */
+interface DevStash {
+  /** The address at the time, so a changed preview link isn't overridden by the old position. */
+  search: string;
+  save: SaveData;
+}
+
+function parseStash(raw: string): DevStash | null {
+  try {
+    const v = JSON.parse(raw) as Partial<DevStash>;
+    return v && typeof v.search === 'string' && v.save ? (v as DevStash) : null;
+  } catch {
+    return null;
+  }
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
