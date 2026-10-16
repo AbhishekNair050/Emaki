@@ -24,5 +24,9 @@ code --install-extension packages/vscode/emaki-vscode-0.1.0.vsix
 
 To try changes without installing, open `packages/vscode` in VS Code and press F5 (Run Extension).
 
+## Testing
+- `npm test` (from the root) covers the language features and the grammar.
+- `VSCODE_PATH=/path/to/Code.exe npm run test:e2e -w emaki-vscode` opens a real VS Code with a throwaway profile, loads the extension, edits a copy of the demo story and prints what happened: errors appearing and clearing, definition, references, hover, outline, completion and formatting. It needs a desktop, so it isn't part of CI.
+
 ## How it's built
 `src/language.ts` has the features as plain functions over text (no VS Code API), tested in `test/language.test.ts`; `src/extension.ts` adapts them to VS Code. The grammar in `syntaxes/` is tested with the same TextMate engine VS Code uses (`test/grammar.test.ts`). The compiler is bundled in, so nothing else needs to be installed.
