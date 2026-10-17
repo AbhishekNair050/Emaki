@@ -8,6 +8,7 @@ Write [Emaki](https://github.com/AbhishekNair050/Emaki) visual novel scripts (`.
 - **Hover** a name to see what it is: a character's display name, an image's file, a variable's starting value, how much dialogue a label has.
 - **Completion**: label names after `jump`/`call`, backgrounds after `scene`, sprites and their expressions after `show` or a speaker's name, transitions after `with`, positions after `at`, variables in `set`, `if` and `{...}`.
 - **Outline** of every label, character, image and variable (Ctrl+Shift+O), and folding by indentation.
+- **Preview from this line** (Ctrl+Alt+Enter, or ▷ in the editor title): with `npm run dev` running, opens the game beside your script, starting at the cursor's line. Settings: `emaki.preview.url` (default `http://localhost:5173/`) and `emaki.preview.openIn` (`beside` or `browser`).
 - **Format document** (Shift+Alt+F) using `emaki fmt`, which keeps your comments. Scripts with errors are never reformatted.
 
 Comment a line with Ctrl+/. Indentation is two spaces.

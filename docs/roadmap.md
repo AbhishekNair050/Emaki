@@ -16,7 +16,7 @@ What is done and what comes next.
 ## ▶ Milestone 1 — Make the core loop delightful (next)
 - [x] **Story map** (dev panel): flowchart of every scene beside the game, current scene highlighted, visited scenes tracked, click a scene to play from it, live-editable variables for testing routes
 - [x] Comments and blank lines preserved by the formatter (`emaki fmt`, `--check` in CI)
-- [ ] Jump-to-line preview: `?line=52` starts the story at that line with chosen variable values
+- [x] Jump-to-line preview: `?line=52&trust=2` starts the story at that line with chosen variable values; Ctrl+Alt+Enter in VS Code opens it beside the script
 - [x] Text styling: `*italic*`, `**bold**`, `[color=...]`, with escapes and friendly errors
 - [x] Settings screen: text speed (incl. instant), auto-advance wait, music/sound volume, text size, text box opacity, font, animations; saved per game
 - [ ] Bundled highly legible font option (e.g. Atkinson Hyperlegible or OpenDyslexic, both OFL-licensed)

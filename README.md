@@ -39,6 +39,9 @@ CLI: `npm run emaki -- check|build|graph|fmt <file.vn>`
 ### Story map
 While `npm run dev` is running, a **story map** sits beside the game: every scene as a flowchart, with where you are highlighted. Click any scene to play from it, and edit your story's variables live to test other routes (set `trust` to 2, jump to the last scene, see which ending you get). Press `M` to show or hide it. It is a development tool only and is never included in a published build.
 
+### Preview from any line
+Add `?line=52` to the dev server address to start the game at line 52 of `story.vn`, with the right background, characters and music already in place. Set variables the same way: `?line=52&trust=2&read_letter=true`. In VS Code, put the cursor on a line and press **Ctrl+Alt+Enter** (or click ▷ in the editor title bar): the game opens beside your script at that line.
+
 ### Phones
 The same build plays on phones. Turned sideways it's the usual 16:9 picture; held upright, the game fills the screen with the textbox and menu sized for thumbs. To try it on a desktop, open your browser's device toolbar (F12, then Ctrl+Shift+M in Chrome).
 
