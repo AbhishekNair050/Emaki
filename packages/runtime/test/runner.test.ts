@@ -6,6 +6,8 @@ import { Runner, StoryError, type Block, type SayBlock, type Step } from '../src
 
 const demoSrc = readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8');
 const demo = compile(demoSrc).story!;
+/** 1-based line of the demo script containing `text`, so tests survive edits to the story. */
+const lineOf = (text: string) => demoSrc.split('\n').findIndex((l) => l.includes(text)) + 1;
 
 function story(src: string) {
   const r = compile(src);
@@ -198,21 +200,40 @@ label sub:
 
   it('starts at a script line, with the scene rebuilt from the top of its label', () => {
     const r = new Runner(demo);
-    const step = r.startAtLine(57);
-    expect(step.block).toMatchObject({ type: 'say', line: 57, label: 'kitchen_talk' });
+    const letter = lineOf("There's a letter on the table");
+    const step = r.startAtLine(letter);
+    expect(step.block).toMatchObject({ type: 'say', line: letter, label: 'kitchen_talk' });
     expect(r.scene()).toEqual({ bg: 'kitchen', sprites: [{ tag: 'mira', attrs: ['neutral'], at: 'right' }] });
     // A blank or declaration line starts at the next thing that happens.
-    expect(r.startAtLine(52).block).toMatchObject({ line: 56, label: 'kitchen_talk' });
+    expect(r.startAtLine(lineOf('label kitchen_talk:') - 1).block)
+      .toMatchObject({ line: lineOf('Her kitchen smells'), label: 'kitchen_talk' });
     expect(() => r.startAtLine(10_000)).toThrow(/past the end/);
   });
 
   it('applies chosen variables when starting at a line', () => {
     const r = new Runner(demo);
-    expect(r.startAtLine(72, { vars: { read_letter: true, nope: 1 } }).block).toMatchObject({ line: 72 });
+    const glass = lineOf('mira: Glass is dropping');
+    expect(r.startAtLine(glass, { vars: { read_letter: true, nope: 1 } }).block).toMatchObject({ line: glass });
     expect((r.advance().block as SayBlock).text).toMatch(/^Her eyes go to the letter/);
     expect(r.vars).not.toHaveProperty('nope');
-    expect(r.startAtLine(72).block).toMatchObject({ line: 72 });
+    expect(r.startAtLine(glass).block).toMatchObject({ line: glass });
     expect(r.advance().block).toMatchObject({ who: { id: 'mira' }, text: "You poured me one. That's a start." });
+  });
+
+  it('plays the demo soundtrack: music with fades, sound effects, and music kept in saves', () => {
+    const r = new Runner(demo);
+    const first = r.start();
+    expect(first.effects).toContainEqual({ type: 'play', channel: 'music', path: 'audio/theme_forget_me_not.mp3', loop: true, fade: 2 });
+    const lamp = r.startAtLine(lineOf('scene lamp_room'));
+    expect(lamp.effects.filter((e) => e.type === 'play')).toEqual([
+      { type: 'play', channel: 'music', path: 'audio/storm_rain.mp3', loop: true, fade: 2 },
+      { type: 'play', channel: 'sound', path: 'audio/thunder.mp3', loop: false, fade: null },
+    ]);
+    expect(r.audio().music).toEqual({ path: 'audio/storm_rain.mp3', loop: true });
+    const save = r.save();
+    const other = new Runner(demo);
+    other.load(save);
+    expect(other.audio().music?.path).toBe('audio/storm_rain.mp3');
   });
 
   it('lets tools change declared variables only', () => {
