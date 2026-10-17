@@ -4,7 +4,11 @@ const vscode = require('vscode');
 const fs = require('fs');
 
 const out = [];
-const log = (...a) => out.push(a.join(' '));
+const log = (...a) => {
+  out.push(a.join(' '));
+  // Also written as we go, so a hang still shows how far the run got.
+  if (process.env.EMAKI_E2E_REPORT) fs.appendFileSync(process.env.EMAKI_E2E_REPORT + '.partial', a.join(' ') + '\n');
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function waitFor(fn, ms = 10000) {
@@ -97,6 +101,24 @@ exports.run = async function run() {
       ? 'not checked (the test window never got keyboard focus)'
       : JSON.stringify(doc.lineAt(pos('mira:', 0).line).text.slice(0, 20)));
     await restore();
+
+    // Preview from this line opens the game beside the script (needs `npm run dev`; any address works for the check).
+    const previewUrl = process.env.EMAKI_E2E_PREVIEW_URL;
+    if (previewUrl) {
+      await vscode.workspace.getConfiguration('emaki.preview').update('url', previewUrl, vscode.ConfigurationTarget.Global);
+      const ed = await vscode.window.showTextDocument(doc);
+      ed.selection = new vscode.Selection(pos('There\'s a letter', 0), pos('There\'s a letter', 0));
+      await vscode.commands.executeCommand('emaki.previewLine');
+      const tab = await waitFor(() => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
+        .find((t) => !(t.input instanceof vscode.TabInputText)), 5000); // the built-in browser's tab type varies by version
+      log('preview from line', pos('There\'s a letter', 0).line + 1 + ':', tab ? `opened "${tab.label}" in column ${tab.group.viewColumn}` : 'NO PREVIEW TAB');
+      await sleep(800);
+      log('  groups:', vscode.window.tabGroups.all.map((g) => `col ${g.viewColumn}: ${g.tabs.map((t) => t.label).join(', ')}`).join(' | '));
+      if (!tab) {
+        log('  tabs:', vscode.window.tabGroups.all.flatMap((g) => g.tabs).map((t) => `${t.label} [${t.input?.constructor?.name} ${t.input?.viewType ?? ''}]`).join(' | '));
+        log('  simpleBrowser commands:', (await vscode.commands.getCommands(true)).filter((c) => /simpleBrowser/i.test(c)).join(', '));
+      }
+    }
 
     log('file unchanged at end:', doc.getText() === original && !doc.isDirty);
   } catch (e) {

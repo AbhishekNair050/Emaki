@@ -7,7 +7,7 @@
  * Prints what the extension did (diagnostics, definition, completion, ...).
  */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,10 +32,14 @@ try {
     `--extensions-dir=${join(tmp, 'extensions')}`,
     '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--disable-gpu',
     work,
-  ], { env: { ...process.env, EMAKI_E2E_REPORT: report, EMAKI_E2E_STORY: join(work, 'story.vn') }, stdio: 'ignore', timeout: 120_000 });
-  const out = readFileSync(report, 'utf8');
-  console.log(out);
-  process.exitCode = out.includes('ERROR') ? 1 : 0;
+  ], { env: { ...process.env, EMAKI_E2E_REPORT: report, EMAKI_E2E_STORY: join(work, 'story.vn'), EMAKI_E2E_PREVIEW_URL: process.env.EMAKI_E2E_PREVIEW_URL ?? 'http://localhost:5173/' }, stdio: 'ignore', timeout: 120_000 });
+} catch (err) {
+  console.error(`VS Code didn't finish: ${err.message.split('\n')[0]}`);
 } finally {
-  rmSync(tmp, { recursive: true, force: true });
+  const partial = report + '.partial';
+  const out = existsSync(report) ? readFileSync(report, 'utf8')
+    : existsSync(partial) ? readFileSync(partial, 'utf8') + '(stopped here)\n' : '';
+  console.log(out);
+  process.exitCode = !out || out.includes('ERROR') || out.includes('stopped here') ? 1 : 0;
+  try { rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }); } catch { /* VS Code may still hold files */ }
 }
