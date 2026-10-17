@@ -19,7 +19,7 @@ What is done and what comes next.
 - [x] Jump-to-line preview: `?line=52&trust=2` starts the story at that line with chosen variable values; Ctrl+Alt+Enter in VS Code opens it beside the script
 - [x] Text styling: `*italic*`, `**bold**`, `[color=...]`, with escapes and friendly errors
 - [x] Settings screen: text speed (incl. instant), auto-advance wait, music/sound volume, text size, text box opacity, font, animations; saved per game
-- [ ] Bundled highly legible font option (e.g. Atkinson Hyperlegible or OpenDyslexic, both OFL-licensed)
+- [x] Bundled accessibility fonts: Atkinson Hyperlegible and OpenDyslexic (OFL), downloaded only when chosen
 - [x] Portrait phone layout: the stage fills the screen when held upright; landscape stays 16:9
 - [x] Preload images for the next scene (every branch a few lines ahead; transitions wait briefly for slow images)
 - [x] VS Code extension: highlighting, live diagnostics, go to definition, references, hover, completion, outline, formatting (reuses the compiler)
