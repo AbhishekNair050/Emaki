@@ -16,7 +16,7 @@ export interface Settings {
   soundVolume: number;
   /** Multiplier for story text size. */
   textScale: number;
-  font: 'serif' | 'sans';
+  font: FontChoice;
   /** Text box background opacity, 0.4..1. */
   boxOpacity: number;
   /** 'system' follows the device's reduce-motion setting. */
@@ -24,6 +24,19 @@ export interface Settings {
 }
 
 export const INSTANT_SPEED = 200;
+
+/**
+ * Story text fonts. The two accessibility fonts are bundled (SIL Open Font
+ * License) and only downloaded if a player picks them.
+ */
+export const FONTS = [
+  ['serif', 'Book (serif)'],
+  ['sans', 'Clean (sans-serif)'],
+  ['legible', 'Easy to read (Atkinson Hyperlegible)'],
+  ['dyslexic', 'Dyslexia-friendly (OpenDyslexic)'],
+] as const;
+
+export type FontChoice = (typeof FONTS)[number][0];
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   textSpeed: 45,
@@ -64,7 +77,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     soundVolume: num('soundVolume'),
     textScale: num('textScale'),
     boxOpacity: num('boxOpacity'),
-    font: pick('font', ['serif', 'sans'] as const),
+    font: pick('font', FONTS.map(([id]) => id)),
     motion: pick('motion', ['system', 'full', 'reduced'] as const),
   };
 }

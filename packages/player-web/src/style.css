@@ -90,6 +90,10 @@ html, body {
 .rt-i { font-style: italic; }
 .narration .rt-i { font-style: normal; }
 .stage.font-sans { --story-font: var(--ui-font); }
+/* Accessibility fonts (bundled, see main.ts). font-size-adjust evens out their larger letters. */
+.stage.font-legible { --story-font: 'Atkinson Hyperlegible', var(--ui-font); }
+.stage.font-dyslexic { --story-font: 'OpenDyslexic', var(--ui-font); }
+.stage.font-dyslexic :is(.textbox, .choice, .log, .settings-preview) { font-size-adjust: 0.5; line-height: 1.6; }
 .namebox {
   position: absolute;
   top: 0;

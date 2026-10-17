@@ -11,7 +11,7 @@ import {
   type Block, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
 } from '@emaki/runtime';
 import {
-  DEFAULT_SETTINGS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
+  DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
 import { parsePreview } from './preview.ts';
@@ -637,7 +637,7 @@ export class Player {
     const s = this.settings;
     this.stage.style.setProperty('--text-scale', String(s.textScale));
     this.stage.style.setProperty('--box-alpha', String(s.boxOpacity));
-    this.stage.classList.toggle('font-sans', s.font === 'sans');
+    for (const [id] of FONTS) this.stage.classList.toggle(`font-${id}`, s.font === id);
     this.stage.classList.toggle('reduced-motion', this.reducedMotion);
     this.stage.classList.toggle('full-motion', s.motion === 'full');
     if (this.music) this.music.volume = s.musicVolume;
@@ -675,7 +675,7 @@ export class Player {
       form.append(lab, input, out);
     };
 
-    const choice = <K extends 'font' | 'motion'>(key: K, label: string, options: Array<[Settings[K], string]>) => {
+    const choice = <K extends 'font' | 'motion'>(key: K, label: string, options: ReadonlyArray<readonly [Settings[K], string]>) => {
       const id = `set-${key}`;
       const lab = el('label', '', label);
       lab.htmlFor = id;
@@ -697,7 +697,7 @@ export class Player {
     slider('soundVolume', 'Sound volume', pct);
     slider('textScale', 'Text size', pct);
     slider('boxOpacity', 'Text box opacity', pct);
-    choice('font', 'Font', [['serif', 'Book (serif)'], ['sans', 'Clean (sans-serif)']]);
+    choice('font', 'Font', FONTS);
     choice('motion', 'Animations', [['system', 'Follow my device'], ['full', 'On'], ['reduced', 'Reduced']]);
 
     const preview = el('p', 'settings-preview', 'The light sweeps out over the black water, and for a moment the whole bay is silver.');

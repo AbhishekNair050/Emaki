@@ -19,6 +19,8 @@ describe('player settings', () => {
     const s = sanitizeSettings({ textSpeed: '60', font: 'comic', motion: 'reduced', soundVolume: NaN });
     expect(s.textSpeed).toBe(DEFAULT_SETTINGS.textSpeed);
     expect(s.font).toBe('serif');
+    expect(sanitizeSettings({ font: 'legible' }).font).toBe('legible');
+    expect(sanitizeSettings({ font: 'dyslexic' }).font).toBe('dyslexic');
     expect(s.motion).toBe('reduced');
     expect(s.soundVolume).toBe(DEFAULT_SETTINGS.soundVolume);
   });
