@@ -468,11 +468,12 @@ export class Player {
         return;
       }
       case 'play':
-        if (fx.channel === 'music') this.playMusic(fx.path, fx.loop);
-        else playOnce(fx.path, this.settings.soundVolume);
+        if (fx.channel === 'music') this.playMusic(fx.path, fx.loop, instant ? 0 : (fx.fade ?? 0) * 1000);
+        // Skipping, rolling back or loading: don't fire a burst of old sound effects.
+        else if (!instant) playOnce(fx.path, this.settings.soundVolume);
         return;
       case 'stop':
-        if (fx.channel === 'music') this.stopMusic();
+        if (fx.channel === 'music') this.stopMusic(instant ? 0 : (fx.fade ?? 0) * 1000);
         return;
     }
   }
@@ -510,20 +511,29 @@ export class Player {
 
   // ---------------------------------------------------------- audio
 
-  private playMusic(path: string, loop: boolean): void {
+  /** Start a music track; with `fadeMs`, the old track fades out while the new one fades in. */
+  private playMusic(path: string, loop: boolean, fadeMs = 0): void {
     if (this.music?.dataset.path === path) return;
-    this.stopMusic();
+    this.stopMusic(fadeMs);
     const a = new Audio(asset(path));
     a.dataset.path = path;
     a.loop = loop;
-    a.volume = this.settings.musicVolume;
+    a.volume = fadeMs ? 0 : this.settings.musicVolume;
     a.play().catch(() => { /* autoplay blocked or file missing: stay silent */ });
     this.music = a;
+    if (fadeMs) void fadeVolume(a, () => this.settings.musicVolume, fadeMs);
   }
 
-  private stopMusic(): void {
-    this.music?.pause();
+  private stopMusic(fadeMs = 0): void {
+    const old = this.music;
     this.music = null;
+    if (!old) return;
+    if (!fadeMs) {
+      fadeVolume(old, () => old.volume, 0); // cancel any fade in progress
+      old.pause();
+      return;
+    }
+    void fadeVolume(old, () => 0, fadeMs).then(() => old.pause());
   }
 
   private syncMusic(): void {
@@ -894,6 +904,39 @@ async function fadeOutAndRemove(node: HTMLElement, ms: number): Promise<void> {
   await animateOpacity(node, 0, ms);
   node.remove();
 }
+
+const fades = new WeakMap<HTMLAudioElement, number>();
+
+/**
+ * Ramp an element's volume to `target()` over `ms`, replacing any ramp already
+ * running on it. The target is re-read every tick, so moving the volume slider
+ * mid-fade is respected. Timers rather than animation frames: fades must finish
+ * even in a background tab.
+ */
+function fadeVolume(a: HTMLAudioElement, target: () => number, ms: number): Promise<void> {
+  window.clearInterval(fades.get(a));
+  fades.delete(a);
+  if (ms <= 0) {
+    a.volume = clamp01(target());
+    return Promise.resolve();
+  }
+  const from = a.volume;
+  const start = performance.now();
+  return new Promise((resolve) => {
+    const id = window.setInterval(() => {
+      const t = Math.min(1, (performance.now() - start) / ms);
+      a.volume = clamp01(from + (target() - from) * t);
+      if (t >= 1) {
+        window.clearInterval(id);
+        fades.delete(a);
+        resolve();
+      }
+    }, 40);
+    fades.set(a, id);
+  });
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 function playOnce(path: string, volume: number): void {
   const a = new Audio(asset(path));
