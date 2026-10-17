@@ -255,6 +255,16 @@ export class Analysis {
 const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'label'];
 const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else'];
 
+/**
+ * The dev-server address that opens the game at a line (0-based `line` in,
+ * 1-based in the URL, matching what the player expects: `?line=52`).
+ */
+export function previewUrl(base: string, line: number): string {
+  const url = new URL(base);
+  url.searchParams.set('line', String(line + 1));
+  return url.toString();
+}
+
 /** The canonical formatting of a script, or null if it has syntax errors (never format broken code). */
 export function format(source: string): string | null {
   const { program, diagnostics } = parse(source);

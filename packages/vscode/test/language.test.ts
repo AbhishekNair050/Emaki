@@ -166,3 +166,12 @@ describe('format', () => {
     expect(format('label a:\n  jump\n')).toBeNull();
   });
 });
+
+describe('preview links', () => {
+  it('turns a 0-based editor line into the dev server address', async () => {
+    const { previewUrl } = await import('../src/language.ts');
+    expect(previewUrl('http://localhost:5173/', 51)).toBe('http://localhost:5173/?line=52');
+    expect(previewUrl('http://localhost:5173/game/?trust=2', 0)).toBe('http://localhost:5173/game/?trust=2&line=1');
+    expect(() => previewUrl('not a url', 0)).toThrow();
+  });
+});

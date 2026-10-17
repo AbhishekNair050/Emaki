@@ -52,6 +52,67 @@
         "editor.insertSpaces": true,
         "editor.wordWrap": "on"
       }
+    },
+    "commands": [
+      {
+        "command": "emaki.previewLine",
+        "title": "Preview from This Line",
+        "category": "Emaki",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "emaki.previewLine",
+          "when": "editorLangId == emaki",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "emaki.previewLine",
+          "when": "editorLangId == emaki",
+          "group": "navigation@0"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "emaki.previewLine",
+          "when": "editorLangId == emaki"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "emaki.previewLine",
+        "key": "ctrl+alt+enter",
+        "mac": "cmd+alt+enter",
+        "when": "editorTextFocus && editorLangId == emaki"
+      }
+    ],
+    "configuration": {
+      "title": "Emaki",
+      "properties": {
+        "emaki.preview.url": {
+          "type": "string",
+          "default": "http://localhost:5173/",
+          "markdownDescription": "Address of the running dev server (`npm run dev`)."
+        },
+        "emaki.preview.openIn": {
+          "type": "string",
+          "enum": [
+            "beside",
+            "browser"
+          ],
+          "enumDescriptions": [
+            "VS Code's built-in browser, next to the script",
+            "Your default web browser"
+          ],
+          "default": "beside",
+          "description": "Where \"Preview from This Line\" opens the game."
+        }
+      }
     }
   },
   "scripts": {

@@ -6,7 +6,7 @@
  * the writer's machine.
  */
 import * as vscode from 'vscode';
-import { Analysis, format, type CompletionKind, type StorySymbol, type SymbolKind } from './language.ts';
+import { Analysis, format, previewUrl, type CompletionKind, type StorySymbol, type SymbolKind } from './language.ts';
 
 const LANGUAGE = 'emaki';
 const SELECTOR: vscode.DocumentSelector = { language: LANGUAGE };
@@ -98,6 +98,8 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     }, ' ', '{'),
 
+    vscode.commands.registerTextEditorCommand('emaki.previewLine', (editor) => previewLine(editor)),
+
     vscode.languages.registerDocumentFormattingEditProvider(SELECTOR, {
       provideDocumentFormattingEdits(doc) {
         const text = doc.getText();
@@ -114,6 +116,35 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {}
+
+/** Open the running game (npm run dev) at the cursor's line. */
+async function previewLine(editor: vscode.TextEditor): Promise<void> {
+  const config = vscode.workspace.getConfiguration('emaki.preview');
+  const base = config.get<string>('url', 'http://localhost:5173/');
+  let url: string;
+  try {
+    url = previewUrl(base, editor.selection.active.line);
+  } catch {
+    void vscode.window.showErrorMessage(`Emaki: '${base}' isn't a valid address. Check the emaki.preview.url setting.`);
+    return;
+  }
+  if (editor.document.isDirty) await editor.document.save(); // the dev server reads the file from disk
+  if (config.get<string>('openIn', 'beside') === 'beside') {
+    try {
+      // Some versions open the browser in the active group whatever column is asked for,
+      // so make the group to the right of the script active first (creating it if needed).
+      const column = (editor.viewColumn ?? vscode.ViewColumn.One) + 1;
+      const hasRight = vscode.window.tabGroups.all.some((g) => g.viewColumn === column);
+      await vscode.commands.executeCommand(hasRight ? 'workbench.action.focusRightGroup' : 'workbench.action.newGroupRight');
+      await vscode.commands.executeCommand('simpleBrowser.api.open', vscode.Uri.parse(url), { viewColumn: column, preserveFocus: false });
+      await vscode.window.showTextDocument(editor.document, { viewColumn: editor.viewColumn, selection: editor.selection });
+      return;
+    } catch {
+      // Built-in browser unavailable (e.g. disabled): fall back to the system browser.
+    }
+  }
+  await vscode.env.openExternal(vscode.Uri.parse(url));
+}
 
 /** The range of a definition's name, for jumping to and highlighting. */
 function nameRange(doc: vscode.TextDocument, s: StorySymbol): vscode.Range {
