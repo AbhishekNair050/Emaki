@@ -5,6 +5,12 @@
   "license": "MIT",
   "type": "module",
   "private": true,
+  "exports": {
+    ".": "./src/player.ts",
+    "./fonts": "./src/fonts.ts",
+    "./layout": "./src/map/layout.ts",
+    "./style.css": "./src/style.css"
+  },
   "dependencies": {
     "@emaki/format": "0.1.0",
     "@emaki/runtime": "0.1.0",
