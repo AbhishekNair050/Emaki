@@ -290,7 +290,9 @@ export class Player {
 
     switch (b.type) {
       case 'say':
-        this.showLine(b, instant || this.skip || this.reducedMotion);
+        // Typing speed is the Text speed setting's job alone. Reduced motion (which Windows turns on
+        // with "Animation effects" off) is about movement, not letters appearing.
+        this.showLine(b, instant || this.skip);
         break;
       case 'menu': {
         this.auto = this.skip = false;
