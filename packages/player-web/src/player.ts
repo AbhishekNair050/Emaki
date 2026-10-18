@@ -34,8 +34,8 @@ export interface PlayerOptions {
 }
 
 export class Player {
-  private readonly runner: Runner;
-  private readonly story: CompiledStory;
+  private runner: Runner;
+  private story: CompiledStory;
   private readonly opts: PlayerOptions;
   private readonly storeKey: string;
 
@@ -126,8 +126,45 @@ export class Player {
     this.stage.addEventListener('wheel', (e) => {
       if (this.mode === 'playing' && !this.overlayOpen && e.deltaY < 0) this.back();
     }, { passive: true });
-    window.addEventListener('keydown', (e) => this.onKey(e));
-    window.addEventListener('beforeunload', () => this.devStash());
+    window.addEventListener('keydown', this.keyListener);
+    window.addEventListener('beforeunload', this.unloadListener);
+  }
+
+  private readonly keyListener = (e: KeyboardEvent) => this.onKey(e);
+  private readonly unloadListener = () => this.devStash();
+
+  /** Stop everything (timers, music, listeners) and empty the host. The player can't be used afterwards. */
+  destroy(): void {
+    this.epoch++;
+    this.clearTimers();
+    this.stopMusic();
+    window.removeEventListener('keydown', this.keyListener);
+    window.removeEventListener('beforeunload', this.unloadListener);
+    this.stage.remove();
+  }
+
+  /**
+   * Swap in a new version of the story (the editor calls this as the script
+   * changes). A game in progress continues from the same line, with the edit
+   * visible at once; music that is still the same track keeps playing.
+   * Returns false if the old position couldn't be found (back to the title).
+   */
+  reload(story: CompiledStory): boolean {
+    const save = this.mode === 'playing' && this.runner.block ? this.runner.save() : null;
+    this.story = story;
+    this.runner = new Runner(story);
+    if (this.mode === 'title') { this.closeOverlay(); this.showTitle(); return true; }
+    if (!save) { this.showTitle(); return false; }
+    let step: Step | null = null;
+    try { step = this.runner.resume(save); } catch (err) { console.warn('Could not resume after an edit', err); }
+    if (!step) { this.showTitle(); return false; }
+    this.enterPlaying();
+    this.epoch++;
+    this.busy = false;
+    this.syncScene(this.runner.scene());
+    this.syncMusic();
+    this.guard(() => this.present(step, true));
+    return true;
   }
 
   boot(): void {
