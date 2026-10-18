@@ -1,12 +1,12 @@
 /**
- * VS Code extension entry: adapts `language.ts` to the editor.
+ * VS Code extension entry: adapts `@emaki/language` to the editor.
  *
  * Bundled with esbuild into dist/extension.cjs (VS Code can't run .ts), with
  * the compiler from @emaki/format inlined, so it works without Node or npm on
  * the writer's machine.
  */
 import * as vscode from 'vscode';
-import { Analysis, format, previewUrl, type CompletionKind, type StorySymbol, type SymbolKind } from './language.ts';
+import { Analysis, format, previewUrl, type CompletionKind, type StorySymbol, type SymbolKind } from '@emaki/language';
 
 const LANGUAGE = 'emaki';
 const SELECTOR: vscode.DocumentSelector = { language: LANGUAGE };

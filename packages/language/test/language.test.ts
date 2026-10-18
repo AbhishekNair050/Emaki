@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { Analysis, format } from '../src/language.ts';
+import { Analysis, format } from '../src/index.ts';
 
 const demoSrc = readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8');
 
@@ -169,7 +169,7 @@ describe('format', () => {
 
 describe('preview links', () => {
   it('turns a 0-based editor line into the dev server address', async () => {
-    const { previewUrl } = await import('../src/language.ts');
+    const { previewUrl } = await import('../src/index.ts');
     expect(previewUrl('http://localhost:5173/', 51)).toBe('http://localhost:5173/?line=52');
     expect(previewUrl('http://localhost:5173/game/?trust=2', 0)).toBe('http://localhost:5173/game/?trust=2&line=1');
     expect(() => previewUrl('not a url', 0)).toThrow();

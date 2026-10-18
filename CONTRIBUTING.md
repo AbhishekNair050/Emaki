@@ -14,7 +14,8 @@ packages/format      parser, compiler, expression language, printer, graph  (no 
 packages/runtime     headless VM: Runner (steps, rollback, save/load, resume) (depends on format)
 packages/player-web  DOM player + Vite plugin that compiles story.vn live + story map dev panel (src/map)
 packages/cli         emaki check | build | graph | fmt
-packages/vscode      VS Code extension: src/language.ts (editor-agnostic features) + grammar; bundled by esbuild
+packages/language    editor features (problems, symbols, definition, references, hover, completion, formatting) over plain text
+packages/vscode      VS Code extension: a thin adapter over @emaki/language + TextMate grammar; bundled by esbuild
 games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ + tools/gen-art.mjs)
 ```
 

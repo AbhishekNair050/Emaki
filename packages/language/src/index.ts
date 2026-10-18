@@ -2,8 +2,8 @@
  * Editor features for `.vn` scripts, independent of any editor API.
  *
  * Everything here works on plain strings and 0-based line/column numbers, so
- * it is unit-tested with vitest and can back other editors (or a language
- * server) later. `extension.ts` adapts it to VS Code.
+ * it is unit-tested and shared: the VS Code extension and the web editor are
+ * both thin adapters over it, and a language server could be too.
  */
 import {
   compile, parse, print, KEYWORDS, POSITIONS, TRANSITIONS,
