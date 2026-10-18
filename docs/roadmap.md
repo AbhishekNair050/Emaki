@@ -13,7 +13,7 @@ What is done and what comes next.
 - Dev server with live reload that resumes at the same line; error page for broken scripts
 - Demo VN with 3 endings + generated placeholder art; 32 tests
 
-## ▶ Milestone 1 — Make the core loop delightful (next)
+## ✅ Milestone 1 — Make the core loop delightful (done, 2026-11-14)
 - [x] **Story map** (dev panel): flowchart of every scene beside the game, current scene highlighted, visited scenes tracked, click a scene to play from it, live-editable variables for testing routes
 - [x] Comments and blank lines preserved by the formatter (`emaki fmt`, `--check` in CI)
 - [x] Jump-to-line preview: `?line=52&trust=2` starts the story at that line with chosen variable values; Ctrl+Alt+Enter in VS Code opens it beside the script
@@ -23,9 +23,9 @@ What is done and what comes next.
 - [x] Portrait phone layout: the stage fills the screen when held upright; landscape stays 16:9
 - [x] Preload images for the next scene (every branch a few lines ahead; transitions wait briefly for slow images)
 - [x] VS Code extension: highlighting, live diagnostics, go to definition, references, hover, completion, outline, formatting (reuses the compiler)
-- [ ] Demo: add music/ambience (CC0) to exercise audio
+- [x] Demo soundtrack (CC0, credited in `games/gullwing/assets/audio/CREDITS.md`); music fades and crossfades; no sound-effect bursts when skipping or rolling back
 
-## Milestone 2 — The editor (the differentiator)
+## ▶ Milestone 2 — The editor (the differentiator, next)
 - [ ] Editor app (web): script pane + flowchart pane + live player pane
 - [ ] Editing in the flowchart writes clean text via the printer (round-trip)
 - [ ] Asset browser (drag an image in → `image` line generated)
@@ -38,4 +38,4 @@ What is done and what comes next.
 - [ ] Plugin API v1
 
 ## Later
-Layered sprites, Live2D/Spine plugins, NVL mode, achievements, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles.
+Gapless music loops (Web Audio), an ambience channel that plays under music, layered sprites, Live2D/Spine plugins, NVL mode, achievements, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles.
