@@ -1,0 +1,216 @@
+/* Emaki editor. The player's own stylesheet is loaded first; everything here is scoped to the editor shell. */
+
+body.editor {
+  --bg: #0f131a;
+  --pane-bg: #141922;
+  --panel-bg: #1a202b;
+  --border: #283040;
+  --text: #e8e4da;
+  --muted: #8d939f;
+  --accent: #e8b04b;
+  --danger: #ef7d6d;
+  --warn: #e8c26b;
+  --ok: #8fcf9b;
+  --active-line: rgba(255, 255, 255, 0.035);
+  --selection: rgba(232, 176, 75, 0.25);
+  --play-line: rgba(232, 176, 75, 0.09);
+  --search-match: rgba(143, 193, 227, 0.3);
+  --code-font: 'JetBrains Mono', 'Cascadia Code', Consolas, 'SF Mono', Menlo, monospace;
+  --ui-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --syn-comment: #6f7785;
+  --syn-keyword: #c792ea;
+  --syn-label: #82aaff;
+  --syn-speaker: #e8b04b;
+  --syn-asset: #7fcfc4;
+  --syn-variable: #f2a77a;
+  --syn-string: #a5d38f;
+  --syn-prose: #e8e4da;
+  --syn-number: #f78c6c;
+  --syn-operator: #89ddff;
+
+  --node: #1d2430;
+  --node-visited: #26344a;
+  --node-border: #3a4456;
+  --ending: #3a2d45;
+  --ending-border: #8a6aa8;
+  --edge: #5d6678;
+  --edge-call: #6f8fae;
+
+  margin: 0;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: 14px;
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: light) {
+  body.editor {
+    --bg: #ecebe6;
+    --pane-bg: #fbfaf7;
+    --panel-bg: #f3f1ec;
+    --border: #d6d2c8;
+    --text: #23262d;
+    --muted: #6c707a;
+    --accent: #a8690c;
+    --danger: #c0392b;
+    --warn: #9a6b00;
+    --ok: #2f7d3e;
+    --active-line: rgba(0, 0, 0, 0.035);
+    --selection: rgba(168, 105, 12, 0.2);
+    --play-line: rgba(168, 105, 12, 0.08);
+    --search-match: rgba(30, 110, 170, 0.2);
+    --syn-comment: #8a8f98;
+    --syn-keyword: #8b3fb5;
+    --syn-label: #2457c5;
+    --syn-speaker: #a8690c;
+    --syn-asset: #127a6e;
+    --syn-variable: #b4532a;
+    --syn-string: #3c7a26;
+    --syn-prose: #23262d;
+    --syn-number: #c4501c;
+    --syn-operator: #0b7fa8;
+    --node: #ffffff;
+    --node-visited: #e7eefb;
+    --node-border: #b9bfcc;
+    --ending: #f1e8f8;
+    --ending-border: #8a6aa8;
+    --edge: #9aa1ae;
+    --edge-call: #5b7ea3;
+  }
+}
+
+.editor button {
+  font: inherit;
+  color: inherit;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.editor button:hover { border-color: var(--muted); }
+.editor button:focus-visible, .splitter:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.editor kbd { font: 11px var(--code-font); color: var(--muted); margin-left: 4px; }
+
+/* ---------------------------------------------------------------- top bar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--pane-bg);
+  min-width: 0;
+}
+.brand { font-weight: 700; letter-spacing: 0.04em; color: var(--accent); }
+.story-title { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+#run { border-color: var(--accent); }
+#problems.has-errors { color: var(--danger); border-color: var(--danger); }
+#problems.has-warnings { color: var(--warn); }
+.save-status { min-width: 9em; text-align: right; color: var(--muted); font-size: 13px; }
+.save-status[data-status='unsaved'], .save-status[data-status='saving'] { color: var(--text); }
+.save-status[data-status='conflict'], .save-status[data-status='error'] { color: var(--danger); font-weight: 600; }
+
+.conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--danger) 16%, var(--pane-bg));
+  border-bottom: 1px solid var(--danger);
+}
+.conflict[hidden] { display: none; }
+.conflict p { margin: 0; flex: 1 1 24em; }
+
+/* ---------------------------------------------------------------- panes */
+
+.workspace {
+  --split: 50%;
+  display: grid;
+  grid-template-columns: minmax(0, var(--split)) 6px minmax(0, 1fr);
+  min-height: 0;
+}
+.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--pane-bg); }
+.pane-head {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.pane-head .hint, .pane-head .game-note { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.game-note { color: var(--warn); }
+.cm-host { flex: 1; min-height: 0; }
+.cm-host .cm-editor { height: 100%; }
+
+.splitter { background: var(--border); cursor: col-resize; touch-action: none; }
+.splitter:hover { background: var(--muted); }
+
+.side { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; border-left: 1px solid var(--border); }
+.game-pane { border-bottom: 1px solid var(--border); }
+.player-host {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 58vh;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+/* ---------------------------------------------------------------- flowchart */
+
+.flow-pane { min-height: 0; }
+.flow-host { flex: 1; min-height: 0; overflow: auto; }
+.flowchart { padding: 8px; }
+.flow-empty { color: var(--muted); padding: 12px; }
+.flow-svg { display: block; margin: 0 auto; font-family: var(--ui-font); }
+.flow-arrowhead { fill: var(--edge); }
+.flow-edge .line { fill: none; stroke: var(--edge); stroke-width: 1.6; }
+.flow-edge.kind-call .line { stroke: var(--edge-call); stroke-dasharray: 5 4; }
+.flow-edge.back .line { stroke-dasharray: 2 4; }
+.flow-edge .edge-label {
+  font-size: 12px;
+  fill: var(--muted);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--pane-bg);
+  stroke-width: 4px;
+}
+.flow-node { cursor: pointer; outline: none; }
+.flow-node rect { fill: var(--node); stroke: var(--node-border); stroke-width: 1.2; }
+.flow-node .name { fill: var(--text); font-size: 14px; font-weight: 600; text-anchor: middle; }
+.flow-node .meta { fill: var(--muted); font-size: 11.5px; text-anchor: middle; }
+.flow-node .badge { fill: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-anchor: middle; }
+.flow-node.visited rect { fill: var(--node-visited); }
+.flow-node.ending rect { fill: var(--ending); stroke: var(--ending-border); }
+.flow-node.unreachable rect { stroke-dasharray: 4 3; }
+.flow-node.cursor rect { stroke: var(--syn-label); stroke-width: 2; }
+.flow-node.current rect { stroke: var(--accent); stroke-width: 2.5; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 45%, transparent)); }
+.flow-node:hover rect, .flow-node:focus-visible rect { stroke: var(--text); }
+
+.fatal { padding: 2em; font-size: 16px; }
+
+/* Narrow windows: stack the panes. */
+@media (max-width: 760px) {
+  body.editor { overflow: auto; height: auto; }
+  .workspace { grid-template-columns: 1fr; }
+  .splitter { display: none; }
+  .script-pane { height: 60dvh; }
+  .side { border-left: 0; }
+  .flow-pane { height: 50dvh; }
+}
