@@ -26,7 +26,7 @@ What is done and what comes next.
 - [x] Demo soundtrack (CC0, credited in `games/gullwing/assets/audio/CREDITS.md`); music fades and crossfades; no sound-effect bursts when skipping or rolling back
 
 ## ▶ Milestone 2 — The editor (the differentiator, next)
-- [ ] Editor app (web): script pane + flowchart pane + live player pane
+- [x] Editor app (web): script pane + flowchart pane + live player pane, linked both ways; edits show in the running game at once; autosave with conflict detection (`npm run edit`)
 - [ ] Editing in the flowchart writes clean text via the printer (round-trip)
 - [ ] Asset browser (drag an image in → `image` line generated)
 

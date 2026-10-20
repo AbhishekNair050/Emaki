@@ -2,7 +2,7 @@
 
 *Unroll your story. Write like a screenplay, ship everywhere.*
 
-An open-source (MIT) visual novel engine. Early days: the core works end to end, and the editor comes next.
+An open-source (MIT) visual novel engine. Early days: the core works end to end, and the editor is taking shape.
 
 > **Emaki** (絵巻, *eh-MAH-kee*) are Japanese illustrated handscrolls, pictures and words read scene by scene as the scroll unrolls. They're one of the oldest ancestors of the visual novel.
 
@@ -26,6 +26,7 @@ Requires Node 22.18+.
 
 ```sh
 npm install
+npm run edit         # the editor: script, game and flowchart side by side (http://localhost:5174)
 npm run dev          # play the demo; edit games/gullwing/story.vn and it reloads at the same line
 npm test             # run the test suite
 npm run check        # lint the demo story
@@ -35,6 +36,17 @@ npm run build:vscode # the VS Code extension (see packages/vscode)
 ```
 
 CLI: `npm run emaki -- check|build|graph|fmt <file.vn>`
+
+### The editor
+`npm run edit` opens the editor in your browser: the script on the left, the game and a flowchart of the story on the right, always pointing at the same place.
+
+- Type and the game updates in place: same line, same music, your edit on screen. While the script has errors the game keeps running the last version that worked.
+- **Ctrl+Enter** plays from the line the cursor is on. Click a scene in the flowchart to find it in the script; double-click to play it.
+- The line the game is showing is marked in the script, and its scene in the flowchart.
+- Errors are underlined as you type, with completion, hover, go to definition (F12 or Ctrl+click) and formatting (Shift+Alt+F), the same features as the VS Code extension.
+- Saves to `story.vn` by itself. If the file changes elsewhere (VS Code, git) the editor loads it, and if you both changed it, it asks which version to keep rather than overwriting anything.
+
+To edit another game: `EMAKI_GAME=path/to/game npm run edit`.
 
 ### Story map
 While `npm run dev` is running, a **story map** sits beside the game: every scene as a flowchart, with where you are highlighted. Click any scene to play from it, and edit your story's variables live to test other routes (set `trust` to 2, jump to the last scene, see which ending you get). Press `M` to show or hide it. It is a development tool only and is never included in a published build.
@@ -56,6 +68,8 @@ The same build plays on phones. Turned sideways it's the usual 16:9 picture; hel
 | `@emaki/format` | parser, compiler, expressions, printer, story graph (no dependencies) |
 | `@emaki/runtime` | headless story VM: rollback, saves, live-reload resume |
 | `@emaki/player-web` | browser player (DOM, accessible, phone-friendly, ~15 KB gzipped) |
+| `@emaki/editor` | the web editor (`npm run edit`) |
+| `@emaki/language` | editor features over plain text, shared by the editor and the VS Code extension |
 | `@emaki/cli` | `check`, `build`, `graph`, `fmt` |
 | [`emaki-vscode`](packages/vscode) | VS Code extension: highlighting, live errors, go to definition, completion, formatting |
 
