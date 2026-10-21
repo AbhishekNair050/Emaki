@@ -6,7 +6,7 @@
  * editors always agree with `emaki check`.
  */
 import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
-import { indentWithTab } from '@codemirror/commands';
+import { indentWithTab, redo, undo } from '@codemirror/commands';
 import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { linter, lintGutter, openLintPanel, type Diagnostic as LintDiagnostic } from '@codemirror/lint';
 import { EditorState, Prec, StateEffect, StateField, type Text } from '@codemirror/state';
@@ -25,7 +25,19 @@ export interface ScriptPaneHooks {
   onCursor?(line: number): void;
   /** Ctrl+S. */
   onSave?(): void;
+  /**
+   * Something was dropped on the script: an asset from the asset browser, or
+   * files from the computer. `line` is the 1-based line it was dropped on.
+   */
+  onDrop?(drop: { asset?: DraggedAsset; files?: File[] }, line: number): void;
 }
+
+/** What the asset browser puts on the drag (see ASSET_MIME). */
+export interface DraggedAsset {
+  path: string;
+  kind: 'image' | 'audio';
+}
+export const ASSET_MIME = 'application/x-emaki-asset';
 
 /** One analysis per document version, shared by every feature. */
 const analyses = new WeakMap<Text, Analysis>();
@@ -63,6 +75,8 @@ export class ScriptPane {
           // Highest precedence: the default keymap also binds Mod-Enter (insert blank line).
           Prec.highest(keymap.of([
             { key: 'Mod-Enter', run: (v) => { this.hooks.onRun(lineAt(v)); return true; } },
+            // CodeMirror only binds Ctrl+Y on Windows/Linux; writers coming from VS Code expect this too.
+            { key: 'Mod-Shift-z', run: redo, preventDefault: true },
             { key: 'Mod-s', run: () => { this.hooks.onSave?.(); return true; }, preventDefault: true },
             { key: 'F12', run: (v) => goToDefinition(v, v.state.selection.main.head) },
             { key: 'Shift-Alt-f', run: (v) => formatDocument(v) },
@@ -70,6 +84,24 @@ export class ScriptPane {
             indentWithTab,
           ])),
           EditorView.domEventHandlers({
+            dragover: (e) => {
+              if (!this.hooks.onDrop || !accepts(e.dataTransfer)) return false;
+              e.preventDefault();
+              e.dataTransfer!.dropEffect = 'copy';
+              return false; // let CodeMirror draw its drop cursor
+            },
+            drop: (e, v) => {
+              if (!this.hooks.onDrop || !accepts(e.dataTransfer)) return false;
+              e.preventDefault();
+              const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.doc.length;
+              const raw = e.dataTransfer!.getData(ASSET_MIME);
+              const files = [...(e.dataTransfer!.files ?? [])];
+              // Dropping between lines inserts before the line under the pointer.
+              const line = v.state.doc.lineAt(pos).number;
+              if (raw) this.hooks.onDrop({ asset: JSON.parse(raw) as DraggedAsset }, line);
+              else if (files.length) this.hooks.onDrop({ files }, line);
+              return true;
+            },
             mousedown: (e, v) => {
               if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false;
               const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
@@ -111,6 +143,16 @@ export class ScriptPane {
     this.revealLine(Math.min(line, this.view.state.doc.lines), false);
   }
 
+  /**
+   * Replace the text as an edit the writer made (from the flowchart or the
+   * asset browser): it can be undone with Ctrl+Z, and it is saved and played
+   * like typing. Then show `line`.
+   */
+  applyEdit(text: string, line: number): void {
+    if (text !== this.text) this.view.dispatch({ changes: minimalChange(this.view.state.doc, text), userEvent: 'input.emaki' });
+    this.revealLine(line);
+  }
+
   /** Scroll a 1-based line into view, optionally putting the cursor at its start. */
   revealLine(line: number, select = true, focus = select): void {
     const doc = this.view.state.doc;
@@ -126,6 +168,14 @@ export class ScriptPane {
   /** Mark the line the game is showing (1-based), or none. */
   setPlayLine(line: number | null): void {
     this.view.dispatch({ effects: setPlayLine.of(line) });
+  }
+
+  undo(): boolean {
+    return undo(this.view);
+  }
+
+  redo(): boolean {
+    return redo(this.view);
   }
 
   showProblems(): void {
@@ -214,6 +264,10 @@ function minimalChange(doc: Text, next: string): { from: number; to: number; ins
   let endNext = next.length;
   while (endPrev > start && endNext > start && prev[endPrev - 1] === next[endNext - 1]) { endPrev--; endNext--; }
   return { from: start, to: endPrev, insert: next.slice(start, endNext) };
+}
+
+function accepts(dt: DataTransfer | null): boolean {
+  return !!dt && (dt.types.includes(ASSET_MIME) || dt.types.includes('Files'));
 }
 
 function lineAt(view: EditorView): number {
