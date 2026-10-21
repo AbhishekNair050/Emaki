@@ -36,9 +36,13 @@
           <h2 class="pane-head">Game <span class="game-note" role="status"></span></h2>
           <div class="player-host"></div>
         </section>
-        <section class="pane flow-pane" aria-label="Flowchart">
-          <h2 class="pane-head">Flowchart <span class="hint">Click a scene to find it in the script · double-click to play it</span></h2>
-          <div class="flow-host"></div>
+        <section class="pane flow-pane">
+          <div class="pane-head tabs" role="tablist" aria-label="Story tools">
+            <button type="button" role="tab" id="tab-flow" aria-controls="panel-flow" aria-selected="true">Flowchart</button>
+            <button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1">Assets</button>
+          </div>
+          <div class="flow-host" id="panel-flow" role="tabpanel" aria-labelledby="tab-flow"></div>
+          <div class="assets-host" id="panel-assets" role="tabpanel" aria-labelledby="tab-assets" hidden></div>
         </section>
       </div>
     </main>

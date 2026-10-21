@@ -6,11 +6,17 @@
  *  - Ctrl+Enter → play from the cursor
  *  - click a scene in the flowchart → jump to it in the script; double-click → play it
  *  - the game's current line is marked in the script, its scene in the flowchart
+ *  - shape the story in the flowchart (add, rename, delete, connect scenes)
+ *  - drag images and audio from the asset browser (or your computer) onto the script
  */
 import { buildGraph, compile, type CompiledStory } from '@emaki/format';
+import {
+  addScene, connectScenes, declareAsset, deleteScene, dropAsset, renameScene, type EditResult,
+} from '@emaki/language';
 import { Player } from '@emaki/player-web';
 import '@emaki/player-web/style.css';
 import '@emaki/player-web/fonts';
+import { AssetPanel, type AssetInfo } from './assets.ts';
 import { Flowchart } from './flowchart.ts';
 import { ScriptPane } from './script/script-pane.ts';
 import { StorySync, type SaveStatus, type StoryText } from './sync.ts';
@@ -34,10 +40,47 @@ async function main(): Promise<void> {
   let story: CompiledStory | null = null;
   let compileTimer = 0;
 
+  /** Apply a structural edit to the script (undoable there), or return why it couldn't be done. */
+  const apply = (r: EditResult): string | null => {
+    if (!r.ok) return r.error;
+    script.applyEdit(r.text, r.line);
+    flush();
+    return null;
+  };
+
   const flow = new Flowchart($('.flow-host'), {
     reveal: (label) => revealLabel(label),
+    revealLine: (line) => script.revealLine(line),
     play: (label) => { flush(); player?.jumpTo(label); },
+    addScene: (name, after) => apply(addScene(script.text, name, after ?? undefined)),
+    renameScene: (from, to) => apply(renameScene(script.text, from, to)),
+    deleteScene: (name) => apply(deleteScene(script.text, name)),
+    connect: (from, to) => apply(connectScenes(script.text, from, to)),
   });
+
+  const assets = new AssetPanel($('.assets-host'), {
+    declaredName: (a) => declaredIn(a),
+    declare: (a) => apply(declareAsset(script.text, a.kind, a.path)),
+    reveal: (name, a) => {
+      const decl = (a.kind === 'image' ? script.analysis.program.images : script.analysis.program.audio).find((d) => d.name === name);
+      if (decl) script.revealLine(decl.loc.line);
+    },
+    addFiles: async (files) => {
+      const added = await upload(files);
+      for (const a of added) {
+        const err = apply(declareAsset(script.text, a.kind, a.path));
+        if (err) throw new Error(err);
+      }
+      assets.say(added.length === 1 ? `Added ${added[0]!.path}.` : `Added ${added.length} files.`);
+      await assets.refresh();
+    },
+  });
+
+  /** The name the script gives an asset file, from the cached analysis of the current text. */
+  function declaredIn(a: AssetInfo): string | undefined {
+    const p = script.analysis.program;
+    return (a.kind === 'image' ? p.images : p.audio).find((d) => d.path.replace(/^\.?\//, '') === a.path)?.name;
+  }
 
   const sync = new StorySync(initial, {
     status: (s, detail) => showStatus(s, detail),
@@ -50,10 +93,30 @@ async function main(): Promise<void> {
     onRun: (line) => runFrom(line),
     onCursor: (line) => flow.setCursor(labelAt(line)),
     onSave: () => void sync.saveNow(),
+    onDrop: (drop, line) => void dropOnScript(drop, line),
   });
 
   recompile(initial.text);
   script.revealLine(1, true, false);
+  void assets.refresh();
+  setupTabs();
+
+  /** An asset (or files from the computer) dropped onto line `line` of the script. */
+  async function dropOnScript(drop: { asset?: { path: string; kind: 'image' | 'audio' }; files?: File[] }, line: number): Promise<void> {
+    try {
+      const items = drop.asset ? [drop.asset] : await upload(drop.files ?? []);
+      let at = line;
+      for (const a of items) {
+        const r = dropAsset(script.text, a.kind, a.path, at);
+        const err = apply(r);
+        if (err) { flashNote(err); return; }
+        if (r.ok) at = r.line + 1;
+      }
+      if (drop.files) await assets.refresh();
+    } catch (err) {
+      flashNote(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   // ---------------------------------------------------------------- compile → game
 
@@ -86,6 +149,7 @@ async function main(): Promise<void> {
     document.title = `${story.meta.title ?? 'Untitled'} · Emaki editor`;
     $('.story-title').textContent = story.meta.title ?? 'Untitled';
     flow.update(story, buildGraph(r.program));
+    assets.scriptChanged();
     if (!player) startPlayer(story);
     else if (!player.reload(story)) flashNote('Couldn’t find the line the game was on after that edit, so it went back to the title screen.');
   }
@@ -135,6 +199,10 @@ async function main(): Promise<void> {
     if (e.defaultPrevented || !(e.ctrlKey || e.metaKey)) return;
     if (e.key === 'Enter') { e.preventDefault(); runFrom(script.cursorLine); }
     if (e.key === 's') { e.preventDefault(); void sync.saveNow(); }
+    // Undo/redo the script from anywhere that isn't a text field (e.g. right after a flowchart edit).
+    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+    if (!typing && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) script.redo(); else script.undo(); }
+    if (!typing && e.key === 'y') { e.preventDefault(); script.redo(); }
   });
 
   window.addEventListener('beforeunload', (e) => {
@@ -142,6 +210,7 @@ async function main(): Promise<void> {
   });
 
   import.meta.hot?.on('emaki:story-changed', (data: { version: string }) => void sync.external(data.version));
+  import.meta.hot?.on('emaki:assets-changed', () => void assets.refresh());
 
   function showStatus(s: SaveStatus, detail?: string): void {
     const text: Record<SaveStatus, string> = {
@@ -169,6 +238,44 @@ async function main(): Promise<void> {
   }
 
   setupSplitter();
+}
+
+/** Copy files into the game's assets folder. Files that aren't images or audio are reported, the rest still added. */
+async function upload(files: File[]): Promise<AssetInfo[]> {
+  const added: AssetInfo[] = [];
+  const problems: string[] = [];
+  for (const f of files) {
+    const res = await fetch(`/__emaki/assets?name=${encodeURIComponent(f.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: f,
+    });
+    const body = (await res.json()) as AssetInfo & { error?: string };
+    if (res.ok) added.push(body);
+    else problems.push(body.error ?? `${f.name}: upload failed (${res.status})`);
+  }
+  if (problems.length) throw new Error(problems.join(' '));
+  return added;
+}
+
+/** Flowchart / Assets tabs under the game. */
+function setupTabs(): void {
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tabs [role=tab]')];
+  const select = (tab: HTMLButtonElement, focus = false) => {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')!)!.hidden = !on;
+    }
+    if (focus) tab.focus();
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => select(t));
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') select(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]!, true);
+    });
+  });
 }
 
 async function loadStory(): Promise<StoryText | null> {
