@@ -1,38 +1,110 @@
 /**
  * The flowchart pane: every label as a box, arrows for jumps, calls and choices.
  *
- * Click a scene to jump to it in the script; double-click to play from it.
+ *  - click a scene to jump to it in the script; double-click to play from it
+ *  - click an arrow to see the line that makes it
+ *  - edit the story's shape: add, rename and delete scenes, and drag from one
+ *    scene to another (or use "Lead to…") to connect them
+ *
+ * Edits go through hooks that rewrite the script with the printer, so the
+ * script stays the single source of truth and every change can be undone there.
  * The scene the game is in and the scene the cursor is in are highlighted, so
  * the three panes always point at the same place.
  */
 import type { CompiledStory, StoryGraph } from '@emaki/format';
 import { layoutGraph } from '@emaki/player-web/layout';
 
+/** An edit hook returns an error message, or null when it worked. */
+type Edit = string | null;
+
 export interface FlowchartHooks {
   /** Show this label in the script. */
   reveal(label: string): void;
+  /** Show this 1-based line in the script. */
+  revealLine(line: number): void;
   /** Play from this label. */
   play(label: string): void;
+  addScene(name: string, after: string | null): Edit;
+  renameScene(from: string, to: string): Edit;
+  deleteScene(name: string): Edit;
+  connect(from: string, to: string): Edit;
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
 const NAME_MAX = 19;
 const EDGE_LABEL_MAX = 28;
+const DRAG_THRESHOLD = 6;
 
 export class Flowchart {
   readonly el: HTMLElement;
   private readonly hooks: FlowchartHooks;
+  private readonly canvas: HTMLElement;
+  private readonly message: HTMLElement;
+  private readonly form: HTMLFormElement;
+  private readonly input: HTMLInputElement;
+  private readonly buttons: Record<'add' | 'rename' | 'remove' | 'connect', HTMLButtonElement>;
   private readonly nodes = new Map<string, SVGGElement>();
+  private svg: SVGSVGElement | null = null;
+  private graph: StoryGraph = { nodes: [], edges: [] };
   private signature = '';
   private current: string | null = null;
-  private cursor: string | null = null;
+  private selected: string | null = null;
   private readonly visited = new Set<string>();
+  /** "Lead to…" mode: the next scene clicked becomes the target. */
+  private connectFrom: string | null = null;
+  private onSubmit: ((value: string) => Edit) | null = null;
+  private messageTimer = 0;
 
   constructor(parent: HTMLElement, hooks: FlowchartHooks) {
     this.hooks = hooks;
-    this.el = document.createElement('div');
-    this.el.className = 'flowchart';
+    this.el = el('div', 'flowchart');
+
+    const bar = el('div', 'flow-toolbar');
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Edit the story');
+    this.buttons = {
+      add: button('+ Scene', 'Add a new scene after the selected one', () => this.ask('Name of the new scene', '', (name) => this.hooks.addScene(name, this.selected))),
+      rename: button('Rename', 'Rename the selected scene (and everything that leads to it)', () => {
+        const from = this.selected!;
+        this.ask(`Rename '${from}' to`, from, (to) => this.hooks.renameScene(from, to));
+      }),
+      remove: button('Delete', 'Delete the selected scene (Ctrl+Z in the script undoes it)', () => {
+        const name = this.selected!;
+        const err = this.hooks.deleteScene(name);
+        this.say(err ?? `Deleted '${name}'. Press Ctrl+Z in the script to undo.`, !!err);
+      }),
+      connect: button('Lead to…', 'Make the selected scene lead to another one: click this, then the other scene (or drag between scenes)', () => this.startConnect()),
+    };
+    this.input = el('input') as HTMLInputElement;
+    this.input.type = 'text';
+    this.input.spellcheck = false;
+    this.input.autocomplete = 'off';
+    this.form = el('form', 'flow-form') as HTMLFormElement;
+    this.form.hidden = true;
+    const ok = el('button', '', 'OK') as HTMLButtonElement;
+    ok.type = 'submit';
+    this.form.append(this.input, ok, button('Cancel', '', () => this.closeForm()));
+    this.form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const value = this.input.value.trim();
+      if (!value || !this.onSubmit) return this.closeForm();
+      const err = this.onSubmit(value);
+      if (err) { this.say(err, true); this.input.focus(); return; }
+      this.closeForm();
+    });
+    this.input.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.closeForm(); });
+    this.message = el('span', 'flow-message');
+    this.message.setAttribute('role', 'status');
+    bar.append(...Object.values(this.buttons), this.form, this.message);
+
+    this.canvas = el('div', 'flow-canvas');
+    this.el.append(bar, this.canvas);
     parent.append(this.el);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.connectFrom) this.stopConnect('Cancelled.');
+    });
+    this.updateButtons();
   }
 
   /** Redraw for a new version of the story (only if the shape of the graph changed). */
@@ -41,6 +113,7 @@ export class Flowchart {
     const signature = JSON.stringify([start, graph]);
     if (signature === this.signature) return;
     this.signature = signature;
+    this.graph = graph;
     this.render(graph, start);
   }
 
@@ -50,28 +123,101 @@ export class Flowchart {
     if (label === this.current) return;
     this.current = label;
     this.refresh();
-    if (label) this.nodes.get(label)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    this.scrollTo(label);
   }
 
-  /** The scene the script cursor is in. */
+  /** The scene the script cursor is in: it is also the one the toolbar acts on. */
   setCursor(label: string | null): void {
-    if (label === this.cursor) return;
-    this.cursor = label;
+    if (label === this.selected) return;
+    this.selected = label;
     this.refresh();
+    this.updateButtons();
+    this.scrollTo(label);
+  }
+
+  private scrollTo(label: string | null): void {
+    if (label) this.nodes.get(label)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   private refresh(): void {
     for (const [id, g] of this.nodes) {
       g.classList.toggle('current', id === this.current);
-      g.classList.toggle('cursor', id === this.cursor);
+      g.classList.toggle('cursor', id === this.selected);
       g.classList.toggle('visited', this.visited.has(id));
+      g.classList.toggle('connect-source', id === this.connectFrom);
     }
   }
 
+  private updateButtons(): void {
+    const none = !this.selected || !this.nodes.has(this.selected);
+    this.buttons.rename.disabled = none;
+    this.buttons.remove.disabled = none;
+    this.buttons.connect.disabled = none;
+    this.buttons.connect.setAttribute('aria-pressed', String(!!this.connectFrom));
+  }
+
+  // ---------------------------------------------------------------- editing UI
+
+  private ask(prompt: string, initial: string, submit: (value: string) => Edit): void {
+    this.stopConnect();
+    this.onSubmit = submit;
+    this.input.value = initial;
+    this.input.placeholder = prompt;
+    this.input.setAttribute('aria-label', prompt);
+    this.form.hidden = false;
+    this.say(prompt + ':');
+    this.input.focus();
+    this.input.select();
+  }
+
+  private closeForm(): void {
+    this.form.hidden = true;
+    this.onSubmit = null;
+    this.say('');
+  }
+
+  private startConnect(): void {
+    if (!this.selected) return;
+    this.closeForm();
+    this.connectFrom = this.selected;
+    this.el.classList.add('connecting');
+    this.say(`Now click the scene '${this.connectFrom}' should lead to (Esc to cancel).`);
+    this.refresh();
+    this.updateButtons();
+  }
+
+  private stopConnect(message?: string): void {
+    if (!this.connectFrom) return;
+    this.connectFrom = null;
+    this.el.classList.remove('connecting');
+    if (message !== undefined) this.say(message);
+    this.refresh();
+    this.updateButtons();
+  }
+
+  private connect(from: string, to: string): void {
+    const err = this.hooks.connect(from, to);
+    this.say(err ?? `'${from}' now leads to '${to}'.`, !!err);
+  }
+
+  private say(text: string, isError = false): void {
+    this.message.textContent = text;
+    this.message.classList.toggle('error', isError);
+    window.clearTimeout(this.messageTimer);
+    if (text && !this.onSubmit && !this.connectFrom) {
+      this.messageTimer = window.setTimeout(() => { if (this.message.textContent === text) this.message.textContent = ''; }, 7000);
+    }
+  }
+
+  // ---------------------------------------------------------------- drawing
+
   private render(graph: StoryGraph, start: string): void {
+    const before = new Set(this.nodes.keys());
     this.nodes.clear();
     if (!graph.nodes.length) {
-      this.el.replaceChildren(text('p', 'flow-empty', 'Add a label to see your story as a flowchart.'));
+      this.svg = null;
+      this.canvas.replaceChildren(el('p', 'flow-empty', 'Add a scene to see your story as a flowchart.'));
+      this.updateButtons();
       return;
     }
     const layout = layoutGraph(graph.nodes.map((n) => n.label), graph.edges, start, {
@@ -79,7 +225,7 @@ export class Flowchart {
     });
     const info = new Map(graph.nodes.map((n) => [n.label, n]));
 
-    const svg = s('svg', { viewBox: `0 0 ${layout.width} ${layout.height + 16}`, class: 'flow-svg', role: 'group', 'aria-label': 'Story flowchart' });
+    const svg = s('svg', { viewBox: `0 0 ${layout.width} ${layout.height + 16}`, class: 'flow-svg', role: 'group', 'aria-label': 'Story flowchart' }) as SVGSVGElement;
     svg.setAttribute('width', String(layout.width));
     svg.setAttribute('height', String(layout.height + 16));
     const defs = s('defs');
@@ -91,11 +237,17 @@ export class Flowchart {
     for (const e of layout.edges) {
       const g = s('g', { class: `flow-edge kind-${e.kind}${e.back ? ' back' : ''}` });
       const why = e.via.length ? e.via.join('\n') : e.kind === 'call' ? 'call (comes back)' : 'jump';
-      g.append(s('title', {}, `${e.from} → ${e.to}\n${why}`), s('path', { d: e.path, class: 'line', 'marker-end': 'url(#flow-arrow)' }));
+      g.append(
+        s('title', {}, `${e.from} → ${e.to}\n${why}\nClick to see it in the script`),
+        s('path', { d: e.path, class: 'hit' }),
+        s('path', { d: e.path, class: 'line', 'marker-end': 'url(#flow-arrow)' }),
+      );
       if (e.via.length) {
         const label = e.via.length > 1 ? `${e.via.length} choices` : truncate(e.via[0]!, EDGE_LABEL_MAX);
         g.append(s('text', { x: String(e.mid.x), y: String(e.mid.y), class: 'edge-label' }, label));
       }
+      const line = graph.edges.find((x) => x.from === e.from && x.to === e.to)?.line;
+      if (line) g.addEventListener('click', () => this.hooks.revealLine(line));
       svg.append(g);
     }
 
@@ -108,30 +260,93 @@ export class Flowchart {
         transform: `translate(${n.x} ${n.y})`,
         tabindex: '0',
         role: 'button',
+        'data-label': n.id,
         'aria-label': `${n.id}: show in script (double-click or Shift+Enter to play from here)`,
       }) as SVGGElement;
       const kind = meta.ending ? 'ending' : isStart ? 'start' : 'scene';
       g.append(
-        s('title', {}, `${n.id}\n${meta.lines} lines · line ${meta.line} · ${kind}${n.unreachable ? ' · never reached' : ''}\nClick: show in script · Double-click: play from here`),
+        s('title', {}, `${n.id}\n${meta.lines} lines · line ${meta.line} · ${kind}${n.unreachable ? ' · never reached' : ''}\nClick: show in script · Double-click: play from here\nDrag to another scene: lead there`),
         s('rect', { width: String(n.w), height: String(n.h), rx: meta.ending ? String(n.h / 2) : '8' }),
         s('text', { x: String(n.w / 2), y: '21', class: 'name' }, truncate(n.id, NAME_MAX)),
         s('text', { x: String(n.w / 2), y: '38', class: 'meta' }, `${meta.lines} lines · L${meta.line}`),
       );
       if (isStart) g.append(s('text', { x: String(n.w / 2), y: '-6', class: 'badge' }, 'START'));
-      g.addEventListener('click', () => this.hooks.reveal(n.id));
-      g.addEventListener('dblclick', () => this.hooks.play(n.id));
-      g.addEventListener('keydown', (ev) => {
-        if (ev.key !== 'Enter' && ev.key !== ' ') return;
-        ev.preventDefault();
-        if (ev.shiftKey) this.hooks.play(n.id);
-        else this.hooks.reveal(n.id);
-      });
+      this.wireNode(g, n.id, { x: n.x + n.w / 2, y: n.y + n.h });
       this.nodes.set(n.id, g);
       svg.append(g);
     }
-    this.el.replaceChildren(svg);
+    this.svg = svg;
+    this.canvas.replaceChildren(svg);
+    if (this.connectFrom && !this.nodes.has(this.connectFrom)) this.stopConnect('');
     this.refresh();
+    this.updateButtons();
+    // A scene just added (or renamed) by the writer: bring it into view.
+    if (this.selected && !before.has(this.selected)) this.scrollTo(this.selected);
   }
+
+  /** Click, double-click, keyboard, and drag-to-connect for one scene. */
+  private wireNode(g: SVGGElement, id: string, anchor: { x: number; y: number }): void {
+    const activate = () => {
+      if (this.connectFrom) {
+        const from = this.connectFrom;
+        this.stopConnect();
+        this.connect(from, id);
+      } else {
+        this.hooks.reveal(id);
+      }
+    };
+    g.addEventListener('dblclick', () => { if (!this.connectFrom) this.hooks.play(id); });
+    g.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      if (ev.shiftKey && !this.connectFrom) this.hooks.play(id);
+      else activate();
+    });
+
+    // Don't start a text selection in the SVG: it would land in the script once it takes focus.
+    g.addEventListener('mousedown', (ev) => ev.preventDefault());
+    // A press that moves becomes a drag that draws a connection; one that doesn't is a click.
+    g.addEventListener('pointerdown', (down) => {
+      if (down.button !== 0) return;
+      const svg = this.svg!;
+      let line: SVGElement | null = null;
+      const move = (ev: PointerEvent) => {
+        if (!line && Math.hypot(ev.clientX - down.clientX, ev.clientY - down.clientY) < DRAG_THRESHOLD) return;
+        const p = toSvg(svg, ev);
+        if (!line) {
+          line = s('line', { class: 'flow-drag', x1: String(anchor.x), y1: String(anchor.y), 'marker-end': 'url(#flow-arrow)' });
+          svg.append(line);
+          this.el.classList.add('dragging');
+        }
+        line.setAttribute('x2', String(p.x));
+        line.setAttribute('y2', String(p.y));
+        for (const [other, node] of this.nodes) node.classList.toggle('drop-target', other !== id && node.contains(target(ev)));
+      };
+      const up = (ev: PointerEvent) => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        this.el.classList.remove('dragging');
+        for (const node of this.nodes.values()) node.classList.remove('drop-target');
+        if (!line) { activate(); return; }
+        line.remove();
+        const to = (target(ev)?.closest('.flow-node') as SVGGElement | null)?.dataset.label;
+        if (to && to !== id) this.connect(id, to);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+  }
+}
+
+function target(ev: PointerEvent): Element | null {
+  return document.elementFromPoint(ev.clientX, ev.clientY);
+}
+
+function toSvg(svg: SVGSVGElement, ev: PointerEvent): { x: number; y: number } {
+  const m = svg.getScreenCTM();
+  if (!m) return { x: 0, y: 0 };
+  const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse());
+  return { x: p.x, y: p.y };
 }
 
 function s(tag: string, attrs: Record<string, string> = {}, content?: string): SVGElement {
@@ -141,11 +356,19 @@ function s(tag: string, attrs: Record<string, string> = {}, content?: string): S
   return e;
 }
 
-function text(tag: string, cls: string, content: string): HTMLElement {
+function el(tag: string, cls = '', content?: string): HTMLElement {
   const e = document.createElement(tag);
-  e.className = cls;
-  e.textContent = content;
+  if (cls) e.className = cls;
+  if (content !== undefined) e.textContent = content;
   return e;
+}
+
+function button(label: string, title: string, onClick: () => void): HTMLButtonElement {
+  const b = el('button', '', label) as HTMLButtonElement;
+  b.type = 'button';
+  if (title) b.title = title;
+  b.addEventListener('click', onClick);
+  return b;
 }
 
 function truncate(t: string, n: number): string {
