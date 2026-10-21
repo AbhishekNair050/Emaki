@@ -347,7 +347,7 @@ export class Player {
           btn.dataset.key = String(i + 1);
           this.choicesEl.append(btn);
         });
-        (this.choicesEl.firstElementChild as HTMLElement | null)?.focus({ preventScroll: true });
+        this.claimFocus(this.choicesEl.firstElementChild as HTMLElement | null);
         break;
       }
       case 'wait':
@@ -591,7 +591,18 @@ export class Player {
     this.clearTimers();
     this.overlay.className = `overlay open ${cls}`;
     this.overlay.replaceChildren(...children);
-    (this.overlay.querySelector('button') as HTMLElement | null)?.focus({ preventScroll: true });
+    this.claimFocus(this.overlay.querySelector('button'));
+  }
+
+  /**
+   * Focus a control in the game, but only if the keyboard is the game's to take
+   * (nothing else focused, or already inside the game). When the player is
+   * embedded, e.g. in the editor, it must never pull focus out of the script.
+   */
+  private claimFocus(target: HTMLElement | null): void {
+    const active = document.activeElement;
+    if (!target || (active && active !== document.body && !this.stage.contains(active))) return;
+    target.focus({ preventScroll: true });
   }
 
   private closeOverlay(): void {
