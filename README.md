@@ -2,7 +2,7 @@
 
 *Unroll your story. Write like a screenplay, ship everywhere.*
 
-An open-source (MIT) visual novel engine. Early days: the core works end to end, and the editor is taking shape.
+An open-source (MIT) visual novel engine. Early days: the core and the editor work end to end; exporting to desktop and mobile comes next.
 
 > **Emaki** (絵巻, *eh-MAH-kee*) are Japanese illustrated handscrolls, pictures and words read scene by scene as the scroll unrolls. They're one of the oldest ancestors of the visual novel.
 
@@ -43,6 +43,8 @@ CLI: `npm run emaki -- check|build|graph|fmt <file.vn>`
 - Type and the game updates in place: same line, same music, your edit on screen. While the script has errors the game keeps running the last version that worked.
 - **Ctrl+Enter** plays from the line the cursor is on. Click a scene in the flowchart to find it in the script; double-click to play it.
 - The line the game is showing is marked in the script, and its scene in the flowchart.
+- Shape the story in the flowchart: add, rename and delete scenes, and drag from one scene to another to connect them (connecting a scene that already leads somewhere turns it into a choice). The script is rewritten cleanly, comments kept, and Ctrl+Z undoes it.
+- The **Assets** tab shows the game's images and audio. Drag one onto the script and it's declared for you, with a `scene`, `show` or `play` line placed where you dropped it. Drop files from your computer to add them to the game (they're copied into `assets/`, never overwriting anything).
 - Errors are underlined as you type, with completion, hover, go to definition (F12 or Ctrl+click) and formatting (Shift+Alt+F), the same features as the VS Code extension.
 - Saves to `story.vn` by itself. If the file changes elsewhere (VS Code, git) the editor loads it, and if you both changed it, it asks which version to keep rather than overwriting anything.
 

@@ -25,12 +25,12 @@ What is done and what comes next.
 - [x] VS Code extension: highlighting, live diagnostics, go to definition, references, hover, completion, outline, formatting (reuses the compiler)
 - [x] Demo soundtrack (CC0, credited in `games/gullwing/assets/audio/CREDITS.md`); music fades and crossfades; no sound-effect bursts when skipping or rolling back
 
-## ▶ Milestone 2 — The editor (the differentiator, next)
+## ✅ Milestone 2 — The editor (done, 2026-11-14)
 - [x] Editor app (web): script pane + flowchart pane + live player pane, linked both ways; edits show in the running game at once; autosave with conflict detection (`npm run edit`)
-- [ ] Editing in the flowchart writes clean text via the printer (round-trip)
-- [ ] Asset browser (drag an image in → `image` line generated)
+- [x] Editing in the flowchart writes clean text via the printer (round-trip): add, rename, delete and connect scenes (a second connection turns a jump into a choice); every edit is undoable in the script
+- [x] Asset browser: thumbnails and audio preview; drag an asset onto the script → `image`/`audio` line declared and `scene`/`show`/`play` placed where it was dropped; drop files from the computer to add them to the game
 
-## Milestone 3 — Ship games
+## ▶ Milestone 3 — Ship games (next)
 - [ ] Desktop export (Electron/Tauri) + Steamworks plugin
 - [ ] Android/iOS export (Capacitor)
 - [ ] Localization: export/import strings by line id (PO/CSV), language switcher
