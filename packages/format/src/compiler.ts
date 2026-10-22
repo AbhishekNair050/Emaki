@@ -26,6 +26,24 @@ export interface CompileResult {
   story: CompiledStory | null;
   diagnostics: Diagnostic[];
   program: Program;
+  /** Every piece of text a player reads, by id: what translators translate. */
+  strings: SourceString[];
+}
+
+/**
+ * Translatable text. `id` is the key translations are stored under:
+ * line and choice ids (see D-008), `name.<character>` and `meta.title`.
+ */
+export interface SourceString {
+  id: string;
+  kind: 'line' | 'choice' | 'name' | 'meta' | 'ui';
+  /** Character id for dialogue, null for narration and everything else. */
+  speaker: string | null;
+  /** Source text, with its markup and {variables}. */
+  text: string;
+  label: string | null;
+  /** 1-based source line (0 for text that isn't in the script, like the player's own buttons). */
+  line: number;
 }
 
 /** Parse + compile in one go. */
@@ -34,11 +52,12 @@ export function compile(source: string): CompileResult {
   const res = compileProgram(program);
   const all = [...diagnostics, ...res.diagnostics].sort((a, b) => a.line - b.line);
   const hasErrors = all.some((d) => d.severity === 'error');
-  return { story: hasErrors ? null : res.story, diagnostics: all, program };
+  return { story: hasErrors ? null : res.story, diagnostics: all, program, strings: res.strings };
 }
 
-export function compileProgram(program: Program): { story: CompiledStory; diagnostics: Diagnostic[] } {
+export function compileProgram(program: Program): { story: CompiledStory; diagnostics: Diagnostic[]; strings: SourceString[] } {
   const diagnostics: Diagnostic[] = [];
+  const strings: SourceString[] = [];
   const error = (line: number, code: string, message: string) =>
     diagnostics.push({ severity: 'error', line, code, message });
   const warn = (line: number, code: string, message: string) =>
@@ -150,7 +169,9 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         }
         checkText(s.text, s.loc.line);
         const styled = styledText(s.text, s.loc.line);
-        code.push({ op: 'say', id: lineId(label, `${s.who ?? ''}|${s.text}`), who: s.who, attrs: s.attrs, ...styled, src });
+        const id = lineId(label, `${s.who ?? ''}|${s.text}`);
+        strings.push({ id, kind: 'line', speaker: s.who, text: s.text, label, line: s.loc.line });
+        code.push({ op: 'say', id, who: s.who, attrs: s.attrs, ...styled, src });
         return;
       }
       case 'scene': {
@@ -222,7 +243,10 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
           return { id: '', ...styledText(c.text, c.loc.line), cond: c.cond, target: -1 };
         });
         const menuId = lineId(label, `menu|${s.choices.map((c) => c.text).join('|')}`);
-        choices.forEach((c, i) => { c.id = lineId(label, `choice|${s.choices[i].text}`); });
+        choices.forEach((c, i) => {
+          c.id = lineId(label, `choice|${s.choices[i].text}`);
+          strings.push({ id: c.id, kind: 'choice', speaker: null, text: s.choices[i].text, label, line: s.choices[i].loc.line });
+        });
         code.push({ op: 'menu', id: menuId, choices, src });
         const exits: Array<{ target: number }> = [];
         s.choices.forEach((c, i) => {
@@ -291,7 +315,12 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     hash: '',
   };
   story.hash = fnv1a(JSON.stringify({ ...story, hash: '' }));
-  return { story, diagnostics };
+  // Names and the title come first in a translation file, as translators expect.
+  const header: SourceString[] = [
+    ...program.meta.filter(([k]) => k === 'title').map(([k, v]): SourceString => ({ id: `meta.${k}`, kind: 'meta', speaker: null, text: v, label: null, line: 0 })),
+    ...program.characters.map((c): SourceString => ({ id: `name.${c.id}`, kind: 'name', speaker: c.id, text: c.name, label: null, line: c.loc.line })),
+  ];
+  return { story, diagnostics, strings: [...header, ...strings] };
 }
 
 /** Instruction indices reachable from `start`. */
