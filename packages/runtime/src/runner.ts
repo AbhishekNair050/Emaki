@@ -8,7 +8,7 @@
  */
 import {
   EvalError, evaluate, truthy,
-  type CompiledStory, type Instr, type Value, type Channel, type Span,
+  type CompiledStory, type CompiledTranslation, type Instr, type Value, type Channel, type Span,
 } from '@emaki/format';
 
 export interface SpriteState {
@@ -110,6 +110,8 @@ export class Runner {
   private history: HistoryEntry[] = [];
   /** Maximum rollback depth. */
   historyLimit = 500;
+  private translation: CompiledTranslation | null = null;
+  private textInstrs: Map<string, Extract<Instr, { op: 'say' | 'menu' }>> | null = null;
 
   constructor(story: CompiledStory) {
     this.story = story;
@@ -228,14 +230,29 @@ export class Runner {
     return this.run();
   }
 
+  /**
+   * Show text in another language (null: the language the script is written
+   * in). Lines and choices missing from the translation stay in the original.
+   * The line on screen is redone at once; returns it.
+   */
+  setTranslation(t: CompiledTranslation | null): Block | null {
+    this.translation = t;
+    if (this.current) this.current = this.localize(this.current);
+    return this.current;
+  }
+
+  get language(): string | null {
+    return this.translation?.lang ?? null;
+  }
+
   /** Roll back to the previous blocking event. Returns null if at the beginning. */
   back(): { block: Block; scene: SceneState } | null {
     if (this.history.length < 2) return null;
     this.history.pop();
     const prev = this.history[this.history.length - 1];
     this.state = clone(prev.state);
-    this.current = prev.block;
-    return { block: prev.block, scene: this.scene() };
+    this.current = this.localize(prev.block);
+    return { block: this.current, scene: this.scene() };
   }
 
   get canGoBack(): boolean {
@@ -252,7 +269,9 @@ export class Runner {
 
   /** Dialogue lines seen so far on the current path (for the history log). */
   get log(): Array<Extract<Block, { type: 'say' }>> {
-    return this.history.map((h) => h.block).filter((b): b is Extract<Block, { type: 'say' }> => b.type === 'say');
+    return this.history
+      .filter((h) => h.block.type === 'say')
+      .map((h) => this.localize(h.block, h.state.vars) as Extract<Block, { type: 'say' }>);
   }
 
   /** Current scene, for redrawing from scratch (after load or rollback). */
@@ -371,7 +390,7 @@ export class Runner {
     this.state = clone(data.state);
     // Variables added in a newer build get their default values.
     this.state.vars = { ...this.story.vars, ...this.state.vars };
-    this.current = clone(data.block);
+    this.current = this.localize(clone(data.block));
     this.history = [{ state: clone(this.state), block: this.current }];
     return { ok: true, mismatch: data.storyHash !== this.story.hash };
   }
@@ -424,7 +443,8 @@ export class Runner {
 
   /** The line of dialogue most recently shown (e.g. the line a menu responds to). */
   get lastSay(): SayBlock | null {
-    return this.state.lastSay ?? null;
+    const b = this.state.lastSay;
+    return b ? (this.localize(b) as SayBlock) : null;
   }
 
   private run(): Step {
@@ -449,25 +469,13 @@ export class Runner {
               effects.push(this.showEffect(sp, null, false, ins));
             }
           }
-          const c = ins.who ? this.story.characters[ins.who] : null;
-          return this.blockOn({
-            type: 'say',
-            id: ins.id,
-            who: ins.who && c ? { id: ins.who, name: c.name, color: c.color } : null,
-            text: this.interpolate(ins.text, ins),
-            ...(ins.spans ? { spans: this.interpolateSpans(ins.spans, ins) } : {}),
-            line: ins.src.line,
-            label: ins.src.label,
-          }, effects);
+          return this.blockOn(this.sayBlock(ins, s.vars), effects);
         }
         case 'menu': {
           const choices = ins.choices
             .map((c, index) => ({ c, index }))
             .filter(({ c }) => !c.cond || truthy(this.eval(c.cond, ins)))
-            .map(({ c, index }): ChoiceOption => ({
-              index, id: c.id, text: this.interpolate(c.text, ins),
-              ...(c.spans ? { spans: this.interpolateSpans(c.spans, ins) } : {}),
-            }));
+            .map(({ c, index }): ChoiceOption => ({ index, id: c.id, ...this.text(c.id, c, ins, s.vars) }));
           if (choices.length === 0) {
             throw new StoryError('Every choice in this menu is hidden by its condition', ins.src.line);
           }
@@ -572,15 +580,56 @@ export class Runner {
     }
   }
 
-  private interpolateSpans(spans: Span[], ins: Instr): Span[] {
-    return spans.map((sp) => ({ ...sp, text: this.interpolate(sp.text, ins) }));
+  // ---------------------------------------------------------------- text
+
+  private sayBlock(ins: Extract<Instr, { op: 'say' }>, vars: Record<string, Value>): SayBlock {
+    const c = ins.who ? this.story.characters[ins.who] : null;
+    return {
+      type: 'say',
+      id: ins.id,
+      who: ins.who && c ? { id: ins.who, name: this.translation?.names[ins.who] ?? c.name, color: c.color } : null,
+      ...this.text(ins.id, ins, ins, vars),
+      line: ins.src.line,
+      label: ins.src.label,
+    };
   }
 
-  private interpolate(text: string, ins: Instr): string {
+  /** The text for an id: translated if available, with variables filled in. */
+  private text(id: string, original: { text: string; spans?: Span[] }, ins: Instr, vars: Record<string, Value>): { text: string; spans?: Span[] } {
+    const t = this.translation?.strings[id] ?? original;
+    return {
+      text: this.interpolate(t.text, ins, vars),
+      ...(t.spans ? { spans: t.spans.map((sp) => ({ ...sp, text: this.interpolate(sp.text, ins, vars) })) } : {}),
+    };
+  }
+
+  /** Redo a block's text in the current language (after switching language, rolling back or loading). */
+  private localize(b: Block, vars: Record<string, Value> = this.state.vars): Block {
+    if (b.type !== 'say' && b.type !== 'menu') return b;
+    this.textInstrs ??= new Map(this.story.code.flatMap((i) => (i.op === 'say' || i.op === 'menu' ? [[i.id, i] as const] : [])));
+    const ins = this.textInstrs.get(b.id);
+    try {
+      if (b.type === 'say' && ins?.op === 'say') return this.sayBlock(ins, vars);
+      if (b.type === 'menu' && ins?.op === 'menu') {
+        return {
+          ...b,
+          choices: b.choices.map((c) => {
+            const src = ins.choices[c.index];
+            return src && src.id === c.id ? { index: c.index, id: c.id, ...this.text(c.id, src, ins, vars) } : c;
+          }),
+        };
+      }
+    } catch {
+      // A variable the old text used is gone (the script changed): keep the block as it was.
+    }
+    return b;
+  }
+
+  private interpolate(text: string, ins: Instr, vars: Record<string, Value> = this.state.vars): string {
     return text.replace(/\{\{|\}\}|\{([A-Za-z_]\w*)\}/g, (m, name: string | undefined) => {
       if (m === '{{') return '{';
       if (m === '}}') return '}';
-      const v = this.state.vars[name!];
+      const v = vars[name!];
       if (v === undefined) throw new StoryError(`Unknown variable '${name}' in text`, ins.src.line);
       return String(v);
     });
