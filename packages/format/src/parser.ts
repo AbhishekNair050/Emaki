@@ -6,6 +6,7 @@
  * once.
  */
 import type {
+  AchievementDef,
   AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, Program, Stmt,
   Trivia, VarDef,
 } from './ast.ts';
@@ -21,7 +22,7 @@ interface Line {
 }
 
 export const KEYWORDS = new Set([
-  'define', 'image', 'audio', 'var', 'label',
+  'define', 'image', 'audio', 'var', 'label', 'achievement', 'achieve',
   'scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end',
   'wait', 'menu', 'if', 'elif', 'else', 'with', 'at',
 ]);
@@ -39,7 +40,7 @@ export function parse(source: string): ParseResult {
   const err = (line: number, code: string, message: string) =>
     diagnostics.push({ severity: 'error', line, code, message });
 
-  const program: Program = { meta: [], characters: [], images: [], audio: [], vars: [], labels: [] };
+  const program: Program = { meta: [], characters: [], images: [], audio: [], vars: [], achievements: [], labels: [] };
   const rawLines = source.replace(/\r\n?/g, '\n').split('\n');
 
   // --- Frontmatter -------------------------------------------------------
@@ -149,8 +150,19 @@ export function parse(source: string): ParseResult {
       return;
     }
 
+    if (word === 'achievement') {
+      const m = /^achievement\s+([A-Za-z_]\w*)\s+(".*)$/.exec(t);
+      if (!m) { err(ln.line, 'bad-achievement', `Expected 'achievement id "Name"', e.g. achievement first_light "First Light"`); return; }
+      const q = safeQuoted(m[2], ln.line);
+      if (!q) return;
+      if (q.rest) err(ln.line, 'bad-achievement', `Unexpected text after the name: '${q.rest}'`);
+      if (KEYWORDS.has(m[1])) { err(ln.line, 'reserved-name', `'${m[1]}' is a keyword and can't be an achievement id`); return; }
+      program.achievements.push(attach<AchievementDef>({ id: m[1], name: q.value, loc: { line: ln.line } }, ln, program.achievements.length === 0));
+      return;
+    }
+
     err(ln.line, 'bad-toplevel',
-      `Only define, image, audio, var and label can appear at the top level. Indent story lines under a label.`);
+      `Only define, image, audio, var, achievement and label can appear at the top level. Indent story lines under a label.`);
   }
 
   function parseBlock(lines: Line[]): Stmt[] {
@@ -331,6 +343,9 @@ export function parse(source: string): ParseResult {
       case 'end':
         if (args) err(ln.line, `bad-${word}`, `'${word}' takes no arguments`);
         return { type: word, loc };
+      case 'achieve':
+        if (!IDENT.test(args)) { err(ln.line, 'bad-achieve', `Expected 'achieve achievement_id'`); return null; }
+        return { type: 'achieve', id: args, loc };
       case 'wait': {
         const n = Number(args);
         if (!args || !Number.isFinite(n) || n < 0) { err(ln.line, 'bad-wait', `Expected 'wait seconds', e.g. 'wait 1.5'`); return null; }

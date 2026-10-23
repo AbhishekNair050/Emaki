@@ -35,6 +35,7 @@ export function print(program: Program): string {
     program.images.map((i) => ({ leading: i.leading, text: `image ${i.name} = ${q(i.path)}` })),
     program.audio.map((a) => ({ leading: a.leading, text: `audio ${a.name} = ${q(a.path)}` })),
     program.vars.map((v) => ({ leading: v.leading, text: `var ${v.name} = ${printExpr(v.init)}` })),
+    program.achievements.map((a) => ({ leading: a.leading, text: `achievement ${a.id} ${q(a.name)}` })),
   ];
   for (const section of sections) {
     if (!section.length) continue;
@@ -116,6 +117,9 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         break;
       case 'wait':
         out.push(`${pad}wait ${s.seconds}`);
+        break;
+      case 'achieve':
+        out.push(`${pad}achieve ${s.id}`);
         break;
       case 'menu':
         out.push(`${pad}menu:`);

@@ -18,6 +18,7 @@ export interface CharacterDef extends Trivia { id: string; name: string; color: 
 export interface ImageDef extends Trivia { name: string; path: string; loc: Loc }
 export interface AudioDef extends Trivia { name: string; path: string; loc: Loc }
 export interface VarDef extends Trivia { name: string; init: Expr; loc: Loc }
+export interface AchievementDef extends Trivia { id: string; name: string; loc: Loc }
 export interface LabelDef extends Trivia { name: string; body: Stmt[]; loc: Loc }
 
 export interface Program {
@@ -27,6 +28,7 @@ export interface Program {
   images: ImageDef[];
   audio: AudioDef[];
   vars: VarDef[];
+  achievements: AchievementDef[];
   labels: LabelDef[];
   /** Comments after the last line of the file. */
   trailing?: string[];
@@ -62,6 +64,7 @@ export type Stmt = Trivia & (
   | { type: 'return'; loc: Loc }
   | { type: 'end'; loc: Loc }
   | { type: 'wait'; seconds: number; loc: Loc }
+  | { type: 'achieve'; id: string; loc: Loc }
   | { type: 'menu'; choices: Choice[]; loc: Loc }
   | { type: 'if'; branches: IfBranch[]; loc: Loc }
 );

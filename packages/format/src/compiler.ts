@@ -36,7 +36,7 @@ export interface CompileResult {
  */
 export interface SourceString {
   id: string;
-  kind: 'line' | 'choice' | 'name' | 'meta' | 'ui';
+  kind: 'line' | 'choice' | 'name' | 'meta' | 'achievement' | 'ui';
   /** Character id for dialogue, null for narration and everything else. */
   speaker: string | null;
   /** Source text, with its markup and {variables}. */
@@ -67,6 +67,11 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   const meta: Record<string, string> = {};
   for (const [k, v] of program.meta) meta[k] = v;
 
+  const achievements: Record<string, { name: string }> = {};
+  for (const a of program.achievements) {
+    if (achievements[a.id]) error(a.loc.line, 'duplicate', `Achievement '${a.id}' is already declared`);
+    achievements[a.id] = { name: a.name };
+  }
   const characters: CompiledStory['characters'] = {};
   for (const c of program.characters) {
     if (characters[c.id]) error(c.loc.line, 'duplicate', `Character '${c.id}' is already defined`);
@@ -236,6 +241,13 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
       case 'return': code.push({ op: 'return', src }); return;
       case 'end': code.push({ op: 'end', src }); return;
       case 'wait': code.push({ op: 'wait', seconds: s.seconds, src }); return;
+      case 'achieve':
+        if (!achievements[s.id]) {
+          error(s.loc.line, 'unknown-achievement', didYouMean(s.id, Object.keys(achievements))
+            ?? `Unknown achievement '${s.id}'. Declare it at the top: achievement ${s.id} "Its Name"`);
+        }
+        code.push({ op: 'achieve', id: s.id, src });
+        return;
       case 'menu': {
         const choices: CompiledChoice[] = s.choices.map((c) => {
           if (c.cond) checkVars(c.cond, c.loc.line);
@@ -311,7 +323,9 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   const story: CompiledStory = {
     format: FORMAT_ID,
     version: FORMAT_VERSION,
-    meta, start, characters, images, audio, vars, labels, code,
+    meta, start, characters, images, audio,
+    ...(Object.keys(achievements).length ? { achievements } : {}),
+    vars, labels, code,
     hash: '',
   };
   story.hash = fnv1a(JSON.stringify({ ...story, hash: '' }));
@@ -319,6 +333,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   const header: SourceString[] = [
     ...program.meta.filter(([k]) => k === 'title').map(([k, v]): SourceString => ({ id: `meta.${k}`, kind: 'meta', speaker: null, text: v, label: null, line: 0 })),
     ...program.characters.map((c): SourceString => ({ id: `name.${c.id}`, kind: 'name', speaker: c.id, text: c.name, label: null, line: c.loc.line })),
+    ...program.achievements.map((a): SourceString => ({ id: `achievement.${a.id}`, kind: 'achievement', speaker: null, text: a.name, label: null, line: a.loc.line })),
   ];
   return { story, diagnostics, strings: [...header, ...strings] };
 }

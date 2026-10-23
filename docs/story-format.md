@@ -12,6 +12,7 @@ The contract between the compiler and every runtime. A runtime in any language t
   "characters": { "mira": { "name": "Mira", "color": "#e8b04b" } },
   "images": { "kitchen": "bg/kitchen.svg", "mira smile": "sprites/mira_smile.svg" },
   "audio": { "rain": "audio/rain.ogg" },
+  "achievements": { "first_light": { "name": "First Light" } },  // only when the story has any
   "vars": { "trust": 0, "read_letter": false },  // initial values
   "labels": { "arrival": 0, "kitchen_talk": 27 },
   "code": [ /* instructions */ ],
@@ -27,6 +28,7 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `say` | `id, who (char id or null), attrs[], text, spans?` | **yes** | If `attrs` non-empty and `who` is on screen, set its attrs. Interpolate `{var}` (`{{`/`}}` escape) in `text` and in each span. Show line. pc+1. |
 | `menu` | `id, choices[{id, text, spans?, cond (expr or null), target}]` | **yes** | Offer choices whose `cond` is truthy (keep original indices). On pick: pc = choice.target. Error if none visible. |
 | `wait` | `seconds` | **yes** | Pause. pc+1. |
+| `achieve` | `id` | no | Unlock achievement `id` (a key of `achievements`). Unlocking twice is harmless. pc+1. |
 | `scene` | `image (name, "black" or null), transition` | no | Background = image (`black`/null = none); remove all sprites. |
 | `show` | `tag, attrs (array or null), at (null/"left"/"center"/"right"), transition` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. |
 | `hide` | `tag, transition` | no | Remove sprite if present. |
@@ -56,3 +58,16 @@ Rules: `+` concatenates if either side is a string, else numbers only. `- * / %`
 
 ## Conformance
 `packages/runtime/test/runner.test.ts` is the de-facto conformance suite: the demo story's four playthroughs and the mechanics tests. A future runtime should pass equivalent tests (plan: export them as JSON fixtures: story + inputs → expected block sequence).
+
+## Translations
+A translation is a separate JSON document the runtime can load next to the story:
+```jsonc
+{
+  "format": "emaki-translation", "version": 1, "lang": "fr",
+  "strings": { "arrival.1k2j3": { "text": "Vous êtes en avance.", "spans": [ /* optional, as above */ ] },
+               "ui.start": { "text": "Commencer" }, "achievement.first_light": { "text": "Première lumière" } },
+  "names": { "mira": "Mira" },          // character id -> name
+  "meta": { "title": "Le Gardien" }
+}
+```
+Keys of `strings` are the `id`s of `say` instructions and menu choices, plus `achievement.<id>` and the player's own `ui.*` texts. A runtime shows `strings[id]` instead of the original when present (interpolating `{var}` as usual), and the original otherwise.

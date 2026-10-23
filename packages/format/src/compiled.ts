@@ -34,7 +34,9 @@ export type Instr =
   | { op: 'call'; target: number; label: string; src: SrcRef }
   | { op: 'return'; src: SrcRef }
   | { op: 'end'; src: SrcRef }
-  | { op: 'wait'; seconds: number; src: SrcRef };
+  | { op: 'wait'; seconds: number; src: SrcRef }
+  /** Unlock an achievement (declared in `achievements`). Non-blocking. */
+  | { op: 'achieve'; id: string; src: SrcRef };
 
 export interface CompiledChoice {
   id: string;
@@ -54,6 +56,8 @@ export interface CompiledStory {
   /** Image name ("mira smile", "kitchen") -> asset path. */
   images: Record<string, string>;
   audio: Record<string, string>;
+  /** Achievement id -> display name. Absent when the story has none. */
+  achievements?: Record<string, { name: string }>;
   /** Initial variable values. */
   vars: Record<string, Value>;
   /** Label name -> instruction index. */
