@@ -1,13 +1,14 @@
 {
   "name": "@emaki/cli",
   "version": "0.1.0",
-  "description": "Emaki command line: check, build, graph.",
+  "description": "Emaki command line: check, build, graph, fmt, strings.",
   "license": "MIT",
   "type": "module",
   "bin": {
     "emaki": "./src/main.ts"
   },
   "dependencies": {
-    "@emaki/format": "0.1.0"
+    "@emaki/format": "0.1.0",
+    "@emaki/player-web": "0.1.0"
   }
 }
