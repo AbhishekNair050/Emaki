@@ -5,7 +5,7 @@
  * crisp text at any size, tiny download. A WebGL renderer can implement the
  * same Effect/Block contract later for shaders and particle effects.
  */
-import type { CompiledStory, Span, Value } from '@emaki/format';
+import type { CompiledStory, CompiledTranslation, Span, Value } from '@emaki/format';
 import {
   Runner, StoryError,
   type Block, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -15,6 +15,7 @@ import {
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
 import { parsePreview } from './preview.ts';
+import { UI_STRINGS, fill, isRtl, languageName, matchLanguage, type UiKey } from './ui-strings.ts';
 
 /** Sprite positions are CSS variables so each layout (landscape, portrait) can place them. */
 const POSITIONS: Record<string, string> = { left: 'var(--pos-left)', center: 'var(--pos-center)', right: 'var(--pos-right)' };
@@ -31,6 +32,10 @@ export interface PlayerOptions {
   dev?: boolean;
   /** Called whenever a new line/menu/end is shown (null on the title screen). Used by dev tools. */
   onUpdate?: (block: Block | null) => void;
+  /** Languages the game is translated into (from the game's lang/ folder). */
+  translations?: CompiledTranslation[];
+  /** The player is the whole page: keep the page title and language in step with the game. */
+  ownsDocument?: boolean;
 }
 
 export class Player {
@@ -38,6 +43,9 @@ export class Player {
   private story: CompiledStory;
   private readonly opts: PlayerOptions;
   private readonly storeKey: string;
+  private translation: CompiledTranslation | null = null;
+  /** The language changed behind an open panel: redraw the line when it closes. */
+  private redrawOnClose = false;
 
   // DOM
   private readonly stage: HTMLElement;
@@ -93,31 +101,37 @@ export class Player {
     this.textbox.append(this.namebox, this.textEl, this.liveRegion, el('div', 'next-indicator', '▾'));
     this.choicesEl = el('div', 'choices');
     this.choicesEl.setAttribute('role', 'group');
-    this.choicesEl.setAttribute('aria-label', 'Choices');
+    this.choicesEl.setAttribute('aria-label', UI_STRINGS['ui.choices']);
     this.overlay = el('div', 'overlay');
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
 
     this.quickMenu = el('nav', 'quickmenu');
-    this.quickMenu.setAttribute('aria-label', 'Game menu');
-    this.backBtn = button('Back', () => this.back(), 'Roll back to the previous line (←)');
-    this.autoBtn = button('Auto', () => this.toggleAuto(), 'Advance automatically (A)');
-    this.skipBtn = button('Skip', () => this.toggleSkip(), 'Fast-forward to the next choice (S)');
+    this.backBtn = button('', () => this.back());
+    this.autoBtn = button('', () => this.toggleAuto());
+    this.skipBtn = button('', () => this.toggleSkip());
+    // Labels are filled in (and re-filled when the language changes) by applyLanguage().
+    const label = (b: HTMLButtonElement, text: UiKey, hint?: UiKey) => {
+      b.dataset.text = text;
+      if (hint) b.dataset.hint = hint;
+      return b;
+    };
     this.quickMenu.append(
-      this.backBtn,
-      button('Log', () => this.showLog(), 'Dialogue history (L)'),
-      this.autoBtn,
-      this.skipBtn,
-      button('Save', () => this.showSlots('save')),
-      button('Load', () => this.showSlots('load')),
-      button('Settings', () => this.showSettings(), 'Text speed, volume, text size (O)'),
-      button('Menu', () => this.confirmTitle()),
+      label(this.backBtn, 'ui.back', 'ui.back_hint'),
+      label(button('', () => this.showLog()), 'ui.log', 'ui.log_hint'),
+      label(this.autoBtn, 'ui.auto', 'ui.auto_hint'),
+      label(this.skipBtn, 'ui.skip', 'ui.skip_hint'),
+      label(button('', () => this.showSlots('save')), 'ui.save'),
+      label(button('', () => this.showSlots('load')), 'ui.load'),
+      label(button('', () => this.showSettings()), 'ui.settings', 'ui.settings_hint'),
+      label(button('', () => this.confirmTitle()), 'ui.menu'),
     );
 
     this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.textbox, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
     root.classList.add('stage-host');
     root.replaceChildren(this.stage);
     this.applySettings();
+    this.applyLanguage();
 
     this.stage.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('button, .overlay.open')) return;
@@ -153,6 +167,7 @@ export class Player {
     const save = this.mode === 'playing' && this.runner.block ? this.runner.save() : null;
     this.story = story;
     this.runner = new Runner(story);
+    this.runner.setTranslation(this.translation);
     if (this.mode === 'title') { this.closeOverlay(); this.showTitle(); return true; }
     if (!save) { this.showTitle(); return false; }
     let step: Step | null = null;
@@ -609,6 +624,11 @@ export class Player {
     const wasOpen = this.overlayOpen;
     this.overlay.className = 'overlay';
     this.overlay.replaceChildren();
+    if (this.redrawOnClose && this.mode === 'playing' && this.runner.block) {
+      this.redrawOnClose = false;
+      this.renderBlock(this.runner.block, true);
+      return;
+    }
     // Resume auto/skip timers that were paused by the overlay.
     if (wasOpen && this.mode === 'playing' && this.runner.block?.type === 'say' && !this.isTyping) this.onTextDone();
   }
@@ -629,14 +649,14 @@ export class Player {
 
     const hasSaves = this.slots().some(Boolean);
     const menu = el('div', 'title-menu');
-    menu.append(button('Start', () => this.start()));
-    if (hasSaves) menu.append(button('Load', () => this.showSlots('load')));
-    menu.append(button('Settings', () => this.showSettings()));
+    menu.append(button(this.t('ui.start'), () => this.start()));
+    if (hasSaves) menu.append(button(this.t('ui.load'), () => this.showSlots('load')));
+    menu.append(button(this.t('ui.settings'), () => this.showSettings()));
     this.openOverlay('title-screen',
-      el('h1', 'title', this.story.meta.title ?? 'Untitled'),
+      el('h1', 'title', this.title),
       ...(this.story.meta.author ? [el('p', 'byline', this.story.meta.author)] : []),
       menu,
-      el('p', 'made-with', 'Made with Emaki'),
+      el('p', 'made-with', this.t('ui.made_with')),
     );
   }
 
@@ -647,17 +667,17 @@ export class Player {
     this.auto = this.skip = false;
     this.updateToggles();
     this.openOverlay('end-screen',
-      el('h2', '', 'The End'),
-      button('Back to title', () => this.showTitle()),
-      button('Undo last line', () => { this.mode = 'playing'; this.closeOverlay(); this.back(); }),
+      el('h2', '', this.t('ui.the_end')),
+      button(this.t('ui.back_to_title'), () => this.showTitle()),
+      button(this.t('ui.undo_last_line'), () => { this.mode = 'playing'; this.closeOverlay(); this.back(); }),
     );
   }
 
   private confirmTitle(): void {
     this.openOverlay('panel',
-      el('h2', '', 'Return to title?'),
-      el('p', '', 'Unsaved progress will be lost.'),
-      row(button('Return to title', () => this.showTitle()), button('Keep playing', () => this.closeOverlay())),
+      el('h2', '', this.t('ui.return_to_title_question')),
+      el('p', '', this.t('ui.unsaved_progress_lost')),
+      row(button(this.t('ui.return_to_title'), () => this.showTitle()), button(this.t('ui.keep_playing'), () => this.closeOverlay())),
     );
   }
 
@@ -676,7 +696,7 @@ export class Player {
       li.append(line);
       list.append(li);
     }
-    this.openOverlay('panel log-panel', el('h2', '', 'History'), list, button('Close', () => this.closeOverlay()));
+    this.openOverlay('panel log-panel', el('h2', '', this.t('ui.history')), list, button(this.t('ui.close'), () => this.closeOverlay()));
     list.scrollTop = list.scrollHeight;
   }
 
@@ -688,6 +708,60 @@ export class Player {
       if (!raw) return null;
       try { return JSON.parse(raw); } catch { return null; }
     });
+  }
+
+  // ---------------------------------------------------------- language
+
+  /** Interface text in the current language. */
+  private t(key: UiKey, vars?: Record<string, string | number>): string {
+    return fill(this.translation?.strings[key]?.text ?? UI_STRINGS[key], vars);
+  }
+
+  private get title(): string {
+    return this.translation?.meta.title ?? this.story.meta.title ?? this.t('ui.untitled');
+  }
+
+  /** The language the script is written in (`language:` in its header; English if not given). */
+  private get sourceLanguage(): string {
+    return this.story.meta.language ?? 'en';
+  }
+
+  /** The language the player chose, or the best match for their device. */
+  private chooseTranslation(): CompiledTranslation | null {
+    const list = this.opts.translations ?? [];
+    const source = this.sourceLanguage;
+    const wanted = this.settings.language === 'auto'
+      ? (typeof navigator !== 'undefined' ? navigator.languages ?? [navigator.language] : [])
+      : [this.settings.language];
+    const code = matchLanguage(wanted, [source, ...list.map((x) => x.lang)]);
+    return code && code !== source ? list.find((x) => x.lang === code) ?? null : null;
+  }
+
+  /** Switch story and interface text to the chosen language, redrawing whatever is on screen. */
+  private applyLanguage(): void {
+    const next = this.chooseTranslation();
+    const changed = next !== this.translation;
+    this.translation = next;
+    const lang = next?.lang ?? this.sourceLanguage;
+    this.stage.lang = lang;
+    this.stage.dir = isRtl(lang) ? 'rtl' : 'ltr';
+    for (const b of this.quickMenu.querySelectorAll<HTMLButtonElement>('button[data-text]')) {
+      b.textContent = this.t(b.dataset.text as UiKey);
+      b.title = b.dataset.hint ? this.t(b.dataset.hint as UiKey) : '';
+    }
+    this.quickMenu.setAttribute('aria-label', this.t('ui.game_menu'));
+    this.choicesEl.setAttribute('aria-label', this.t('ui.choices'));
+    if (this.opts.ownsDocument) {
+      document.documentElement.lang = lang;
+      document.title = this.title;
+    }
+    if (!changed) return;
+    const block = this.runner.setTranslation(next);
+    if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitle();
+    else if (this.mode === 'playing' && block) {
+      if (this.overlayOpen) this.redrawOnClose = true;
+      else this.renderBlock(block, true);
+    }
   }
 
   // ---------------------------------------------------------- settings
@@ -735,7 +809,7 @@ export class Player {
       form.append(lab, input, out);
     };
 
-    const choice = <K extends 'font' | 'motion'>(key: K, label: string, options: ReadonlyArray<readonly [Settings[K], string]>) => {
+    const choice = <K extends 'font' | 'motion' | 'language'>(key: K, label: string, options: ReadonlyArray<readonly [Settings[K], string]>) => {
       const id = `set-${key}`;
       const lab = el('label', '', label);
       lab.htmlFor = id;
@@ -747,26 +821,43 @@ export class Player {
         o.selected = this.settings[key] === value;
         select.append(o);
       }
-      select.addEventListener('change', () => this.updateSettings({ [key]: select.value } as Partial<Settings>));
+      select.addEventListener('change', () => {
+        this.updateSettings({ [key]: select.value } as Partial<Settings>);
+        if (key !== 'language') return;
+        // Redraw everything, this screen included, in the new language.
+        this.applyLanguage();
+        this.showSettings();
+        this.stage.querySelector<HTMLElement>('#set-language')?.focus();
+      });
       form.append(lab, select, el('span'));
     };
 
-    slider('textSpeed', 'Text speed', (v) => (v >= INSTANT_SPEED ? 'Instant' : `${v} letters/s`));
-    slider('autoDelay', 'Auto-advance wait', (v) => `${v.toFixed(2).replace(/0$/, '')} s`);
-    slider('musicVolume', 'Music volume', pct);
-    slider('soundVolume', 'Sound volume', pct);
-    slider('textScale', 'Text size', pct);
-    slider('boxOpacity', 'Text box opacity', pct);
-    choice('font', 'Font', FONTS);
-    choice('motion', 'Animations', [['system', 'Follow my device'], ['full', 'On'], ['reduced', 'Reduced']]);
+    const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
+    const translations = this.opts.translations ?? [];
+    if (translations.length) {
+      const source = this.sourceLanguage;
+      choice('language', t('ui.language'), [
+        ['auto', t('ui.language_auto')],
+        [source, languageName(source)],
+        ...translations.filter((x) => x.lang !== source).map((x) => [x.lang, languageName(x.lang)] as const),
+      ]);
+    }
+    slider('textSpeed', t('ui.text_speed'), (v) => (v >= INSTANT_SPEED ? t('ui.instant') : t('ui.letters_per_second', { n: v })));
+    slider('autoDelay', t('ui.auto_wait'), (v) => t('ui.seconds', { n: v.toFixed(2).replace(/0$/, '') }));
+    slider('musicVolume', t('ui.music_volume'), pct);
+    slider('soundVolume', t('ui.sound_volume'), pct);
+    slider('textScale', t('ui.text_size'), pct);
+    slider('boxOpacity', t('ui.box_opacity'), pct);
+    choice('font', t('ui.font'), FONTS.map(([id]) => [id, t(`ui.font_${id}`)] as const));
+    choice('motion', t('ui.animations'), [['system', t('ui.motion_system')], ['full', t('ui.motion_full')], ['reduced', t('ui.motion_reduced')]]);
 
-    const preview = el('p', 'settings-preview', 'The light sweeps out over the black water, and for a moment the whole bay is silver.');
+    const preview = el('p', 'settings-preview', t('ui.settings_preview'));
     const done = () => (fromTitle ? this.showTitle() : this.closeOverlay());
-    const reset = button('Reset to defaults', () => {
-      this.updateSettings({ ...DEFAULT_SETTINGS });
+    const reset = button(t('ui.reset_settings'), () => {
+      this.updateSettings({ ...DEFAULT_SETTINGS, language: this.settings.language });
       this.showSettings();
     });
-    this.openOverlay('panel settings-panel', el('h2', '', 'Settings'), form, preview, row(reset, button('Done', done)));
+    this.openOverlay('panel settings-panel', el('h2', '', t('ui.settings')), form, preview, row(reset, button(t('ui.done'), done)));
   }
 
   private showSlots(kind: 'save' | 'load'): void {
@@ -775,36 +866,36 @@ export class Player {
     this.slots().forEach((s, i) => {
       const label = s
         ? `${new Date(s.savedAt).toLocaleString()} — ${truncate(s.preview, 60)}`
-        : 'Empty';
-      const b = button(`Slot ${i + 1}: ${label}`, () => {
+        : this.t('ui.empty');
+      const b = button(this.t('ui.slot', { n: i + 1, label }), () => {
         if (kind === 'save') this.saveTo(i);
         else if (s) this.loadFrom(s);
       });
       b.disabled = kind === 'save' ? !canSave : !s;
       grid.append(b);
     });
-    this.openOverlay('panel', el('h2', '', kind === 'save' ? 'Save' : 'Load'), grid,
-      button('Close', () => (this.mode === 'title' ? this.showTitle() : this.closeOverlay())));
+    this.openOverlay('panel', el('h2', '', this.t(kind === 'save' ? 'ui.save' : 'ui.load')), grid,
+      button(this.t('ui.close'), () => (this.mode === 'title' ? this.showTitle() : this.closeOverlay())));
   }
 
   private saveTo(i: number): void {
     const data = this.runner.save();
     const b = data.block;
-    const preview = b.type === 'say' ? (b.who ? `${b.who.name}: ${b.text}` : b.text) : 'At a choice';
+    const preview = b.type === 'say' ? (b.who ? `${b.who.name}: ${b.text}` : b.text) : this.t('ui.at_a_choice');
     const ok = storage.set(`${this.storeKey}:slot${i}`, JSON.stringify({ ...data, preview }));
     this.closeOverlay();
-    this.toast(ok ? `Saved to slot ${i + 1}` : 'Could not save (storage unavailable)');
+    this.toast(ok ? this.t('ui.saved_to_slot', { n: i + 1 }) : this.t('ui.could_not_save'));
   }
 
   private loadFrom(data: SaveData): void {
     const r = this.runner.load(data);
-    if (!r.ok) { this.toast('That save could not be loaded'); return; }
+    if (!r.ok) { this.toast(this.t('ui.could_not_load')); return; }
     this.enterPlaying();
     this.epoch++;
     this.syncScene(this.runner.scene());
     this.syncMusic();
     this.renderBlock(this.runner.block!, true);
-    this.toast(r.mismatch ? 'Loaded (the story has changed since this save)' : 'Loaded');
+    this.toast(this.t(r.mismatch ? 'ui.loaded_changed' : 'ui.loaded'));
   }
 
   private devStash(): void {
@@ -856,8 +947,8 @@ export class Player {
     console.error(err);
     const msg = err instanceof StoryError ? err.message : `Unexpected error: ${(err as Error)?.message ?? err}`;
     this.busy = false;
-    this.openOverlay('panel error-panel', el('h2', '', 'Something went wrong'), el('p', '', msg),
-      button('Back to title', () => this.showTitle()));
+    this.openOverlay('panel error-panel', el('h2', '', this.t('ui.error_title')), el('p', '', msg),
+      button(this.t('ui.back_to_title'), () => this.showTitle()));
   }
 
   private toast(msg: string): void {
