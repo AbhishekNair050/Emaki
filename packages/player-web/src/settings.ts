@@ -21,6 +21,8 @@ export interface Settings {
   boxOpacity: number;
   /** 'system' follows the device's reduce-motion setting. */
   motion: 'system' | 'full' | 'reduced';
+  /** A language code, or 'auto' to match the device's languages. */
+  language: string;
 }
 
 export const INSTANT_SPEED = 200;
@@ -47,6 +49,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   font: 'serif',
   boxOpacity: 0.88,
   motion: 'system',
+  language: 'auto',
 });
 
 /** Allowed ranges, shared by validation and the settings screen. */
@@ -58,6 +61,9 @@ export const RANGES = {
   textScale: { min: 0.8, max: 1.6, step: 0.1 },
   boxOpacity: { min: 0.4, max: 1, step: 0.05 },
 } as const;
+
+/** 'auto', or a BCP 47 language tag such as "fr", "pt-BR" or "zh-Hant". */
+const LANGUAGE_CODE = /^(auto|[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3})$/;
 
 export function sanitizeSettings(raw: unknown): Settings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -79,6 +85,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     boxOpacity: num('boxOpacity'),
     font: pick('font', FONTS.map(([id]) => id)),
     motion: pick('motion', ['system', 'full', 'reduced'] as const),
+    language: typeof r.language === 'string' && LANGUAGE_CODE.test(r.language) ? r.language : DEFAULT_SETTINGS.language,
   };
 }
 
