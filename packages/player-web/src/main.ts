@@ -1,4 +1,4 @@
-import { diagnostics, graph, sourceLines, story } from 'virtual:emaki-game';
+import { diagnostics, graph, sourceLines, story, translations } from 'virtual:emaki-game';
 import type { CompiledStory, StoryGraph } from '@emaki/format';
 import { Player } from './player.ts';
 import './style.css';
@@ -20,7 +20,7 @@ if (!story) {
 } else {
   document.title = story.meta.title ?? 'Emaki';
   if (import.meta.env.DEV && graph) void startWithMap(story, graph);
-  else new Player(app, story, { dev: import.meta.env.DEV }).boot();
+  else new Player(app, story, { dev: import.meta.env.DEV, translations, ownsDocument: true }).boot();
 }
 
 /** Dev server: the game plus the story map panel (loaded lazily, never part of a build). */
@@ -35,7 +35,7 @@ async function startWithMap(s: CompiledStory, g: StoryGraph): Promise<void> {
     getVars: () => player?.vars ?? s.vars,
   });
   map.mount(app);
-  player = new Player(stageHost, s, { dev: true, onUpdate: (b) => map.update(b) });
+  player = new Player(stageHost, s, { dev: true, translations, ownsDocument: true, onUpdate: (b) => map.update(b) });
   player.boot();
 }
 
