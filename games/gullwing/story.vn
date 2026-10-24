@@ -35,6 +35,11 @@ var read_letter = false
 var lamp_fixed = false
 var boat_safe = false
 
+# ── Achievements (one per ending; Steam uses the same ids) ──
+achievement two_keepers "Two Keepers"
+achievement light_holds "The Light Holds"
+achievement rough_water "Rough Water"
+
 label arrival:
   scene cliff_road with fade
   play music theme fade 2
@@ -145,6 +150,7 @@ label the_long_night:
 
 label ending_two_keepers:
   play music theme fade 4
+  achieve two_keepers
   "The Marguerite sits in the harbour below us, whole, her crew already arguing over breakfast."
   if read_letter:
     mira sad: You read my letter.
@@ -159,6 +165,7 @@ label ending_two_keepers:
 
 label ending_light_holds:
   play music theme fade 4
+  achieve light_holds
   "The Marguerite is safe in harbour. Nobody hurt, nothing lost."
   mira: You did fine. Better than fine.
   mira sad: But I meant what I wrote. I'm done at the end of the month.
@@ -168,6 +175,7 @@ label ending_light_holds:
   end
 
 label ending_rough_water:
+  achieve rough_water
   "The Marguerite limps into harbour with a stove-in bow. Tom has a cut on his head and a story for the pub."
   "Everyone is alive."
   mira: Everyone comes home. That's the job. The rest is learning.
