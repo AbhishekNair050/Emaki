@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
+import { detectHost, type EmakiHost } from './host.ts';
 import { parsePreview } from './preview.ts';
 import { UI_STRINGS, fill, isRtl, languageName, matchLanguage, type UiKey } from './ui-strings.ts';
 
@@ -36,6 +37,8 @@ export interface PlayerOptions {
   translations?: CompiledTranslation[];
   /** The player is the whole page: keep the page title and language in step with the game. */
   ownsDocument?: boolean;
+  /** The app around the game (desktop, phone, browser). Detected when not given. */
+  host?: EmakiHost;
 }
 
 export class Player {
@@ -44,6 +47,7 @@ export class Player {
   private readonly opts: PlayerOptions;
   private readonly storeKey: string;
   private translation: CompiledTranslation | null = null;
+  private readonly host: EmakiHost;
   /** The language changed behind an open panel: redraw the line when it closes. */
   private redrawOnClose = false;
 
@@ -85,6 +89,7 @@ export class Player {
     this.story = story;
     this.runner = new Runner(story);
     this.opts = opts;
+    this.host = opts.host ?? detectHost();
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
     this.settings = loadSettings(this.storeKey + ':settings');
 
@@ -140,6 +145,7 @@ export class Player {
     this.stage.addEventListener('wheel', (e) => {
       if (this.mode === 'playing' && !this.overlayOpen && e.deltaY < 0) this.back();
     }, { passive: true });
+    this.host.onBackButton?.(() => this.handleBack());
     window.addEventListener('keydown', this.keyListener);
     window.addEventListener('beforeunload', this.unloadListener);
   }
@@ -529,7 +535,24 @@ export class Player {
       case 'stop':
         if (fx.channel === 'music') this.stopMusic(instant ? 0 : (fx.fade ?? 0) * 1000);
         return;
+      case 'achieve':
+        this.unlockAchievement(fx.id, fx.name);
+        return;
     }
+  }
+
+  /**
+   * Remember an achievement (per game, on this device), tell the platform
+   * (Steam), and show a notice the first time unless the platform shows its own.
+   */
+  private unlockAchievement(id: string, name: string): void {
+    const key = `${this.storeKey}:achievements`;
+    let have: string[] = [];
+    try { have = JSON.parse(storage.get(key) ?? '[]') as string[]; } catch { /* corrupt: start over */ }
+    const isNew = Array.isArray(have) && !have.includes(id);
+    if (isNew) storage.set(key, JSON.stringify([...have, id]));
+    this.host.unlockAchievement?.(id);
+    if (isNew && !this.host.notifiesAchievements) this.toast(this.t('ui.achievement', { name }));
   }
 
   private async setBackground(path: string | null, ms: number): Promise<void> {
@@ -652,6 +675,8 @@ export class Player {
     menu.append(button(this.t('ui.start'), () => this.start()));
     if (hasSaves) menu.append(button(this.t('ui.load'), () => this.showSlots('load')));
     menu.append(button(this.t('ui.settings'), () => this.showSettings()));
+    const quit = this.host.quit;
+    if (quit && this.opts.ownsDocument) menu.append(button(this.t('ui.quit'), () => quit()));
     this.openOverlay('title-screen',
       el('h1', 'title', this.title),
       ...(this.story.meta.author ? [el('p', 'byline', this.story.meta.author)] : []),
@@ -842,6 +867,24 @@ export class Player {
         ...translations.filter((x) => x.lang !== source).map((x) => [x.lang, languageName(x.lang)] as const),
       ]);
     }
+    const host = this.host;
+    if (host.setFullscreen && this.opts.ownsDocument) {
+      const lab = el('label', '', t('ui.fullscreen'));
+      lab.htmlFor = 'set-fullscreen';
+      const select = el('select');
+      select.id = 'set-fullscreen';
+      for (const [value, text] of [['on', t('ui.on')], ['off', t('ui.off')]] as const) {
+        const o = el('option', '', text);
+        o.value = value;
+        select.append(o);
+      }
+      select.value = 'off';
+      void host.isFullscreen?.().then((on) => { select.value = on ? 'on' : 'off'; });
+      select.addEventListener('change', () => {
+        void host.setFullscreen!(select.value === 'on').then((on) => { select.value = on ? 'on' : 'off'; });
+      });
+      form.append(lab, select, el('span'));
+    }
     slider('textSpeed', t('ui.text_speed'), (v) => (v >= INSTANT_SPEED ? t('ui.instant') : t('ui.letters_per_second', { n: v })));
     slider('autoDelay', t('ui.auto_wait'), (v) => t('ui.seconds', { n: v.toFixed(2).replace(/0$/, '') }));
     slider('musicVolume', t('ui.music_volume'), pct);
@@ -932,6 +975,18 @@ export class Player {
       case 'h': this.stage.classList.toggle('hide-ui'); break;
       case 'o': this.showSettings(); break;
     }
+  }
+
+  /** The phone's back button: close what's open, then offer to leave, then quit. */
+  private handleBack(): void {
+    if (this.mode === 'title') {
+      if (this.overlay.classList.contains('title-screen')) this.host.quit?.();
+      else this.showTitle();
+      return;
+    }
+    if (this.overlayOpen && this.mode === 'playing') this.closeOverlay();
+    else if (this.mode === 'ended') this.showTitle();
+    else this.confirmTitle();
   }
 
   private guard(fn: () => Promise<void> | void): void {

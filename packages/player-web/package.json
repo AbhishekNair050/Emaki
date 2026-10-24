@@ -11,7 +11,8 @@
     "./layout": "./src/map/layout.ts",
     "./style.css": "./src/style.css",
     "./ui-strings": "./src/ui-strings.ts",
-    "./plugin": "./src/emaki-plugin.ts"
+    "./plugin": "./src/emaki-plugin.ts",
+    "./host": "./src/host.ts"
   },
   "dependencies": {
     "@emaki/format": "0.1.0",
