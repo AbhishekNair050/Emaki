@@ -55,7 +55,9 @@ export type Effect =
   | { type: 'show'; tag: string; attrs: string[]; path: string; at: string; transition: string | null; isNew: boolean }
   | { type: 'hide'; tag: string; transition: string | null }
   | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
-  | { type: 'stop'; channel: Channel; fade: number | null };
+  | { type: 'stop'; channel: Channel; fade: number | null }
+  /** `name` is in the current language. */
+  | { type: 'achieve'; id: string; name: string };
 
 export interface Speaker {
   id: string;
@@ -520,6 +522,12 @@ export class Runner {
           if (ins.channel === 'music') s.audio.music = null;
           effects.push({ type: 'stop', channel: ins.channel, fade: ins.fade });
           break;
+        case 'achieve': {
+          s.pc++;
+          const name = this.translation?.strings[`achievement.${ins.id}`]?.text ?? this.story.achievements?.[ins.id]?.name ?? ins.id;
+          effects.push({ type: 'achieve', id: ins.id, name });
+          break;
+        }
         case 'set':
           s.pc++;
           s.vars[ins.name] = this.eval(ins.expr, ins);
