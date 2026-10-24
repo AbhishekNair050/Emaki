@@ -159,6 +159,7 @@ const SYMBOL_KINDS: Record<SymbolKind, vscode.SymbolKind> = {
   image: vscode.SymbolKind.File,
   audio: vscode.SymbolKind.File,
   variable: vscode.SymbolKind.Variable,
+  achievement: vscode.SymbolKind.Constant,
 };
 
 const COMPLETION_KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
@@ -167,6 +168,7 @@ const COMPLETION_KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
   image: vscode.CompletionItemKind.File,
   audio: vscode.CompletionItemKind.File,
   variable: vscode.CompletionItemKind.Variable,
+  achievement: vscode.CompletionItemKind.Constant,
   keyword: vscode.CompletionItemKind.Keyword,
   value: vscode.CompletionItemKind.EnumMember,
 };

@@ -17,8 +17,8 @@ interface State {
   dialogue: 'colon' | 'quote' | null;
 }
 
-const TOP_LEVEL = /^(define|image|audio|var|label)\b/;
-const STATEMENT = /^(scene|show|hide|play|stop|set|jump|call|return|end|wait|menu|if|elif|else)\b/;
+const TOP_LEVEL = /^(define|image|audio|var|label|achievement)\b/;
+const STATEMENT = /^(scene|show|hide|play|stop|set|jump|call|return|end|wait|menu|if|elif|else|achieve)\b/;
 const WORD_KEYWORD = /^(with|at|fade|loop|and|or|not|if)\b/;
 const ATOM = /^(true|false)\b/;
 
@@ -45,7 +45,7 @@ const parser: StreamParser<State> = {
       const top = stream.match(TOP_LEVEL) as RegExpMatchArray | null;
       if (top) {
         const k = top[1];
-        state.next = k === 'label' ? 'labelDef' : k === 'define' ? 'charDef' : k === 'var' ? 'varDef' : 'assetDef';
+        state.next = k === 'label' ? 'labelDef' : k === 'define' ? 'charDef' : k === 'var' || k === 'achievement' ? 'varDef' : 'assetDef';
         return 'keyword';
       }
     }

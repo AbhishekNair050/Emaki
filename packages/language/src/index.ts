@@ -26,7 +26,7 @@ export interface Problem {
   code: string;
 }
 
-export type SymbolKind = 'label' | 'character' | 'image' | 'audio' | 'variable';
+export type SymbolKind = 'label' | 'character' | 'image' | 'audio' | 'variable' | 'achievement';
 
 export interface StorySymbol {
   name: string;
@@ -102,6 +102,7 @@ export class Analysis {
       })),
       ...p.images.map((i): StorySymbol => ({ name: i.name, kind: 'image', detail: i.path, line: one(i.loc.line), endLine: one(i.loc.line) })),
       ...p.audio.map((a): StorySymbol => ({ name: a.name, kind: 'audio', detail: a.path, line: one(a.loc.line), endLine: one(a.loc.line) })),
+      ...p.achievements.map((a): StorySymbol => ({ name: a.id, kind: 'achievement', detail: a.name, line: one(a.loc.line), endLine: one(a.loc.line) })),
       ...p.vars.map((v): StorySymbol => ({
         name: v.name, kind: 'variable', detail: `= ${this.textAfter(one(v.loc.line), '=')}`, line: one(v.loc.line), endLine: one(v.loc.line),
       })),
@@ -165,7 +166,11 @@ export class Analysis {
       const audio = this.find('audio', word.text);
       if (audio) return audio;
     }
-    for (const kind of ['label', 'variable', 'character', 'image', 'audio'] as const) {
+    if (/^\s+achieve\s/.test(text)) {
+      const a = this.find('achievement', word.text);
+      if (a) return a;
+    }
+    for (const kind of ['label', 'variable', 'character', 'image', 'audio', 'achievement'] as const) {
       const hit = this.find(kind, word.text);
       if (hit) return hit;
     }
@@ -193,6 +198,7 @@ export class Analysis {
       case 'character': return `**${s.name}** — character, shown as *${s.detail}*`;
       case 'image': return `**${s.name}** — image \`${s.detail}\``;
       case 'audio': return `**${s.name}** — audio \`${s.detail}\``;
+      case 'achievement': return `**${s.name}** — achievement *${s.detail}*`;
       case 'variable': return `**${s.name}** — variable, starts ${s.detail}`;
       case 'label': return `**${s.name}** — label, ${s.detail} (line ${s.line + 1})`;
     }
@@ -231,6 +237,7 @@ export class Analysis {
     if (/^\s+set\s+\w*$/.test(before) || /^\s+(if|elif)\s/.test(before) || /\{\w*$/.test(before) || /"\s+if\s/.test(before)) {
       return of('variable');
     }
+    if (/^\s+achieve\s+\w*$/.test(before)) return of('achievement');
     if (/^\s+(play|stop)\s+\w*$/.test(before)) return values(['music', 'sound', 'voice'], 'channel');
     if (/^\s+play\s+\w+\s+\w*$/.test(before)) return of('audio');
     if (/^\s+\w*$/.test(before)) {
@@ -254,8 +261,8 @@ export class Analysis {
   }
 }
 
-const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'label'];
-const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else'];
+const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'achievement', 'label'];
+const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve'];
 
 /**
  * The dev-server address that opens the game at a line (0-based `line` in,

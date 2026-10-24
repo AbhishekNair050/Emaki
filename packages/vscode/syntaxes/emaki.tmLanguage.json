@@ -19,6 +19,9 @@
       "include": "#var"
     },
     {
+      "include": "#achievement"
+    },
+    {
       "include": "#label"
     },
     {
@@ -159,6 +162,17 @@
     },
     "statement": {
       "patterns": [
+        {
+          "match": "^\\s+(achieve)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.achieve.emaki"
+            },
+            "2": {
+              "name": "variable.other.constant.achievement.emaki"
+            }
+          }
+        },
         {
           "include": "#comment"
         },
@@ -551,6 +565,20 @@
           "name": "variable.other.emaki"
         }
       ]
+    },
+    "achievement": {
+      "match": "^(achievement)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")",
+      "captures": {
+        "1": {
+          "name": "storage.type.achievement.emaki"
+        },
+        "2": {
+          "name": "variable.other.constant.achievement.emaki"
+        },
+        "3": {
+          "name": "string.quoted.double.emaki"
+        }
+      }
     }
   }
 }

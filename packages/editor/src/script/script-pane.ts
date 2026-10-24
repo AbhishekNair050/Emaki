@@ -204,7 +204,7 @@ function problems(view: EditorView): LintDiagnostic[] {
 }
 
 const COMPLETION_TYPE: Record<CompletionKind, string> = {
-  label: 'function', character: 'class', image: 'type', audio: 'type', variable: 'variable', keyword: 'keyword', value: 'constant',
+  label: 'function', character: 'class', image: 'type', audio: 'type', variable: 'variable', achievement: 'constant', keyword: 'keyword', value: 'constant',
 };
 
 function complete(ctx: CompletionContext): CompletionResult | null {
