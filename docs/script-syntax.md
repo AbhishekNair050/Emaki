@@ -41,6 +41,9 @@ Between `---` lines at the very top: `key: value` pairs.
 - `title`, `author`: shown on the title screen.
 - `start`: the label the story begins at (default: `start`, else the first label).
 - `title_image`: background for the title screen (asset path).
+- `language`: the language the script is written in, as a code (`en`, `fr`, `pt-BR`; default `en`).
+- `app_id`: a reverse-domain id for app stores and phones (`com.yourstudio.gullwing`); `emaki export` makes one up if it's missing.
+- `steam_app_id`: your game's Steam App ID; the desktop build then talks to Steam (achievements, overlay).
 
 ## Declarations (top level, no indentation)
 | Line | Meaning |
@@ -50,6 +53,7 @@ Between `---` lines at the very top: `key: value` pairs.
 | `image mira smile = "sprites/mira_smile.png"` | A character image: first word is the **tag** (`mira`), the rest are **attributes** (`smile`). |
 | `audio rain = "audio/rain.ogg"` | A named sound. |
 | `var trust = 0` | A variable with its starting value. Numbers, `"text"`, `true`/`false`. Must be declared before use. |
+| `achievement first_light "First Light"` | An achievement players can earn. Use the same id as on Steam. |
 | `label name:` | A scene of your story. Everything indented under it runs in order. |
 
 Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, the visual editor) keep your comments and blank lines.
@@ -69,6 +73,7 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `jump label_name` | Go to another label (no coming back). |
 | `call label_name` / `return` | Visit a label and come back when it ends. |
 | `wait 1.5` | Pause for 1.5 seconds. |
+| `achieve first_light` | Award an achievement (once; earning it again does nothing). On Steam it unlocks the Steam achievement; elsewhere the game remembers it and shows a notice. |
 | `end` | The story ends here. |
 
 Transitions: `fade` (through black), `dissolve` (crossfade), `none`.
@@ -113,9 +118,22 @@ A backslash shows `*`, `[`, `]` or `\` literally. Ordinary square brackets are j
 ## Variables in text
 `mira: You've earned {trust} points of my trust.` Use `{{` and `}}` for literal braces.
 
+## Translations
+Every line has an id, so translations live in their own files and follow the lines when you move scenes around.
+
+```sh
+npm run emaki -- strings games/mygame/story.vn --lang fr,de      # create or update lang/fr.po and lang/de.po
+npm run emaki -- strings games/mygame/story.vn --lang ja --csv   # a spreadsheet instead (lang/ja.csv)
+npm run emaki -- strings games/mygame/story.vn                   # progress of every translation
+```
+
+`.po` files open in translation tools (Poedit, Weblate, Crowdin); `.csv` files open in any spreadsheet. Each holds every line, choice, character name, achievement and the game's own buttons, with a note on who speaks. Translations may use the same `*styling*` and `{variables}` as the original. Run the command again after editing the story: new lines are added, translations are kept, and a line you changed gets its old translation back marked **for review** (fuzzy in PO, `review` in CSV) until a translator checks it. The game uses only reviewed translations and shows the original for anything missing.
+
+Players pick a language in Settings; by default the game matches their device.
+
 ## Errors
 `npm run check` (or the dev player) lists every problem with its line number and a suggested fix, e.g.
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Custom positions and animations, layered sprites, NVL mode, voice-line auto-mapping, localization files, explicit line ids, inline (end-of-line) comments, plugins.
+Custom positions and animations, layered sprites, NVL mode, voice-line auto-mapping, plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.
