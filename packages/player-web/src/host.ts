@@ -24,7 +24,10 @@ export interface EmakiHost {
 
 interface CapacitorGlobal {
   getPlatform?(): string;
-  Plugins?: { App?: { exitApp(): void; addListener(event: 'backButton', fn: () => void): unknown } };
+  Plugins?: {
+    App?: { exitApp(): void; addListener(event: 'backButton', fn: () => void): unknown };
+    StatusBar?: { hide(): Promise<void> };
+  };
 }
 
 /** The host the game is running in. */
@@ -35,6 +38,8 @@ export function detectHost(): EmakiHost {
   const platform = cap?.getPlatform?.();
   if (cap && (platform === 'android' || platform === 'ios')) {
     const app = cap.Plugins?.App;
+    // A game uses the whole screen.
+    void cap.Plugins?.StatusBar?.hide().catch(() => {});
     return {
       platform,
       // Apple's guidelines say apps don't quit themselves; Android players expect it.

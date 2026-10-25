@@ -9,6 +9,8 @@
  *                                     (comments and blank lines are kept)
  *   emaki strings <story.vn> [--lang fr,de] [--csv]
  *                                     create/update translation files in lang/, or report progress
+ *   emaki export <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]
+ *                                     package the game for players (into <game>/export/)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -17,6 +19,7 @@ import {
   type Diagnostic,
 } from '@emaki/format';
 import { uiSourceStrings } from '@emaki/player-web/ui-strings';
+import { runExport, TARGETS, type Target } from './export.ts';
 
 const [cmd, file, ...rest] = process.argv.slice(2);
 
@@ -25,12 +28,15 @@ const USAGE = `Usage:
   emaki build <story.vn> [out.json]
   emaki graph <story.vn>
   emaki fmt   <story.vn> [--write | --check]
-  emaki strings <story.vn> [--lang fr,de] [--csv]   translation files in lang/ (without --lang: progress)`;
+  emaki strings <story.vn> [--lang fr,de] [--csv]   translation files in lang/ (without --lang: progress)
+  emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]`;
 
 if (!cmd || !file || cmd === 'help' || cmd === '--help') {
   console.log(USAGE);
   process.exit(cmd ? 0 : 1);
 }
+
+if (cmd === 'export') await exportCommand();
 
 let source: string;
 try {
@@ -177,5 +183,34 @@ function strings(): void {
     console.log(`${existing ? 'Updated' : 'Created'} ${target}: ${st.translated}/${st.total} translated (${pct(st.translated, st.total)})`
       + (st.review ? `, ${st.review} to review (the original changed)` : '')
       + (obsolete ? `, ${obsolete} kept from lines that no longer exist` : ''));
+  }
+}
+
+async function exportCommand(): Promise<never> {
+  const target = file as Target;
+  const game = rest[0] && !rest[0].startsWith('--') ? rest[0] : '.';
+  const opt = (name: string) => {
+    const i = rest.indexOf(name);
+    return i >= 0 ? rest[i + 1] : undefined;
+  };
+  if (!TARGETS.includes(target)) {
+    console.error(`Export to what? One of: ${TARGETS.join(', ')}`);
+    console.error(USAGE);
+    process.exit(1);
+  }
+  try {
+    const platform = opt('--platform');
+    const arch = opt('--arch');
+    const notes = await runExport({
+      target, game, noBuild: rest.includes('--no-build'),
+      ...(platform ? { platform } : {}),
+      ...(arch ? { arch } : {}),
+    }, (m) => console.log(m));
+    console.log('');
+    for (const n of notes) console.log(n);
+    process.exit(0);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
   }
 }

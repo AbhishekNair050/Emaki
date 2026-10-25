@@ -5,3 +5,6 @@ dist/
 Thumbs.db
 *.log
 *.vsix
+
+# emaki export output
+games/*/export/
