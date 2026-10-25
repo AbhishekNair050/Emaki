@@ -41,8 +41,8 @@ html, body {
   --pos-center: 50%;
   --pos-right: 78%;
   position: relative;
-  width: min(100cqw, calc(100cqh * 16 / 9));
-  aspect-ratio: 16 / 9;
+  width: min(100cqw, calc(100cqh * var(--aspect, 16 / 9)));
+  aspect-ratio: var(--aspect, 16 / 9);
   container-type: size;
   overflow: hidden;
   background: #000;
