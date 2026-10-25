@@ -1,0 +1,11 @@
+{
+  "name": "@emaki/mobile",
+  "version": "0.1.0",
+  "description": "Android and iOS export for Emaki games, with Capacitor.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/export.ts"
+  }
+}
