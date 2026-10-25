@@ -13,7 +13,9 @@ Emaki is an open-source visual novel engine. Its goal is to make visual novel de
 packages/format      parser, compiler, expression language, printer, graph  (no deps)
 packages/runtime     headless VM: Runner (steps, rollback, save/load, resume) (depends on format)
 packages/player-web  DOM player + Vite plugin that compiles story.vn live + story map dev panel (src/map)
-packages/cli         emaki check | build | graph | fmt
+packages/cli         emaki check | build | graph | fmt | strings | export
+packages/desktop     desktop export: app/ is the Electron shell shipped in every game (plain JS), src/ the exporter
+packages/mobile      Android/iOS export: generates and syncs a Capacitor project
 packages/editor      web editor: script pane (CodeMirror) + game + flowchart; src/server is the Vite plugin that reads/saves story.vn and manages assets/
 packages/language    editor features (problems, symbols, definition, references, hover, completion, formatting) and structural edits (src/edits.ts) over plain text
 packages/vscode      VS Code extension: a thin adapter over @emaki/language + TextMate grammar; bundled by esbuild
@@ -27,6 +29,8 @@ games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ 
 - `npm run fmt` / `npm run fmt:check`: format the demo story / verify it is formatted.
 
 CI (`.github/workflows/ci.yml`) runs typecheck, tests, check, fmt:check and the demo build on every push and pull request.
+- `npm run strings -- --lang fr`: create/update a translation of the demo (lang/fr.po).
+- `npm run export -- <web|desktop|android|ios> games/gullwing`: package the demo (into games/gullwing/export/).
 - `npm run edit`: the editor on the demo (edits games/gullwing/story.vn; `EMAKI_GAME=...` for another game).
 - `npm run dev`: play the demo with live reload (edit story.vn and it resumes at the same line).
 - `npm run build:demo`: static build to games/gullwing/dist (itch.io-ready).

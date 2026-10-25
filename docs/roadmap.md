@@ -31,9 +31,9 @@ What is done and what comes next.
 - [x] Asset browser: thumbnails and audio preview; drag an asset onto the script → `image`/`audio` line declared and `scene`/`show`/`play` placed where it was dropped; drop files from the computer to add them to the game
 
 ## ▶ Milestone 3 — Ship games (next)
-- [ ] Desktop export (Electron/Tauri) + Steamworks plugin
-- [ ] Android/iOS export (Capacitor)
-- [ ] Localization: export/import strings by line id (PO/CSV), language switcher
+- [x] Desktop export (Electron; D-029) for Windows, macOS and Linux + Steamworks: achievements and overlay (D-030); `achievement`/`achieve` in the language
+- [x] Android/iOS export (Capacitor; D-031): generated native projects kept between exports, debug APK when the Android SDK is present, back button and full screen on phones
+- [x] Localization (D-028): `emaki strings` writes PO or CSV catalogs by line id (with review suggestions for edited lines), the game loads `lang/`, and players switch language at any time; the interface is translatable too
 - [ ] Ren'Py importer (common subset)
 - [ ] Plugin API v1
 
