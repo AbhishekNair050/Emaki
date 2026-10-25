@@ -61,7 +61,7 @@ export async function exportMobile(o: MobileExportOptions): Promise<MobileExport
   const oldPkg = existsSync(pkgPath) ? readFileSync(pkgPath, 'utf8') : '';
   const pkg = JSON.stringify({
     name: o.appId.split('.').pop()!.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-    version: o.version ?? '1.0.0',
+    version: semver(o.version),
     private: true,
     description: `${o.title} (made with Emaki)`,
     dependencies: {
@@ -70,8 +70,9 @@ export async function exportMobile(o: MobileExportOptions): Promise<MobileExport
       '@capacitor/ios': CAPACITOR.ios,
       '@capacitor/app': CAPACITOR.app,
       '@capacitor/status-bar': CAPACITOR.statusBar,
+      // A regular dependency: the project needs it to build, whatever NODE_ENV says.
+      '@capacitor/cli': CAPACITOR.cli,
     },
-    devDependencies: { '@capacitor/cli': CAPACITOR.cli },
   }, null, 2) + '\n';
   writeFileSync(pkgPath, pkg);
   writeFileSync(join(dir, 'capacitor.config.json'), JSON.stringify(capacitorConfig(o), null, 2) + '\n');
@@ -150,6 +151,12 @@ export function defaultAppId(title: string): string {
   return `com.emaki.${slug.slice(0, 40)}`;
 }
 
+/** npm and the app stores want x.y.z. */
+export function semver(v: string | undefined): string {
+  const m = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(v ?? '');
+  return m ? `${m[1]}.${m[2] ?? 0}.${m[3] ?? 0}` : '1.0.0';
+}
+
 function fileName(title: string): string {
   return title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'game';
 }
@@ -167,7 +174,10 @@ export function androidSdk(): string | null {
 }
 
 function run(cmd: string, args: string[], cwd: string, env: Record<string, string> = {}): void {
-  const opts = { cwd, stdio: 'inherit' as const, env: { ...process.env, ...env } };
+  // Building the web game set NODE_ENV=production in this process; it would make npm skip packages.
+  const inherited: NodeJS.ProcessEnv = { ...process.env };
+  delete inherited.NODE_ENV;
+  const opts = { cwd, stdio: 'inherit' as const, env: { ...inherited, ...env } };
   // npm, npx and gradlew.bat are batch files on Windows, which only a shell can run.
   if (process.platform === 'win32') execSync([cmd, ...args].map(quote).join(' '), opts);
   else execFileSync(cmd, args, opts);
