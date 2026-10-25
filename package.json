@@ -13,9 +13,11 @@
     "check": "node packages/cli/src/main.ts check games/gullwing/story.vn",
     "fmt": "node packages/cli/src/main.ts fmt games/gullwing/story.vn --write",
     "fmt:check": "node packages/cli/src/main.ts fmt games/gullwing/story.vn --check",
+    "strings": "node packages/cli/src/main.ts strings games/gullwing/story.vn",
     "dev": "vite --config packages/player-web/vite.config.ts",
     "edit": "vite --config packages/editor/vite.config.ts",
     "build:demo": "vite build --config packages/player-web/vite.config.ts",
+    "export": "node packages/cli/src/main.ts export",
     "build:vscode": "npm run build -w emaki-vscode",
     "art": "node games/gullwing/tools/gen-art.mjs"
   },

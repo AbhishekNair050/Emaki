@@ -11,6 +11,9 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      # Tests don't run Electron; the exporter downloads its own copy when packaging.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
     steps:
       - uses: actions/checkout@v4
 
@@ -39,3 +42,6 @@ jobs:
 
       - name: Build VS Code extension
         run: npm run build:vscode
+
+      - name: Export the demo for the web
+        run: npm run export -- web games/gullwing
