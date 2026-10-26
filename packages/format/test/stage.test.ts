@@ -18,3 +18,12 @@ describe('aspect header', () => {
     expect(good.story!.meta.aspect).toBe('4:3');
   });
 });
+
+describe('percentage positions', () => {
+  it('accepts at 30% and rejects nonsense', () => {
+    const ok = compile('image ann a = "a.png"\nlabel start:\n  show ann a at 30%\n  show ann a at -12.5%\n  "Hi."\n');
+    expect(ok.diagnostics).toEqual([]);
+    const bad = compile('image ann a = "a.png"\nlabel start:\n  show ann a at 30\n  "Hi."\n');
+    expect(bad.diagnostics.map((d) => d.code)).toEqual(['bad-position']);
+  });
+});

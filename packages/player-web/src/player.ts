@@ -5,7 +5,7 @@
  * crisp text at any size, tiny download. A WebGL renderer can implement the
  * same Effect/Block contract later for shaders and particle effects.
  */
-import { parseAspect, type CompiledStory, type CompiledTranslation, type Span, type Value } from '@emaki/format';
+import { isPercentPosition, parseAspect, type CompiledStory, type CompiledTranslation, type Span, type Value } from '@emaki/format';
 import {
   Runner, StoryError,
   type Block, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -20,6 +20,12 @@ import { UI_STRINGS, fill, isRtl, languageName, matchLanguage, type UiKey } from
 
 /** Sprite positions are CSS variables so each layout (landscape, portrait) can place them. */
 const POSITIONS: Record<string, string> = { left: 'var(--pos-left)', center: 'var(--pos-center)', right: 'var(--pos-right)' };
+
+/** CSS `left` for a position name or a percentage (`at 30%`). */
+function positionLeft(at: string | null | undefined): string | undefined {
+  if (!at) return undefined;
+  return POSITIONS[at] ?? (isPercentPosition(at) ? at : undefined);
+}
 const SLOT_COUNT = 3;
 const AUTO_PER_CHAR_MS = 28;
 const CHOICE_GUARD_MS = 350;
@@ -524,13 +530,13 @@ export class Player {
           img = el('img', 'sprite') as HTMLImageElement;
           img.dataset.tag = fx.tag;
           img.alt = '';
-          img.style.left = POSITIONS[fx.at] ?? POSITIONS.center!;
+          img.style.left = positionLeft(fx.at) ?? POSITIONS.center!;
           img.src = asset(fx.path);
           img.style.opacity = ms ? '0' : '1';
           this.spriteLayer.append(img);
           if (ms) await animateOpacity(img, 1, ms);
         } else {
-          img.style.left = POSITIONS[fx.at] ?? img.style.left;
+          img.style.left = positionLeft(fx.at) ?? img.style.left;
           if (img.getAttribute('src') !== asset(fx.path)) img.src = asset(fx.path);
         }
         return;
@@ -603,7 +609,7 @@ export class Player {
       img.dataset.tag = sp.tag;
       img.alt = '';
       img.src = asset(path);
-      img.style.left = POSITIONS[sp.at] ?? POSITIONS.center!;
+      img.style.left = positionLeft(sp.at) ?? POSITIONS.center!;
       this.spriteLayer.append(img);
     }
   }

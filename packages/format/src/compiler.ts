@@ -18,6 +18,11 @@ import { parse } from './parser.ts';
 
 export const TRANSITIONS = ['fade', 'dissolve', 'none'];
 export const POSITIONS = ['left', 'center', 'right'];
+
+/** `at 30%`: the sprite's centre, as a percentage of the screen's width from the left (may go past the edges). */
+export function isPercentPosition(at: string): boolean {
+  return /^-?\d+(\.\d+)?%$/.test(at) && Math.abs(parseFloat(at)) <= 200;
+}
 /** Image names that exist without being declared. */
 export const BUILTIN_IMAGES = ['black'];
 
@@ -194,7 +199,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         } else if (!imageTags.has(s.tag)) {
           error(s.loc.line, 'unknown-image', `No image named '${s.tag}'`);
         }
-        if (s.at && !POSITIONS.includes(s.at)) error(s.loc.line, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')})`);
+        if (s.at && !POSITIONS.includes(s.at) && !isPercentPosition(s.at)) error(s.loc.line, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')}, or a percentage of the screen's width like 30%)`);
         checkTransition(s.transition, s.loc.line);
         code.push({ op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, at: s.at, transition: s.transition, src });
         return;

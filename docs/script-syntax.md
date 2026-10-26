@@ -66,7 +66,7 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `mira: Some dialogue.` | Mira speaks. Quotes are optional: `mira: "Hi."` works too. |
 | `mira smile: Glad you came.` | Mira speaks **and** switches to her `smile` image (if she's on screen). |
 | `scene kitchen with fade` | New background; clears characters. `scene black` for a black screen. |
-| `show mira smile at left with dissolve` | Show (or change) a character. Positions: `left`, `center`, `right`. |
+| `show mira smile at left with dissolve` | Show (or change) a character. Positions: `left`, `center`, `right`, or a percentage of the screen's width for the character's centre (`at 30%`). |
 | `hide mira with dissolve` | Remove a character. |
 | `play music "audio/theme.ogg"` / `play sound rain` | Audio. Music loops by default. Options: `loop`, `noloop`, `fade 1.5`. |
 | `play voice "voice/ann_001.ogg"` | A voice line, put just before the line it belongs to. It stops when the player moves on, and auto mode waits for it to finish. |
@@ -138,4 +138,4 @@ Players pick a language in Settings; by default the game matches their device.
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Custom positions and animations, layered sprites, NVL mode, voice-line auto-mapping, plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.
+Animations, layered sprites, NVL mode, voice-line auto-mapping, plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.
