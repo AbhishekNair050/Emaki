@@ -107,7 +107,7 @@ export class Player {
     this.loadGlobals();
 
     this.stage = el('div', 'stage');
-    this.applyAspect();
+    this.applyStageShape();
     this.bgLayer = el('div', 'layer bg-layer');
     this.spriteLayer = el('div', 'layer sprite-layer');
     this.fader = el('div', 'layer fader');
@@ -188,7 +188,7 @@ export class Player {
   reload(story: CompiledStory): boolean {
     const save = this.mode === 'playing' && this.runner.block ? this.runner.save() : null;
     this.story = story;
-    this.applyAspect();
+    this.applyStageShape();
     this.runner = new Runner(story);
     this.runner.setTranslation(this.translation);
     this.loadGlobals();
@@ -870,11 +870,12 @@ export class Player {
   }
 
   /** Switch story and interface text to the chosen language, redrawing whatever is on screen. */
-  /** The stage shape: 16:9 unless the story's header says otherwise (`aspect: 4:3`). */
-  private applyAspect(): void {
+  /** Header options that shape the stage: `aspect` (16:9 unless set) and `narration` style. */
+  private applyStageShape(): void {
     const ratio = this.story.meta.aspect ? parseAspect(this.story.meta.aspect) : null;
     if (ratio) this.stage.style.setProperty('--aspect', String(ratio));
     else this.stage.style.removeProperty('--aspect');
+    this.stage.classList.toggle('narration-plain', this.story.meta.narration === 'plain');
   }
 
   private applyLanguage(): void {

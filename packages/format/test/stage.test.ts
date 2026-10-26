@@ -27,3 +27,10 @@ describe('percentage positions', () => {
     expect(bad.diagnostics.map((d) => d.code)).toEqual(['bad-position']);
   });
 });
+
+describe('narration header', () => {
+  it('accepts italic or plain', () => {
+    expect(compile('---\nnarration: plain\n---\nlabel start:\n  "Hi."\n').diagnostics).toEqual([]);
+    expect(compile('---\nnarration: bold\n---\nlabel start:\n  "Hi."\n').diagnostics.map((d) => d.code)).toEqual(['bad-narration']);
+  });
+});

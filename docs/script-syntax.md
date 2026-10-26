@@ -41,6 +41,7 @@ Between `---` lines at the very top: `key: value` pairs.
 - `title`, `author`: shown on the title screen.
 - `start`: the label the story begins at (default: `start`, else the first label).
 - `title_image`: background for the title screen (asset path).
+- `narration`: `italic` (the default) or `plain`. Plain suits stories told mostly in narration, such as first-person novels.
 - `aspect`: the shape of the screen, as width:height (default `16:9`). Use `4:3` for art drawn for older screens; the game is letterboxed to fit.
 - `language`: the language the script is written in, as a code (`en`, `fr`, `pt-BR`; default `en`).
 - `app_id`: a reverse-domain id for app stores and phones (`com.yourstudio.gullwing`); `emaki export` makes one up if it's missing.

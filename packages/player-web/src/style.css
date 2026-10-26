@@ -89,6 +89,9 @@ html, body {
 .rt-b { font-weight: 700; }
 .rt-i { font-style: italic; }
 .narration .rt-i { font-style: normal; }
+/* Header `narration: plain`: upright narration (first-person novels are mostly narration). */
+.stage.narration-plain .textbox.narration .text { font-style: normal; }
+.stage.narration-plain .narration .rt-i { font-style: italic; }
 .stage.font-sans { --story-font: var(--ui-font); }
 /* Accessibility fonts (bundled, see main.ts). font-size-adjust evens out their larger letters. */
 .stage.font-legible { --story-font: 'Atkinson Hyperlegible', var(--ui-font); }

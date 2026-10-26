@@ -317,6 +317,9 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   else if (labels[startName] === undefined) error(1, 'unknown-label', `Start label '${startName}' doesn't exist`);
   else start = labels[startName];
 
+  if (meta.narration !== undefined && !['italic', 'plain'].includes(meta.narration)) {
+    warn(1, 'bad-narration', `'narration: ${meta.narration}' should be 'italic' (the default) or 'plain'`);
+  }
   if (meta.aspect !== undefined && parseAspect(meta.aspect) === null) {
     warn(1, 'bad-aspect', `'aspect: ${meta.aspect}' isn't a shape the player understands; use width:height, like 16:9 or 4:3`);
   }
