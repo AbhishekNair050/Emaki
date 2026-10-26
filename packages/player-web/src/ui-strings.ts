@@ -46,6 +46,7 @@ export const UI_STRINGS = {
   'ui.seconds': '{n} s',
   'ui.music_volume': 'Music volume',
   'ui.sound_volume': 'Sound volume',
+  'ui.voice_volume': 'Voice volume',
   'ui.text_size': 'Text size',
   'ui.box_opacity': 'Text box opacity',
   'ui.font': 'Font',

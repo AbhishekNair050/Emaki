@@ -41,6 +41,7 @@ Between `---` lines at the very top: `key: value` pairs.
 - `title`, `author`: shown on the title screen.
 - `start`: the label the story begins at (default: `start`, else the first label).
 - `title_image`: background for the title screen (asset path).
+- `aspect`: the shape of the screen, as width:height (default `16:9`). Use `4:3` for art drawn for older screens; the game is letterboxed to fit.
 - `language`: the language the script is written in, as a code (`en`, `fr`, `pt-BR`; default `en`).
 - `app_id`: a reverse-domain id for app stores and phones (`com.yourstudio.gullwing`); `emaki export` makes one up if it's missing.
 - `steam_app_id`: your game's Steam App ID; the desktop build then talks to Steam (achievements, overlay).
@@ -68,7 +69,8 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `show mira smile at left with dissolve` | Show (or change) a character. Positions: `left`, `center`, `right`. |
 | `hide mira with dissolve` | Remove a character. |
 | `play music "audio/theme.ogg"` / `play sound rain` | Audio. Music loops by default. Options: `loop`, `noloop`, `fade 1.5`. |
-| `stop music fade 2` | Stop a channel (`music`, `sound`, `voice`). |
+| `play voice "voice/ann_001.ogg"` | A voice line, put just before the line it belongs to. It stops when the player moves on, and auto mode waits for it to finish. |
+| `stop music fade 2` | Stop a channel (`music`, `sound`, `voice`). `stop sound` stops a looping sound and any effects still playing. |
 | `set trust += 1` | Change a variable. Also `=` and `-=`. |
 | `jump label_name` | Go to another label (no coming back). |
 | `call label_name` / `return` | Visit a label and come back when it ends. |

@@ -14,6 +14,8 @@ export interface Settings {
   musicVolume: number;
   /** 0..1 */
   soundVolume: number;
+  /** 0..1 */
+  voiceVolume: number;
   /** Multiplier for story text size. */
   textScale: number;
   font: FontChoice;
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   autoDelay: 1.4,
   musicVolume: 0.7,
   soundVolume: 0.8,
+  voiceVolume: 1,
   textScale: 1,
   font: 'serif',
   boxOpacity: 0.88,
@@ -58,6 +61,7 @@ export const RANGES = {
   autoDelay: { min: 0.5, max: 5, step: 0.25 },
   musicVolume: { min: 0, max: 1, step: 0.05 },
   soundVolume: { min: 0, max: 1, step: 0.05 },
+  voiceVolume: { min: 0, max: 1, step: 0.05 },
   textScale: { min: 0.8, max: 1.6, step: 0.1 },
   boxOpacity: { min: 0.4, max: 1, step: 0.05 },
 } as const;
@@ -81,6 +85,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     autoDelay: num('autoDelay'),
     musicVolume: num('musicVolume'),
     soundVolume: num('soundVolume'),
+    voiceVolume: num('voiceVolume'),
     textScale: num('textScale'),
     boxOpacity: num('boxOpacity'),
     font: pick('font', FONTS.map(([id]) => id)),

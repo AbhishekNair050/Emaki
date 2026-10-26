@@ -25,6 +25,8 @@ export interface SceneState {
 
 export interface AudioState {
   music: { path: string; loop: boolean } | null;
+  /** The looping sound (rain, engine hum) still playing, if any. One-shot sounds and voices aren't state. */
+  sound?: { path: string; loop: true } | null;
 }
 
 export interface RunState {
@@ -193,10 +195,8 @@ export class Runner {
       } else if (ins.op === 'say' && ins.who && ins.attrs.length) {
         const sp = scene.sprites.find((x) => x.tag === ins.who);
         if (sp) sp.attrs = [...ins.attrs];
-      } else if (ins.op === 'play' && ins.channel === 'music') {
-        this.state.audio.music = { path: ins.path, loop: ins.loop };
-      } else if (ins.op === 'stop' && ins.channel === 'music') {
-        this.state.audio.music = null;
+      } else if (ins.op === 'play' || ins.op === 'stop') {
+        trackAudio(this.state.audio, ins);
       }
     }
     this.state.pc = pc;
@@ -437,7 +437,7 @@ export class Runner {
       vars: { ...this.story.vars },
       stack: [],
       scene: { bg: null, sprites: [] },
-      audio: { music: null },
+      audio: { music: null, sound: null },
       ended: false,
       lastSay: null,
     };
@@ -514,12 +514,12 @@ export class Runner {
           break;
         case 'play':
           s.pc++;
-          if (ins.channel === 'music') s.audio.music = { path: ins.path, loop: ins.loop };
+          trackAudio(s.audio, ins);
           effects.push({ type: 'play', channel: ins.channel, path: ins.path, loop: ins.loop, fade: ins.fade });
           break;
         case 'stop':
           s.pc++;
-          if (ins.channel === 'music') s.audio.music = null;
+          trackAudio(s.audio, ins);
           effects.push({ type: 'stop', channel: ins.channel, fade: ins.fade });
           break;
         case 'achieve': {
@@ -646,4 +646,13 @@ export class Runner {
 
 function clone<T>(v: T): T {
   return structuredClone(v);
+}
+
+/** Keeps the audio that outlasts a line (music, a looping sound) in the saved state. */
+function trackAudio(audio: AudioState, ins: Extract<Instr, { op: 'play' | 'stop' }>): void {
+  if (ins.channel === 'music') audio.music = ins.op === 'play' ? { path: ins.path, loop: ins.loop } : null;
+  else if (ins.channel === 'sound') {
+    if (ins.op === 'stop') audio.sound = null;
+    else if (ins.loop) audio.sound = { path: ins.path, loop: true };
+  }
 }

@@ -5,7 +5,7 @@
  * crisp text at any size, tiny download. A WebGL renderer can implement the
  * same Effect/Block contract later for shaders and particle effects.
  */
-import type { CompiledStory, CompiledTranslation, Span, Value } from '@emaki/format';
+import { parseAspect, type CompiledStory, type CompiledTranslation, type Span, type Value } from '@emaki/format';
 import {
   Runner, StoryError,
   type Block, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -81,6 +81,12 @@ export class Player {
   private busy = false;
   private menuShownAt = 0;
   private music: HTMLAudioElement | null = null;
+  /** The voice line playing now; a new line (or the next click) stops it. */
+  private voice: HTMLAudioElement | null = null;
+  /** The looping sound playing now (rain, a crowd), kept until stopped or replaced. */
+  private loopSound: HTMLAudioElement | null = null;
+  /** One-shot sound effects still playing, so 'stop sound' can cut them. */
+  private readonly sounds = new Set<HTMLAudioElement>();
   private settings: Settings;
   private readonly images = new ImagePreloader();
   private readonly systemReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -94,6 +100,7 @@ export class Player {
     this.settings = loadSettings(this.storeKey + ':settings');
 
     this.stage = el('div', 'stage');
+    this.applyAspect();
     this.bgLayer = el('div', 'layer bg-layer');
     this.spriteLayer = el('div', 'layer sprite-layer');
     this.fader = el('div', 'layer fader');
@@ -158,6 +165,8 @@ export class Player {
     this.epoch++;
     this.clearTimers();
     this.stopMusic();
+    this.stopSounds();
+    this.stopVoice();
     window.removeEventListener('keydown', this.keyListener);
     window.removeEventListener('beforeunload', this.unloadListener);
     this.stage.remove();
@@ -172,6 +181,7 @@ export class Player {
   reload(story: CompiledStory): boolean {
     const save = this.mode === 'playing' && this.runner.block ? this.runner.save() : null;
     this.story = story;
+    this.applyAspect();
     this.runner = new Runner(story);
     this.runner.setTranslation(this.translation);
     if (this.mode === 'title') { this.closeOverlay(); this.showTitle(); return true; }
@@ -183,7 +193,7 @@ export class Player {
     this.epoch++;
     this.busy = false;
     this.syncScene(this.runner.scene());
-    this.syncMusic();
+    this.syncAudio();
     this.guard(() => this.present(step, true));
     return true;
   }
@@ -252,7 +262,7 @@ export class Player {
     this.guard(() => {
       const step = this.runner.startAtLine(line, { vars: keep });
       this.syncScene(this.runner.scene());
-      this.syncMusic();
+      this.syncAudio();
       return this.present(step, true);
     });
   }
@@ -268,6 +278,8 @@ export class Player {
     this.enterPlaying();
     this.syncScene({ bg: null, sprites: [] });
     this.stopMusic();
+    this.stopSounds();
+    this.stopVoice();
     this.guard(() => this.present(this.runner.start()));
   }
 
@@ -307,7 +319,7 @@ export class Player {
     this.updateToggles();
     this.epoch++;
     this.syncScene(r.scene);
-    this.syncMusic();
+    this.syncAudio();
     this.renderBlock(r.block, true);
   }
 
@@ -316,6 +328,7 @@ export class Player {
     const my = ++this.epoch;
     this.clearTimers();
     this.choicesEl.replaceChildren();
+    this.stopVoice();
     this.busy = true;
     try {
       // Hold the step (briefly) until its pictures are ready, so nothing fades in half-loaded.
@@ -447,7 +460,7 @@ export class Player {
     this.textbox.classList.add('waiting');
     if (this.skip) {
       this.pendingTimer = window.setTimeout(() => this.onAdvance(), 40);
-    } else if (this.auto) {
+    } else if (this.auto && !(this.voice && !this.voice.paused && !this.voice.ended)) {
       const wait = this.settings.autoDelay * 1000 + this.fullText.length * AUTO_PER_CHAR_MS;
       this.pendingTimer = window.setTimeout(() => this.onAdvance(), wait);
     }
@@ -527,14 +540,23 @@ export class Player {
         if (img) await fadeOutAndRemove(img, this.duration(fx.transition, instant));
         return;
       }
-      case 'play':
-        if (fx.channel === 'music') this.playMusic(fx.path, fx.loop, instant ? 0 : (fx.fade ?? 0) * 1000);
-        // Skipping, rolling back or loading: don't fire a burst of old sound effects.
-        else if (!instant) playOnce(fx.path, this.settings.soundVolume);
+      case 'play': {
+        const fadeMs = instant ? 0 : (fx.fade ?? 0) * 1000;
+        if (fx.channel === 'music') this.playMusic(fx.path, fx.loop, fadeMs);
+        else if (fx.channel === 'sound' && fx.loop) this.playLoopSound(fx.path, fadeMs);
+        // Skipping, rolling back or loading: don't fire a burst of old sound effects or voices.
+        else if (instant) return;
+        else if (fx.channel === 'voice') this.playVoice(fx.path);
+        else this.playSound(fx.path);
         return;
-      case 'stop':
-        if (fx.channel === 'music') this.stopMusic(instant ? 0 : (fx.fade ?? 0) * 1000);
+      }
+      case 'stop': {
+        const fadeMs = instant ? 0 : (fx.fade ?? 0) * 1000;
+        if (fx.channel === 'music') this.stopMusic(fadeMs);
+        else if (fx.channel === 'sound') this.stopSounds(fadeMs);
+        else this.stopVoice();
         return;
+      }
       case 'achieve':
         this.unlockAchievement(fx.id, fx.name);
         return;
@@ -613,10 +635,73 @@ export class Player {
     void fadeVolume(old, () => 0, fadeMs).then(() => old.pause());
   }
 
-  private syncMusic(): void {
-    const m = this.runner.audio().music;
-    if (m) this.playMusic(m.path, m.loop);
+  /** Match the audio to the story's state after a jump in time (load, rollback, edit). */
+  private syncAudio(): void {
+    const { music, sound } = this.runner.audio();
+    if (music) this.playMusic(music.path, music.loop);
     else this.stopMusic();
+    this.stopVoice();
+    for (const a of this.sounds) a.pause();
+    this.sounds.clear();
+    if (sound) this.playLoopSound(sound.path);
+    else this.stopSounds();
+  }
+
+  private playVoice(path: string): void {
+    this.stopVoice();
+    const a = new Audio(asset(path));
+    a.volume = this.settings.voiceVolume;
+    a.addEventListener('ended', () => {
+      if (this.voice !== a) return;
+      this.voice = null;
+      // Auto mode was waiting for the voice to finish.
+      if (this.auto && !this.isTyping && this.runner.block?.type === 'say') this.onTextDone();
+    });
+    a.play().catch(() => { if (this.voice === a) this.voice = null; });
+    this.voice = a;
+  }
+
+  private stopVoice(): void {
+    this.voice?.pause();
+    this.voice = null;
+  }
+
+  private playSound(path: string): void {
+    const a = new Audio(asset(path));
+    a.volume = this.settings.soundVolume;
+    this.sounds.add(a);
+    a.addEventListener('ended', () => this.sounds.delete(a));
+    a.play().catch(() => this.sounds.delete(a));
+  }
+
+  private playLoopSound(path: string, fadeMs = 0): void {
+    if (this.loopSound?.dataset.path === path) return;
+    this.stopLoopSound(fadeMs);
+    const a = new Audio(asset(path));
+    a.dataset.path = path;
+    a.loop = true;
+    a.volume = fadeMs ? 0 : this.settings.soundVolume;
+    a.play().catch(() => { /* autoplay blocked or file missing: stay silent */ });
+    this.loopSound = a;
+    if (fadeMs) void fadeVolume(a, () => this.settings.soundVolume, fadeMs);
+  }
+
+  private stopLoopSound(fadeMs = 0): void {
+    const old = this.loopSound;
+    this.loopSound = null;
+    if (!old) return;
+    if (!fadeMs) { fadeVolume(old, () => old.volume, 0); old.pause(); return; }
+    void fadeVolume(old, () => 0, fadeMs).then(() => old.pause());
+  }
+
+  /** `stop sound`: the looping sound and any effects still ringing. */
+  private stopSounds(fadeMs = 0): void {
+    this.stopLoopSound(fadeMs);
+    for (const a of this.sounds) {
+      if (fadeMs) void fadeVolume(a, () => 0, fadeMs).then(() => a.pause());
+      else a.pause();
+    }
+    this.sounds.clear();
   }
 
   // ---------------------------------------------------------- screens
@@ -662,6 +747,8 @@ export class Player {
     this.epoch++;
     this.clearTimers();
     this.stopMusic();
+    this.stopSounds();
+    this.stopVoice();
     this.stage.classList.remove('playing');
     this.textbox.hidden = true;
     this.choicesEl.replaceChildren();
@@ -763,6 +850,13 @@ export class Player {
   }
 
   /** Switch story and interface text to the chosen language, redrawing whatever is on screen. */
+  /** The stage shape: 16:9 unless the story's header says otherwise (`aspect: 4:3`). */
+  private applyAspect(): void {
+    const ratio = this.story.meta.aspect ? parseAspect(this.story.meta.aspect) : null;
+    if (ratio) this.stage.style.setProperty('--aspect', String(ratio));
+    else this.stage.style.removeProperty('--aspect');
+  }
+
   private applyLanguage(): void {
     const next = this.chooseTranslation();
     const changed = next !== this.translation;
@@ -800,6 +894,8 @@ export class Player {
     this.stage.classList.toggle('reduced-motion', this.reducedMotion);
     this.stage.classList.toggle('full-motion', s.motion === 'full');
     if (this.music) this.music.volume = s.musicVolume;
+    if (this.loopSound) this.loopSound.volume = s.soundVolume;
+    if (this.voice) this.voice.volume = s.voiceVolume;
   }
 
   private updateSettings(patch: Partial<Settings>): void {
@@ -889,6 +985,7 @@ export class Player {
     slider('autoDelay', t('ui.auto_wait'), (v) => t('ui.seconds', { n: v.toFixed(2).replace(/0$/, '') }));
     slider('musicVolume', t('ui.music_volume'), pct);
     slider('soundVolume', t('ui.sound_volume'), pct);
+    slider('voiceVolume', t('ui.voice_volume'), pct);
     slider('textScale', t('ui.text_size'), pct);
     slider('boxOpacity', t('ui.box_opacity'), pct);
     choice('font', t('ui.font'), FONTS.map(([id]) => [id, t(`ui.font_${id}`)] as const));
@@ -936,7 +1033,7 @@ export class Player {
     this.enterPlaying();
     this.epoch++;
     this.syncScene(this.runner.scene());
-    this.syncMusic();
+    this.syncAudio();
     this.renderBlock(this.runner.block!, true);
     this.toast(this.t(r.mismatch ? 'ui.loaded_changed' : 'ui.loaded'));
   }
@@ -1134,11 +1231,6 @@ function fadeVolume(a: HTMLAudioElement, target: () => number, ms: number): Prom
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-function playOnce(path: string, volume: number): void {
-  const a = new Audio(asset(path));
-  a.volume = volume;
-  a.play().catch(() => { /* ignore */ });
-}
 
 /** localStorage/sessionStorage that never throws (private mode, blocked storage). */
 const storage = {
