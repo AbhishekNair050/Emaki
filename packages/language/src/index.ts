@@ -261,7 +261,7 @@ export class Analysis {
   }
 }
 
-const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'achievement', 'label'];
+const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'global var', 'achievement', 'label'];
 const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve'];
 
 /**

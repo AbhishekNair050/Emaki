@@ -58,6 +58,8 @@ export type Effect =
   | { type: 'hide'; tag: string; transition: string | null }
   | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
   | { type: 'stop'; channel: Channel; fade: number | null }
+  /** A `global var` changed: the host should store `values` (all globals) for future playthroughs. */
+  | { type: 'globals'; values: Record<string, Value> }
   /** `name` is in the current language. */
   | { type: 'achieve'; id: string; name: string };
 
@@ -116,6 +118,8 @@ export class Runner {
   historyLimit = 500;
   private translation: CompiledTranslation | null = null;
   private textInstrs: Map<string, Extract<Instr, { op: 'say' | 'menu' }>> | null = null;
+  /** Values of `global var`s, carried across playthroughs; they win over anything in a save or rollback. */
+  private globalValues: Record<string, Value> = {};
 
   constructor(story: CompiledStory) {
     this.story = story;
@@ -125,6 +129,7 @@ export class Runner {
   /** Begin from the start label. */
   start(): Step {
     this.state = this.initialState();
+    this.applyGlobals();
     this.history = [];
     return this.run();
   }
@@ -144,6 +149,7 @@ export class Runner {
       if (Object.prototype.hasOwnProperty.call(this.story.vars, name)) this.state.vars[name] = v;
     }
     if (opts.scene) this.state.scene = clone(opts.scene);
+    this.applyGlobals();
     this.history = [];
     return this.run();
   }
@@ -200,8 +206,33 @@ export class Runner {
       }
     }
     this.state.pc = pc;
+    this.applyGlobals();
     this.history = [];
     return this.run();
+  }
+
+  /**
+   * Values of the story's `global var`s from earlier playthroughs (as stored
+   * by the host). Unknown names and non-globals are ignored.
+   */
+  setGlobals(values: Record<string, Value>): void {
+    const names = new Set(this.story.globals ?? []);
+    this.globalValues = {};
+    for (const [k, v] of Object.entries(values ?? {})) {
+      if (names.has(k) && (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean')) this.globalValues[k] = v;
+    }
+    this.applyGlobals();
+  }
+
+  /** Current values of every `global var`. */
+  get globals(): Record<string, Value> {
+    const out: Record<string, Value> = {};
+    for (const name of this.story.globals ?? []) out[name] = this.state.vars[name] ?? this.story.vars[name]!;
+    return out;
+  }
+
+  private applyGlobals(): void {
+    for (const [k, v] of Object.entries(this.globalValues)) this.state.vars[k] = v;
   }
 
   /** Change a declared variable (testing aid). Throws for unknown names. */
@@ -253,6 +284,7 @@ export class Runner {
     this.history.pop();
     const prev = this.history[this.history.length - 1];
     this.state = clone(prev.state);
+    this.applyGlobals();
     this.current = this.localize(prev.block);
     return { block: this.current, scene: this.scene() };
   }
@@ -392,6 +424,7 @@ export class Runner {
     this.state = clone(data.state);
     // Variables added in a newer build get their default values.
     this.state.vars = { ...this.story.vars, ...this.state.vars };
+    this.applyGlobals();
     this.current = this.localize(clone(data.block));
     this.history = [{ state: clone(this.state), block: this.current }];
     return { ok: true, mismatch: data.storyHash !== this.story.hash };
@@ -425,6 +458,7 @@ export class Runner {
       stack: [],
       ended: false,
     };
+    this.applyGlobals();
     this.history = [];
     return this.run();
   }
@@ -531,6 +565,10 @@ export class Runner {
         case 'set':
           s.pc++;
           s.vars[ins.name] = this.eval(ins.expr, ins);
+          if (this.story.globals?.includes(ins.name)) {
+            this.globalValues[ins.name] = s.vars[ins.name]!;
+            effects.push({ type: 'globals', values: this.globals });
+          }
           break;
         case 'jump':
           s.pc = ins.target;

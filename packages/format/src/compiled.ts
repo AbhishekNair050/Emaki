@@ -60,6 +60,8 @@ export interface CompiledStory {
   achievements?: Record<string, { name: string }>;
   /** Initial variable values. */
   vars: Record<string, Value>;
+  /** Variables declared `global var`: the player keeps their values across playthroughs. */
+  globals?: string[];
   /** Label name -> instruction index. */
   labels: Record<string, number>;
   code: Instr[];

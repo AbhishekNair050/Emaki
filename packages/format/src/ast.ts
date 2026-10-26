@@ -17,7 +17,13 @@ export interface Trivia {
 export interface CharacterDef extends Trivia { id: string; name: string; color: string | null; loc: Loc }
 export interface ImageDef extends Trivia { name: string; path: string; loc: Loc }
 export interface AudioDef extends Trivia { name: string; path: string; loc: Loc }
-export interface VarDef extends Trivia { name: string; init: Expr; loc: Loc }
+export interface VarDef extends Trivia {
+  name: string;
+  init: Expr;
+  /** `global var`: kept across playthroughs (endings seen, unlocked extras), not part of saves. */
+  global?: boolean;
+  loc: Loc;
+}
 export interface AchievementDef extends Trivia { id: string; name: string; loc: Loc }
 export interface LabelDef extends Trivia { name: string; body: Stmt[]; loc: Loc }
 

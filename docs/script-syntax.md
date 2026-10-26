@@ -54,6 +54,7 @@ Between `---` lines at the very top: `key: value` pairs.
 | `image mira smile = "sprites/mira_smile.png"` | A character image: first word is the **tag** (`mira`), the rest are **attributes** (`smile`). |
 | `audio rain = "audio/rain.ogg"` | A named sound. |
 | `var trust = 0` | A variable with its starting value. Numbers, `"text"`, `true`/`false`. Must be declared before use. |
+| `global var endings_seen = 0` | A variable that keeps its value across playthroughs on this device (endings seen, unlocked extras). Loading a save or going back never undoes it. |
 | `achievement first_light "First Light"` | An achievement players can earn. Use the same id as on Steam. |
 | `label name:` | A scene of your story. Everything indented under it runs in order. |
 

@@ -22,7 +22,7 @@ interface Line {
 }
 
 export const KEYWORDS = new Set([
-  'define', 'image', 'audio', 'var', 'label', 'achievement', 'achieve',
+  'define', 'image', 'audio', 'var', 'global', 'label', 'achievement', 'achieve',
   'scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end',
   'wait', 'menu', 'if', 'elif', 'else', 'with', 'at',
 ]);
@@ -142,11 +142,12 @@ export function parse(source: string): ParseResult {
       return;
     }
 
-    if (word === 'var') {
-      const m = /^var\s+([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(t);
-      if (!m) { err(ln.line, 'bad-var', `Expected 'var name = value'`); return; }
-      const e = safeExpr(m[2], ln.line);
-      if (e) program.vars.push(attach<VarDef>({ name: m[1], init: e, loc: { line: ln.line } }, ln, program.vars.length === 0));
+    if (word === 'var' || word === 'global') {
+      const m = /^(global\s+)?var\s+([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(t);
+      if (!m) { err(ln.line, 'bad-var', word === 'global' ? `Expected 'global var name = value'` : `Expected 'var name = value'`); return; }
+      const e = safeExpr(m[3], ln.line);
+      const def: VarDef = { name: m[2], init: e!, ...(m[1] ? { global: true } : {}), loc: { line: ln.line } };
+      if (e) program.vars.push(attach<VarDef>(def, ln, program.vars.length === 0));
       return;
     }
 

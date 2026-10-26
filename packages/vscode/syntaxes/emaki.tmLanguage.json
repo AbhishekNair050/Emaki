@@ -127,7 +127,7 @@
       }
     },
     "var": {
-      "begin": "^(var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
+      "begin": "^((?:global\\s+)?var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
       "end": "$",
       "beginCaptures": {
         "1": {

@@ -14,6 +14,7 @@ The contract between the compiler and every runtime. A runtime in any language t
   "audio": { "rain": "audio/rain.ogg" },
   "achievements": { "first_light": { "name": "First Light" } },  // only when the story has any
   "vars": { "trust": 0, "read_letter": false },  // initial values
+  "globals": ["endings_seen"],                   // optional: vars kept across playthroughs (global var)
   "labels": { "arrival": 0, "kitchen_talk": 27 },
   "code": [ /* instructions */ ],
   "hash": "1x9k2p"                              // changes whenever anything above changes

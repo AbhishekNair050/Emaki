@@ -34,7 +34,7 @@ export function print(program: Program): string {
     program.characters.map((c) => ({ leading: c.leading, text: `define ${c.id} ${q(c.name)}${c.color ? ` color=${c.color}` : ''}` })),
     program.images.map((i) => ({ leading: i.leading, text: `image ${i.name} = ${q(i.path)}` })),
     program.audio.map((a) => ({ leading: a.leading, text: `audio ${a.name} = ${q(a.path)}` })),
-    program.vars.map((v) => ({ leading: v.leading, text: `var ${v.name} = ${printExpr(v.init)}` })),
+    program.vars.map((v) => ({ leading: v.leading, text: `${v.global ? 'global ' : ''}var ${v.name} = ${printExpr(v.init)}` })),
     program.achievements.map((a) => ({ leading: a.leading, text: `achievement ${a.id} ${q(a.name)}` })),
   ];
   for (const section of sections) {

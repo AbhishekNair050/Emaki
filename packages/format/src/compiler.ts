@@ -334,7 +334,9 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     version: FORMAT_VERSION,
     meta, start, characters, images, audio,
     ...(Object.keys(achievements).length ? { achievements } : {}),
-    vars, labels, code,
+    vars,
+    ...(program.vars.some((v) => v.global) ? { globals: program.vars.filter((v) => v.global).map((v) => v.name) } : {}),
+    labels, code,
     hash: '',
   };
   story.hash = fnv1a(JSON.stringify({ ...story, hash: '' }));

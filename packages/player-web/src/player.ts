@@ -104,6 +104,7 @@ export class Player {
     this.host = opts.host ?? detectHost();
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
     this.settings = loadSettings(this.storeKey + ':settings');
+    this.loadGlobals();
 
     this.stage = el('div', 'stage');
     this.applyAspect();
@@ -190,6 +191,7 @@ export class Player {
     this.applyAspect();
     this.runner = new Runner(story);
     this.runner.setTranslation(this.translation);
+    this.loadGlobals();
     if (this.mode === 'title') { this.closeOverlay(); this.showTitle(); return true; }
     if (!save) { this.showTitle(); return false; }
     let step: Step | null = null;
@@ -566,7 +568,19 @@ export class Player {
       case 'achieve':
         this.unlockAchievement(fx.id, fx.name);
         return;
+      case 'globals':
+        storage.set(`${this.storeKey}:globals`, JSON.stringify(fx.values));
+        return;
     }
+  }
+
+  /** `global var` values from earlier playthroughs on this device. */
+  private loadGlobals(): void {
+    if (!this.story.globals?.length) return;
+    try {
+      const raw = JSON.parse(storage.get(`${this.storeKey}:globals`) ?? '{}') as unknown;
+      if (raw && typeof raw === 'object') this.runner.setGlobals(raw as Record<string, Value>);
+    } catch { /* corrupt: start over */ }
   }
 
   /**
