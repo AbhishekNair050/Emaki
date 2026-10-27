@@ -278,6 +278,11 @@ export class Runner {
     return this.translation?.lang ?? null;
   }
 
+  /** Forget rollback history, so going back stops here (e.g. once a game starts from its title screen). */
+  clearHistory(): void {
+    this.history = [];
+  }
+
   /** Roll back to the previous blocking event. Returns null if at the beginning. */
   back(): { block: Block; scene: SceneState } | null {
     if (this.history.length < 2) return null;

@@ -312,11 +312,28 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
 
   // --- Start label --------------------------------------------------------
   let start = 0;
-  const startName = meta.start ?? (labels.start !== undefined ? 'start' : program.labels[0]?.name);
+  // `label title` is the title screen, never where a new game begins (unless the header says so).
+  const startName = meta.start ?? (labels.start !== undefined ? 'start' : program.labels.find((l) => l.name !== 'title')?.name);
   if (!startName) error(1, 'no-labels', 'The story has no labels. Add one: label start:');
   else if (labels[startName] === undefined) error(1, 'unknown-label', `Start label '${startName}' doesn't exist`);
   else start = labels[startName];
 
+  if (meta.title_layout !== undefined && !['center', 'left', 'right', 'bottom'].includes(meta.title_layout)) {
+    warn(1, 'bad-title-layout', `'title_layout: ${meta.title_layout}' should be center, left, right or bottom`);
+  }
+  if (meta.title_buttons !== undefined) {
+    const unknown = meta.title_buttons.split(/[\s,]+/).filter((b) => b && !['start', 'load', 'settings', 'quit'].includes(b));
+    if (unknown.length) warn(1, 'bad-title-buttons', `Unknown title button '${unknown[0]}' (use start, load, settings, quit)`);
+  }
+  for (const key of ['title_image', 'title_logo'] as const) {
+    const v = meta[key];
+    if (v !== undefined && !images[v] && !/\.[A-Za-z0-9]+$/.test(v)) {
+      warn(1, 'unknown-image', `'${key}: ${v}' is neither an image name nor a file path`);
+    }
+  }
+  if (meta.title_music !== undefined && !audio[meta.title_music] && !/\.[A-Za-z0-9]+$/.test(meta.title_music)) {
+    warn(1, 'unknown-audio', `'title_music: ${meta.title_music}' is neither an audio name nor a file path`);
+  }
   if (meta.narration !== undefined && !['italic', 'plain'].includes(meta.narration)) {
     warn(1, 'bad-narration', `'narration: ${meta.narration}' should be 'italic' (the default) or 'plain'`);
   }
@@ -327,6 +344,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   // --- Reachability -----------------------------------------------------
   if (code.length && !diagnostics.some((d) => d.severity === 'error')) {
     const seen = reachable(code, start);
+    if (labels.title !== undefined) for (const i of reachable(code, labels.title)) seen.add(i);
     for (const l of program.labels) {
       if (!seen.has(labels[l.name])) warn(l.loc.line, 'unreachable-label', `Label '${l.name}' can never be reached`);
     }

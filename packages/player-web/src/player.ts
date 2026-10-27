@@ -33,7 +33,11 @@ const CHOICE_GUARD_MS = 350;
 /** How long a transition may wait for its image to finish loading before going ahead anyway. */
 const IMAGE_WAIT_MS = 1500;
 
-type Mode = 'title' | 'playing' | 'ended';
+/** 'intro': the story's own `label title` is playing its opening lines, before its menu. */
+type Mode = 'title' | 'intro' | 'playing' | 'ended';
+
+/** Built-in title screen buttons, in their default order (header `title_buttons`). */
+const TITLE_BUTTONS = ['start', 'load', 'settings', 'quit'] as const;
 
 export interface PlayerOptions {
   /** Dev mode: resume at the same line after the script is edited. */
@@ -303,7 +307,7 @@ export class Player {
   }
 
   private onAdvance(): void {
-    if (this.mode !== 'playing' || this.overlayOpen || this.busy) return;
+    if ((this.mode !== 'playing' && this.mode !== 'intro') || this.overlayOpen || this.busy) return;
     const b = this.runner.block;
     if (!b) return;
     if (b.type === 'say' && this.isTyping) {
@@ -385,6 +389,7 @@ export class Player {
         this.showLine(b, instant || this.skip);
         break;
       case 'menu': {
+        if (this.mode === 'intro') { this.showTitleMenu(); break; }
         this.auto = this.skip = false;
         this.updateToggles();
         // Keep the line being responded to on screen (also after load/rollback).
@@ -408,7 +413,8 @@ export class Player {
         this.pendingTimer = window.setTimeout(() => this.onAdvance(), this.skip ? 0 : b.seconds * 1000);
         break;
       case 'end':
-        this.showEnd();
+        if (this.mode === 'intro') this.showTitleMenu();
+        else this.showEnd();
         break;
     }
     this.opts.onUpdate?.(b);
@@ -772,6 +778,12 @@ export class Player {
     if (wasOpen && this.mode === 'playing' && this.runner.block?.type === 'say' && !this.isTyping) this.onTextDone();
   }
 
+  /**
+   * The title screen. A story with a `label title` gets its own: that label
+   * plays (scenes, music, opening lines) and its menu becomes the title menu.
+   * Otherwise the built-in one, shaped by the header (title_image, title_music,
+   * title_logo, title_layout, title_buttons).
+   */
   private showTitle(): void {
     this.opts.onUpdate?.(null);
     this.mode = 'title';
@@ -780,27 +792,78 @@ export class Player {
     this.stopMusic();
     this.stopSounds();
     this.stopVoice();
+    this.auto = this.skip = false;
+    this.updateToggles();
     this.stage.classList.remove('playing');
     this.textbox.hidden = true;
     this.choicesEl.replaceChildren();
     this.spriteLayer.replaceChildren();
-    const titleBg = this.story.meta.title_image;
-    void this.setBackground(titleBg ?? null, 0);
-    this.images.want(new Runner(this.story).upcomingImages().map(asset)); // the opening scene
+    this.closeOverlay();
 
-    const hasSaves = this.slots().some(Boolean);
+    if (this.story.labels.title !== undefined) {
+      this.mode = 'intro';
+      this.syncScene({ bg: null, sprites: [] });
+      this.guard(() => this.present(this.runner.startAt('title')));
+      return;
+    }
+    const meta = this.story.meta;
+    void this.setBackground(meta.title_image ? this.imageAsset(meta.title_image) : null, 0);
+    if (meta.title_music) this.playMusic(this.story.audio[meta.title_music] ?? meta.title_music, true);
+    this.images.want(new Runner(this.story).upcomingImages().map(asset)); // the opening scene
+    this.showTitleMenu();
+  }
+
+  /** The title menu over whatever the title screen shows: the story's own choices first, then built-in buttons. */
+  private showTitleMenu(): void {
+    this.mode = 'title';
+    this.textbox.hidden = true;
+    this.choicesEl.replaceChildren();
+    const meta = this.story.meta;
+    const block = this.story.labels.title !== undefined ? this.runner.block : null;
+    const own = block?.type === 'menu' ? block.choices : null;
+
     const menu = el('div', 'title-menu');
-    menu.append(button(this.t('ui.start'), () => this.start()));
-    if (hasSaves) menu.append(button(this.t('ui.load'), () => this.showSlots('load')));
-    menu.append(button(this.t('ui.settings'), () => this.showSettings()));
+    for (const c of own ?? []) {
+      const b = button(c.text, () => this.startFromTitle(c.index));
+      if (c.spans) b.replaceChildren(...spanNodes(c.spans));
+      b.classList.add('title-choice');
+      menu.append(b);
+    }
+    const hasSaves = this.slots().some(Boolean);
     const quit = this.host.quit;
-    if (quit && this.opts.ownsDocument) menu.append(button(this.t('ui.quit'), () => quit()));
-    this.openOverlay('title-screen',
-      el('h1', 'title', this.title),
-      ...(this.story.meta.author ? [el('p', 'byline', this.story.meta.author)] : []),
+    for (const id of titleButtons(meta.title_buttons)) {
+      if (id === 'start' && !own) menu.append(button(this.t('ui.start'), () => this.start()));
+      if (id === 'load' && hasSaves) menu.append(button(this.t('ui.load'), () => this.showSlots('load')));
+      if (id === 'settings') menu.append(button(this.t('ui.settings'), () => this.showSettings()));
+      if (id === 'quit' && quit && this.opts.ownsDocument) menu.append(button(this.t('ui.quit'), () => quit()));
+    }
+    let heading: HTMLElement;
+    if (meta.title_logo) {
+      const img = el('img', 'title-logo') as HTMLImageElement;
+      img.src = asset(this.imageAsset(meta.title_logo));
+      img.alt = this.title;
+      heading = img;
+    } else heading = el('h1', 'title', this.title);
+    const layout = ['left', 'right', 'bottom'].includes(meta.title_layout ?? '') ? ` title-${meta.title_layout}` : '';
+    this.openOverlay(`title-screen${layout}`,
+      heading,
+      ...(meta.author ? [el('p', 'byline', meta.author)] : []),
       menu,
       el('p', 'made-with', this.t('ui.made_with')),
     );
+  }
+
+  /** A choice on a scripted title screen: the story continues from that choice as a new game. */
+  private startFromTitle(index: number): void {
+    if (this.busy) return;
+    this.enterPlaying();
+    this.runner.clearHistory(); // going back can't return into the title screen
+    this.guard(() => this.present(this.runner.choose(index)));
+  }
+
+  /** An image name from the story, or a path in assets/. */
+  private imageAsset(nameOrPath: string): string {
+    return this.story.images[nameOrPath] ?? nameOrPath;
   }
 
   private showEnd(): void {
@@ -908,7 +971,7 @@ export class Player {
     }
     if (!changed) return;
     const block = this.runner.setTranslation(next);
-    if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitle();
+    if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitleMenu();
     else if (this.mode === 'playing' && block) {
       if (this.overlayOpen) this.redrawOnClose = true;
       else this.renderBlock(block, true);
@@ -1025,7 +1088,7 @@ export class Player {
     choice('motion', t('ui.animations'), [['system', t('ui.motion_system')], ['full', t('ui.motion_full')], ['reduced', t('ui.motion_reduced')]]);
 
     const preview = el('p', 'settings-preview', t('ui.settings_preview'));
-    const done = () => (fromTitle ? this.showTitle() : this.closeOverlay());
+    const done = () => (fromTitle ? this.showTitleMenu() : this.closeOverlay());
     const reset = button(t('ui.reset_settings'), () => {
       this.updateSettings({ ...DEFAULT_SETTINGS, language: this.settings.language });
       this.showSettings();
@@ -1048,7 +1111,7 @@ export class Player {
       grid.append(b);
     });
     this.openOverlay('panel', el('h2', '', this.t(kind === 'save' ? 'ui.save' : 'ui.load')), grid,
-      button(this.t('ui.close'), () => (this.mode === 'title' ? this.showTitle() : this.closeOverlay())));
+      button(this.t('ui.close'), () => (this.mode === 'title' ? this.showTitleMenu() : this.closeOverlay())));
   }
 
   private saveTo(i: number): void {
@@ -1084,6 +1147,12 @@ export class Player {
     // Keys aimed at something focused outside the game (e.g. a dev panel) aren't ours.
     if (e.target instanceof Element && e.target !== document.body && !this.stage.contains(e.target)) return;
     if (e.key === 'Escape' && this.overlayOpen && this.mode === 'playing') { this.closeOverlay(); return; }
+    if (this.mode === 'intro' && !this.overlayOpen && [' ', 'Enter', 'ArrowRight', 'PageDown'].includes(e.key)) {
+      if (document.activeElement instanceof HTMLButtonElement) return;
+      e.preventDefault();
+      this.onAdvance();
+      return;
+    }
     if (this.mode !== 'playing' || this.overlayOpen) return;
     const block = this.runner.block;
     if (block?.type === 'menu' && /^[1-9]$/.test(e.key)) {
@@ -1111,9 +1180,10 @@ export class Player {
   private handleBack(): void {
     if (this.mode === 'title') {
       if (this.overlay.classList.contains('title-screen')) this.host.quit?.();
-      else this.showTitle();
+      else this.showTitleMenu();
       return;
     }
+    if (this.mode === 'intro') { this.host.quit?.(); return; }
     if (this.overlayOpen && this.mode === 'playing') this.closeOverlay();
     else if (this.mode === 'ended') this.showTitle();
     else this.confirmTitle();
@@ -1277,3 +1347,9 @@ const storage = {
     try { (session ? sessionStorage : localStorage).removeItem(key); } catch { /* ignore */ }
   },
 };
+
+/** The built-in title buttons a story asked for (header `title_buttons: start, settings`), else all of them. */
+export function titleButtons(spec: string | undefined): Array<(typeof TITLE_BUTTONS)[number]> {
+  if (!spec) return [...TITLE_BUTTONS];
+  return spec.split(/[\s,]+/).filter((b): b is (typeof TITLE_BUTTONS)[number] => (TITLE_BUTTONS as readonly string[]).includes(b));
+}
