@@ -42,6 +42,8 @@ export function loadTranslations(gameDir: string, strings: SourceString[], repor
 export function emakiGame(gameDir: string): Plugin {
   const storyPath = resolve(gameDir, 'story.vn');
   const langDir = resolve(gameDir, 'lang');
+  // The game's own styles, loaded after the player's (see docs/theming.md).
+  const themePath = resolve(gameDir, 'theme.css');
   let devServer = false;
 
   return {
@@ -66,6 +68,7 @@ export function emakiGame(gameDir: string): Plugin {
         ? loadTranslations(gameDir, r.strings, (msg, isError) => (isError ? this.warn(msg) : this.info?.(msg)))
         : [];
       return [
+        ...(existsSync(themePath) ? [`import ${JSON.stringify(themePath.replace(/\\/g, '/'))};`] : []),
         `export const story = ${JSON.stringify(r.story)};`,
         `export const translations = ${JSON.stringify(translations)};`,
         `export const diagnostics = ${JSON.stringify(r.diagnostics)};`,
@@ -85,6 +88,16 @@ export function emakiGame(gameDir: string): Plugin {
       };
       server.watcher.on('add', onLangFile);
       server.watcher.on('unlink', onLangFile);
+      // Adding or removing theme.css changes what the game imports.
+      server.watcher.add(themePath);
+      const onTheme = (file: string) => {
+        if (normalize(file) !== normalize(themePath)) return;
+        const mod = server.moduleGraph.getModuleById(RESOLVED);
+        if (mod) server.moduleGraph.invalidateModule(mod);
+        server.ws.send({ type: 'full-reload' });
+      };
+      server.watcher.on('add', onTheme);
+      server.watcher.on('unlink', onTheme);
     },
     handleHotUpdate({ file, server }) {
       const f = normalize(file);

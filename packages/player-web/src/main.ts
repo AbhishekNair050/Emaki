@@ -1,8 +1,9 @@
+// The player's styles first: the game module imports the game's theme.css, which must come after.
+import './style.css';
+import './fonts.ts';
 import { diagnostics, graph, sourceLines, story, translations } from 'virtual:emaki-game';
 import type { CompiledStory, StoryGraph } from '@emaki/format';
 import { Player } from './player.ts';
-import './style.css';
-import './fonts.ts';
 
 const app = document.getElementById('app')!;
 

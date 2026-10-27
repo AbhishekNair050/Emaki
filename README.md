@@ -70,6 +70,7 @@ The same build plays on phones. Turned sideways it's the usual 16:9 picture; hel
 ## What's here
 - **[Script syntax](docs/script-syntax.md)**: how to write a story
 - **[Story format](docs/story-format.md)**: the compiled JSON any runtime can play
+- **[Theming](docs/theming.md)**: title screen, `theme.css`
 - **[Exporting](docs/exporting.md)**: web, desktop, Steam, Android and iOS
 - **[Decisions](docs/decisions.md)**: why things are the way they are
 - **[Roadmap](docs/roadmap.md)**

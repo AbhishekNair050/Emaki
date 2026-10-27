@@ -215,6 +215,14 @@ html, body {
 .title-screen .title { font-size: max(26px, calc(9 * var(--u))); text-shadow: 0 calc(0.4 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.7); letter-spacing: 0.01em; max-width: 80%; line-height: 1.1; }
 .title-screen .byline { color: #d8d2c4; }
 .title-menu { display: flex; flex-direction: column; gap: calc(1.4 * var(--u)); margin-top: calc(3 * var(--u)); }
+.title-logo { max-width: 70%; max-height: 40%; object-fit: contain; filter: drop-shadow(0 calc(0.4 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.6)); }
+/* Header `title_layout`: where the title block sits. */
+.title-screen.title-left, .title-screen.title-right { align-items: flex-start; padding-inline: 8cqw; }
+.title-screen.title-right { align-items: flex-end; }
+.title-screen.title-left :is(.title, .byline), .title-screen.title-left .title-logo { text-align: left; }
+.title-screen.title-right :is(.title, .byline) { text-align: right; }
+.title-screen.title-bottom { justify-content: flex-end; padding-bottom: calc(9 * var(--u)); }
+.title-screen.title-bottom .title-menu { flex-direction: row; flex-wrap: wrap; justify-content: center; }
 .made-with { position: absolute; bottom: calc(2.5 * var(--u)); font-size: max(11px, calc(2 * var(--u))) !important; opacity: 0.7; }
 
 .slots { display: flex; flex-direction: column; gap: calc(1.2 * var(--u)); width: min(80%, 900px); }
