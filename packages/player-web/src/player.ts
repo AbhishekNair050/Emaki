@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
+import { ReadLines } from './read-lines.ts';
 import { detectHost, type EmakiHost } from './host.ts';
 import { parsePreview } from './preview.ts';
 import { UI_STRINGS, fill, isRtl, languageName, matchLanguage, type UiKey } from './ui-strings.ts';
@@ -95,6 +96,8 @@ export class Player {
   private readonly sounds = new Set<HTMLAudioElement>();
   private settings: Settings;
   private readonly images = new ImagePreloader();
+  /** Lines read in any playthrough, so skip can stop at new text. */
+  private readonly read: ReadLines;
   private readonly systemReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(root: HTMLElement, story: CompiledStory, opts: PlayerOptions = {}) {
@@ -104,6 +107,7 @@ export class Player {
     this.host = opts.host ?? detectHost();
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
     this.settings = loadSettings(this.storeKey + ':settings');
+    this.read = new ReadLines(`${this.storeKey}:read`, storage);
     this.loadGlobals();
 
     this.stage = el('div', 'stage');
@@ -165,7 +169,7 @@ export class Player {
   }
 
   private readonly keyListener = (e: KeyboardEvent) => this.onKey(e);
-  private readonly unloadListener = () => this.devStash();
+  private readonly unloadListener = () => { this.read.flush(); this.devStash(); };
 
   /** Stop everything (timers, music, listeners) and empty the host. The player can't be used afterwards. */
   destroy(): void {
@@ -174,6 +178,7 @@ export class Player {
     this.stopMusic();
     this.stopSounds();
     this.stopVoice();
+    this.read.flush();
     window.removeEventListener('keydown', this.keyListener);
     window.removeEventListener('beforeunload', this.unloadListener);
     this.stage.remove();
@@ -369,6 +374,12 @@ export class Player {
 
     switch (b.type) {
       case 'say':
+        if (this.skip && this.settings.skipMode === 'read' && !this.read.has(b.id)) {
+          this.skip = false;
+          this.updateToggles();
+          this.toast(this.t('ui.skip_stopped'));
+        }
+        this.read.add(b.id);
         // Typing speed is the Text speed setting's job alone. Reduced motion (which Windows turns on
         // with "Animation effects" off) is about movement, not letters appearing.
         this.showLine(b, instant || this.skip);
@@ -951,7 +962,7 @@ export class Player {
       form.append(lab, input, out);
     };
 
-    const choice = <K extends 'font' | 'motion' | 'language'>(key: K, label: string, options: ReadonlyArray<readonly [Settings[K], string]>) => {
+    const choice = <K extends 'font' | 'motion' | 'language' | 'skipMode'>(key: K, label: string, options: ReadonlyArray<readonly [Settings[K], string]>) => {
       const id = `set-${key}`;
       const lab = el('label', '', label);
       lab.htmlFor = id;
@@ -1010,6 +1021,7 @@ export class Player {
     slider('textScale', t('ui.text_size'), pct);
     slider('boxOpacity', t('ui.box_opacity'), pct);
     choice('font', t('ui.font'), FONTS.map(([id]) => [id, t(`ui.font_${id}`)] as const));
+    choice('skipMode', t('ui.skip_mode'), [['read', t('ui.skip_read')], ['all', t('ui.skip_all')]]);
     choice('motion', t('ui.animations'), [['system', t('ui.motion_system')], ['full', t('ui.motion_full')], ['reduced', t('ui.motion_reduced')]]);
 
     const preview = el('p', 'settings-preview', t('ui.settings_preview'));

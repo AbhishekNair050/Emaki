@@ -25,6 +25,8 @@ export interface Settings {
   motion: 'system' | 'full' | 'reduced';
   /** A language code, or 'auto' to match the device's languages. */
   language: string;
+  /** What Skip fast-forwards through: only lines read before (stopping at new text), or everything. */
+  skipMode: 'read' | 'all';
 }
 
 export const INSTANT_SPEED = 200;
@@ -53,6 +55,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   boxOpacity: 0.88,
   motion: 'system',
   language: 'auto',
+  skipMode: 'read',
 });
 
 /** Allowed ranges, shared by validation and the settings screen. */
@@ -76,7 +79,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     const { min, max } = RANGES[key];
     return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : DEFAULT_SETTINGS[key];
   };
-  const pick = <T extends string>(key: 'font' | 'motion', allowed: readonly T[]): T => {
+  const pick = <T extends string>(key: 'font' | 'motion' | 'skipMode', allowed: readonly T[]): T => {
     const v = r[key];
     return (allowed as readonly unknown[]).includes(v) ? (v as T) : (DEFAULT_SETTINGS[key] as T);
   };
@@ -90,6 +93,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     boxOpacity: num('boxOpacity'),
     font: pick('font', FONTS.map(([id]) => id)),
     motion: pick('motion', ['system', 'full', 'reduced'] as const),
+    skipMode: pick('skipMode', ['read', 'all'] as const),
     language: typeof r.language === 'string' && LANGUAGE_CODE.test(r.language) ? r.language : DEFAULT_SETTINGS.language,
   };
 }
