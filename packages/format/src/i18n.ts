@@ -75,7 +75,7 @@ export function updateCatalog(strings: SourceString[], existing: Catalog | null,
   const entries: CatalogEntry[] = [];
 
   for (const s of strings) {
-    const ref = s.line ? `${file}:${s.line}` : undefined;
+    const ref = s.line ? `${s.file ?? file}:${s.line}` : undefined;
     const base = { id: s.id, kind: s.kind, speaker: s.speaker, source: s.text, ...(ref ? { ref } : {}) };
     const same = old.get(s.id);
     if (same && same.status !== 'obsolete') {

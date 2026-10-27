@@ -15,6 +15,8 @@ export const FORMAT_VERSION = 1;
 export interface SrcRef {
   /** 1-based line in the source .vn file. */
   line: number;
+  /** That file, relative to the game folder, when it isn't the main story.vn. */
+  file?: string;
   /** Label this instruction belongs to. */
   label: string;
 }

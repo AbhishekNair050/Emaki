@@ -3,6 +3,8 @@ import type { Expr } from './expr.ts';
 /** 1-based source line. Every node carries one so tools can jump to source. */
 export interface Loc {
   line: number;
+  /** The file, relative to the game folder, when it isn't the main story.vn (multi-file stories). */
+  file?: string;
 }
 
 /**
@@ -84,6 +86,8 @@ export interface Diagnostic {
   severity: Severity;
   message: string;
   line: number;
+  /** The file, relative to the game folder, when it isn't the main story.vn. */
+  file?: string;
   /** Short machine-readable code, e.g. "unknown-label". */
   code: string;
 }
