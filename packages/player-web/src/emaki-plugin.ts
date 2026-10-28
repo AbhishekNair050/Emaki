@@ -1,16 +1,18 @@
 /**
- * Vite plugin: compiles the game's story.vn (and its translations in lang/)
- * on the fly and exposes them as `virtual:emaki-game`. Editing the .vn file
- * or a translation triggers a reload; the player resumes at the same line
- * (see Runner.resume).
+ * Vite plugin: compiles the game's story (story.vn plus its other .vn files)
+ * and its translations in lang/ on the fly, and exposes them as
+ * `virtual:emaki-game`. Editing, adding or removing a .vn file or a
+ * translation triggers a reload; the player resumes at the same line (see
+ * Runner.resume).
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 import type { Plugin } from 'vite';
 import {
-  buildGraph, compile, compileTranslation, parseCatalog,
+  buildGraph, compileTranslation, parseCatalog,
   type CompiledTranslation, type SourceString,
 } from '@emaki/format';
+import { compileGame, storyParts, where } from '@emaki/format/files';
 import { uiSourceStrings } from './ui-strings.ts';
 
 const VIRTUAL = 'virtual:emaki-game';
@@ -33,7 +35,7 @@ export function loadTranslations(gameDir: string, strings: SourceString[], repor
     for (const d of diagnostics) report(`${name}:${d.line}: ${d.message}`, d.severity === 'error');
     const r = compileTranslation(catalog, all);
     // Problems in a translation point at the story line it translates.
-    for (const d of r.diagnostics) report(`${name}: story.vn:${d.line}: ${d.message}`, d.severity === 'error');
+    for (const d of r.diagnostics) report(`${name}: ${where(d)}: ${d.message}`, d.severity === 'error');
     out.push(r.translation);
   }
   return out;
@@ -45,6 +47,9 @@ export function emakiGame(gameDir: string): Plugin {
   // The game's own styles, loaded after the player's (see docs/theming.md).
   const themePath = resolve(gameDir, 'theme.css');
   let devServer = false;
+  /** story.vn or one of the story's other files (not a stray .vn in assets/ or a build). */
+  const isStoryFile = (f: string) => f === normalize(storyPath)
+    || storyParts(gameDir).some((p) => normalize(join(gameDir, p)) === f);
 
   return {
     name: 'emaki-game',
@@ -57,10 +62,10 @@ export function emakiGame(gameDir: string): Plugin {
     load(id) {
       if (id !== RESOLVED) return null;
       this.addWatchFile(storyPath);
-      const source = readFileSync(storyPath, 'utf8');
-      const r = compile(source);
+      for (const part of storyParts(gameDir)) this.addWatchFile(join(gameDir, part));
+      const r = compileGame(gameDir);
       for (const d of r.diagnostics) {
-        const msg = `story.vn:${d.line}: ${d.severity}: ${d.message}`;
+        const msg = `${where(d)}: ${d.severity}: ${d.message}`;
         if (d.severity === 'error') this.warn(msg); else this.info?.(msg);
       }
       for (const f of translationFiles(gameDir)) this.addWatchFile(f);
@@ -72,7 +77,8 @@ export function emakiGame(gameDir: string): Plugin {
         `export const story = ${JSON.stringify(r.story)};`,
         `export const translations = ${JSON.stringify(translations)};`,
         `export const diagnostics = ${JSON.stringify(r.diagnostics)};`,
-        `export const sourceLines = ${JSON.stringify(source.replace(/\r\n?/g, '\n').split('\n'))};`,
+        // Source lines of each file (story.vn under ''), for the error screen.
+        `export const sourceLines = ${JSON.stringify(Object.fromEntries([['', r.main], ...r.parts.map((p) => [p.path, p.source])].map(([k, t]) => [k, t!.replace(/\r\n?/g, '\n').split('\n')])))};`,
         // The story map is a dev tool: never ship a spoiler map of the routes in a build.
         `export const graph = ${JSON.stringify(devServer && r.story ? buildGraph(r.program) : null)};`,
       ].join('\n');
@@ -98,10 +104,21 @@ export function emakiGame(gameDir: string): Plugin {
       };
       server.watcher.on('add', onTheme);
       server.watcher.on('unlink', onTheme);
+      // A new or deleted .vn file changes the story.
+      const onScript = (file: string) => {
+        const f = normalize(file);
+        if (!f.endsWith('.vn') || !f.startsWith(normalize(gameDir)) || !isStoryFile(f)) return;
+        const mod = server.moduleGraph.getModuleById(RESOLVED);
+        if (mod) server.moduleGraph.invalidateModule(mod);
+        server.ws.send({ type: 'full-reload' });
+      };
+      server.watcher.add(gameDir);
+      server.watcher.on('add', onScript);
+      server.watcher.on('unlink', onScript);
     },
     handleHotUpdate({ file, server }) {
       const f = normalize(file);
-      if (f !== normalize(storyPath) && !(f.startsWith(langDir) && /\.(po|csv)$/i.test(f))) return;
+      if (!isStoryFile(f) && !(f.startsWith(langDir) && /\.(po|csv)$/i.test(f))) return;
       const mod = server.moduleGraph.getModuleById(RESOLVED);
       if (mod) server.moduleGraph.invalidateModule(mod);
       server.ws.send({ type: 'full-reload' });

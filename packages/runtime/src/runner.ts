@@ -48,6 +48,8 @@ export type SayBlock = {
   /** Styled runs, only when the line uses bold/italic/colour. */
   spans?: Span[];
   line: number; label: string;
+  /** The script file, when it isn't the main story.vn. */
+  file?: string;
 };
 
 export interface ChoiceOption { index: number; id: string; text: string; spans?: Span[] }
@@ -71,8 +73,8 @@ export interface Speaker {
 
 export type Block =
   | SayBlock
-  | { type: 'menu'; id: string; choices: ChoiceOption[]; line: number; label: string }
-  | { type: 'wait'; seconds: number; line: number; label: string }
+  | { type: 'menu'; id: string; choices: ChoiceOption[]; line: number; label: string; file?: string }
+  | { type: 'wait'; seconds: number; line: number; label: string; file?: string }
   | { type: 'end' };
 
 export interface Step {
@@ -164,18 +166,19 @@ export class Runner {
    * the right scene instead of a black screen. Only declared variables in
    * `vars` are applied; the rest keep their starting values.
    */
-  startAtLine(line: number, opts: { vars?: Record<string, Value> } = {}): Step {
+  startAtLine(line: number, opts: { vars?: Record<string, Value>; file?: string } = {}): Step {
     const code = this.story.code;
     let pc = -1;
     for (let i = 0; i < code.length; i++) {
       const ins = code[i]!;
+      if (ins.src.file !== opts.file) continue;
       // The compiler ends every label with a return tagged with the label's own line; skip those.
       const first = code[this.story.labels[ins.src.label] ?? i]!;
       if (ins.op === 'return' && ins.src.line < first.src.line) continue;
       const l = ins.src.line;
       if (l >= line && (pc < 0 || l < code[pc]!.src.line)) pc = i;
     }
-    if (pc < 0) throw new StoryError(`Line ${line} is past the end of the story`, null);
+    if (pc < 0) throw new StoryError(`Line ${line} is past the end of ${opts.file ?? 'story.vn'}`, null);
     const label = code[pc]!.src.label;
     const from = this.story.labels[label] ?? pc;
 
@@ -450,7 +453,7 @@ export class Runner {
     const code = this.story.code;
     const old = data.block;
     let idx = code.findIndex((i) => (i.op === 'say' || i.op === 'menu') && i.id === old.id);
-    if (idx < 0) idx = code.findIndex((i) => (i.op === 'say' || i.op === 'menu') && i.src.line >= old.line);
+    if (idx < 0) idx = code.findIndex((i) => (i.op === 'say' || i.op === 'menu') && i.src.file === old.file && i.src.line >= old.line);
     if (idx < 0) return null;
     const imagesOk = (name: string | null) => !name || name === 'black' || this.story.images[name] !== undefined;
     const scene = imagesOk(data.state.scene.bg) ? data.state.scene : { bg: null, sprites: [] };
@@ -520,11 +523,11 @@ export class Runner {
           if (choices.length === 0) {
             throw new StoryError('Every choice in this menu is hidden by its condition', ins.src.line);
           }
-          return this.blockOn({ type: 'menu', id: ins.id, choices, line: ins.src.line, label: ins.src.label }, effects);
+          return this.blockOn({ type: 'menu', id: ins.id, choices, line: ins.src.line, label: ins.src.label, ...fileOf(ins) }, effects);
         }
         case 'wait':
           s.pc++;
-          return this.blockOn({ type: 'wait', seconds: ins.seconds, line: ins.src.line, label: ins.src.label }, effects);
+          return this.blockOn({ type: 'wait', seconds: ins.seconds, line: ins.src.line, label: ins.src.label, ...fileOf(ins) }, effects);
         case 'scene':
           s.pc++;
           s.scene = { bg: ins.image === 'black' ? null : ins.image, sprites: [] };
@@ -641,6 +644,7 @@ export class Runner {
       who: ins.who && c ? { id: ins.who, name: this.translation?.names[ins.who] ?? c.name, color: c.color } : null,
       ...this.text(ins.id, ins, ins, vars),
       line: ins.src.line,
+      ...fileOf(ins),
       label: ins.src.label,
     };
   }
@@ -698,4 +702,8 @@ function trackAudio(audio: AudioState, ins: Extract<Instr, { op: 'play' | 'stop'
     if (ins.op === 'stop') audio.sound = null;
     else if (ins.loop) audio.sound = { path: ins.path, loop: true };
   }
+}
+
+function fileOf(ins: Instr): { file?: string } {
+  return ins.src.file ? { file: ins.src.file } : {};
 }

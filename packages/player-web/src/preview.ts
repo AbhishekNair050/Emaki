@@ -1,12 +1,15 @@
 /**
  * Dev preview links: `?line=52&trust=2&read_letter=true` opens the game at
- * line 52 of story.vn with those variables set. Used by the editor
+ * line 52 of story.vn with those variables set; `&file=chapters/two.vn` for
+ * a line in another file of the story. Used by the editor
  * integration ("Preview from this line") and handy to bookmark while writing.
  */
 import type { Value } from '@emaki/format';
 
 export interface PreviewRequest {
   line: number;
+  /** The script file, when it isn't story.vn. */
+  file?: string;
   vars: Record<string, Value>;
   /** Parameters that aren't declared variables, or whose value doesn't fit the variable's type. */
   ignored: string[];
@@ -24,13 +27,14 @@ export function parsePreview(search: string, declared: Readonly<Record<string, V
   const vars: Record<string, Value> = {};
   const ignored: string[] = [];
   for (const [name, raw] of params) {
-    if (name === 'line') continue;
+    if (name === 'line' || name === 'file') continue;
     if (!Object.prototype.hasOwnProperty.call(declared, name)) { ignored.push(name); continue; }
     const value = convert(raw, declared[name]!);
     if (value === undefined) ignored.push(name);
     else vars[name] = value;
   }
-  return { line: Number(lineText), vars, ignored };
+  const file = params.get('file');
+  return { line: Number(lineText), ...(file && file !== 'story.vn' ? { file } : {}), vars, ignored };
 }
 
 function convert(raw: string, like: Value): Value | undefined {

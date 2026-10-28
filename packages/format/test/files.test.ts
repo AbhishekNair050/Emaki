@@ -73,3 +73,4 @@ describe('game folders', () => {
     expect(Object.keys(r.story!.labels).sort()).toEqual(['chapter_two', 'start', 'the_end']);
   });
 });
+

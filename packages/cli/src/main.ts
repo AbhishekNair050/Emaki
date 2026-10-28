@@ -2,6 +2,10 @@
 /**
  * Emaki CLI.
  *
+ * A story.vn stands for its whole game: every other .vn file in its folder
+ * is part of the same story (see @emaki/format/files). Any other .vn file is
+ * checked on its own.
+ *
  *   emaki check <story.vn>            report errors and warnings
  *   emaki build <story.vn> [out.json] compile to the runtime format
  *   emaki graph <story.vn>            print a Mermaid flowchart of labels
@@ -15,9 +19,10 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import {
-  buildGraph, catalogStats, compile, compileTranslation, parse, parseCatalog, print, toMermaid, updateCatalog, writeCsv, writePo,
-  type Diagnostic,
+  buildGraph, catalogStats, compileFiles, compileTranslation, parse, parseCatalog, print, toMermaid, updateCatalog, writeCsv, writePo,
+  type Diagnostic, type StoryFile,
 } from '@emaki/format';
+import { MAIN_FILE, storyParts } from '@emaki/format/files';
 import { uiSourceStrings } from '@emaki/player-web/ui-strings';
 import { runExport, TARGETS, type Target } from './export.ts';
 
@@ -45,16 +50,22 @@ try {
   console.error(`Can't read '${file}'`);
   process.exit(1);
 }
+/** The story's other files, when `file` is a game's story.vn. */
+const parts: StoryFile[] = basename(file) === MAIN_FILE
+  ? storyParts(dirname(file)).map((path) => ({ path, source: readFileSync(join(dirname(file!), path), 'utf8') }))
+  : [];
+const compileStory = () => compileFiles(source, parts);
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (code: string, s: string) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
 
 function report(diags: Diagnostic[]): boolean {
-  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  const split = (t: string) => t.replace(/\r\n?/g, '\n').split('\n');
+  const files = new Map<string | undefined, string[]>([[undefined, split(source)], ...parts.map((p): [string, string[]] => [p.path, split(p.source)])]);
   for (const d of diags) {
     const tag = d.severity === 'error' ? c('31;1', 'error') : c('33;1', 'warning');
-    console.log(`${basename(file!)}:${d.line}: ${tag} ${d.message} ${c('2', `[${d.code}]`)}`);
-    const src = lines[d.line - 1];
+    console.log(`${d.file ?? basename(file!)}:${d.line}: ${tag} ${d.message} ${c('2', `[${d.code}]`)}`);
+    const src = files.get(d.file)?.[d.line - 1];
     if (src !== undefined) console.log(c('2', `  ${String(d.line).padStart(4)} | `) + src.trim());
   }
   const errors = diags.filter((d) => d.severity === 'error').length;
@@ -67,7 +78,7 @@ function report(diags: Diagnostic[]): boolean {
 
 switch (cmd) {
   case 'check': {
-    const r = compile(source);
+    const r = compileStory();
     const ok = report(r.diagnostics);
     if (r.story) {
       const says = r.story.code.filter((i) => i.op === 'say').length;
@@ -78,7 +89,7 @@ switch (cmd) {
   }
   // falls through (unreachable; process.exit above)
   case 'build': {
-    const r = compile(source);
+    const r = compileStory();
     if (!report(r.diagnostics) || !r.story) process.exit(1);
     const out = rest[0] ?? file.replace(/\.vn$/, '') + '.compiled.json';
     writeFileSync(out, JSON.stringify(r.story, null, 2));
@@ -86,35 +97,39 @@ switch (cmd) {
     break;
   }
   case 'graph': {
-    const { program, diagnostics } = parse(source);
+    const { program, diagnostics } = compileStory();
     if (diagnostics.some((d) => d.severity === 'error')) { report(diagnostics); process.exit(1); }
     process.stdout.write(toMermaid(buildGraph(program)));
     break;
   }
   case 'fmt': {
-    const { program, diagnostics } = parse(source);
-    if (diagnostics.some((d) => d.severity === 'error')) {
-      report(diagnostics);
-      console.error('Not formatting a file with errors.');
+    // Each file of the story is formatted on its own.
+    const all = [{ path: file, source }, ...parts.map((p) => ({ path: join(dirname(file), p.path), source: p.source }))];
+    const check = rest.includes('--check');
+    const write = rest.includes('--write');
+    if (!check && !write && all.length > 1) {
+      console.error(`${file} has ${all.length - 1} more file(s); use --write or --check to format them all.`);
       process.exit(1);
     }
-    const out = print(program);
-    const formatted = out === source.replace(/\r\n?/g, '\n');
-    if (rest.includes('--check')) {
-      if (formatted) {
-        console.log(c('32', `✓ ${file} is formatted`));
-        break;
+    let bad = false;
+    for (const f of all) {
+      const { program, diagnostics } = parse(f.source);
+      if (diagnostics.some((d) => d.severity === 'error')) {
+        for (const d of diagnostics) console.log(`${f.path}:${d.line}: ${d.message}`);
+        console.error(`Not formatting ${f.path}: it has errors.`);
+        process.exit(1);
       }
-      console.log(`${file} is not formatted. Run: emaki fmt ${file} --write`);
-      process.exit(1);
+      const out = print(program);
+      const formatted = out === f.source.replace(/\r\n?/g, '\n');
+      if (check) {
+        if (formatted) console.log(c('32', `✓ ${f.path} is formatted`));
+        else { console.log(`${f.path} is not formatted. Run: emaki fmt ${file} --write`); bad = true; }
+      } else if (write) {
+        if (formatted) console.log(`${f.path} was already formatted`);
+        else { writeFileSync(f.path, out); console.log(`Formatted ${f.path}`); }
+      } else process.stdout.write(out);
     }
-    if (rest.includes('--write')) {
-      if (formatted) console.log(`${file} was already formatted`);
-      else {
-        writeFileSync(file, out);
-        console.log(`Formatted ${file}`);
-      }
-    } else process.stdout.write(out);
+    if (bad) process.exit(1);
     break;
   }
   case 'strings':
@@ -130,7 +145,7 @@ switch (cmd) {
  * next to the story, keeping existing translations. Without: show progress.
  */
 function strings(): void {
-  const r = compile(source);
+  const r = compileStory();
   if (!r.story) {
     report(r.diagnostics);
     console.error('Fix the errors first: translations are matched to lines of the compiled story.');

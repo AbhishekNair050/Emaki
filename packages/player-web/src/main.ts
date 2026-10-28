@@ -13,8 +13,8 @@ if (!story) {
   const list = diagnostics
     .filter((d) => d.severity === 'error')
     .map((d) => {
-      const src = sourceLines[d.line - 1]?.trim() ?? '';
-      return `<li><b>story.vn:${d.line}</b> ${escape(d.message)}<pre>${escape(src)}</pre></li>`;
+      const src = sourceLines[d.file ?? '']?.[d.line - 1]?.trim() ?? '';
+      return `<li><b>${escape(d.file ?? 'story.vn')}:${d.line}</b> ${escape(d.message)}<pre>${escape(src)}</pre></li>`;
     })
     .join('');
   app.innerHTML = `<h1>Your story has errors</h1><p>Fix these and save; the page reloads by itself.</p><ul>${list}</ul>`;

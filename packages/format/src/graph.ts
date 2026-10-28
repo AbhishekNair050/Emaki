@@ -21,6 +21,8 @@ export interface StoryEdge {
 export interface StoryNode {
   label: string;
   line: number;
+  /** The script file, when it isn't story.vn. */
+  file?: string;
   lines: number;
   /** Ends the story (contains `end`, or falls off without jumping anywhere). */
   ending: boolean;
@@ -59,7 +61,7 @@ export function buildGraph(program: Program): StoryGraph {
     walk(l.body, []);
     const last = l.body[l.body.length - 1];
     const fallsOff = last?.type !== 'jump' && !edges.some((e) => e.from === l.name && e.kind !== 'call');
-    nodes.push({ label: l.name, line: l.loc.line, lines, ending: hasEnd || fallsOff });
+    nodes.push({ label: l.name, line: l.loc.line, ...(l.loc.file ? { file: l.loc.file } : {}), lines, ending: hasEnd || fallsOff });
   }
 
   // Labels entered via `call` are subroutines: falling off the end returns

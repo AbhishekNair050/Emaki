@@ -96,7 +96,7 @@ export class StoryMap {
     }
     if (!block) this.status.textContent = 'On the title screen';
     else if (block.type === 'end') this.status.textContent = 'The story has ended';
-    else this.status.textContent = `In ${label} · story.vn line ${block.line}`;
+    else this.status.textContent = `In ${label} · ${block.file ?? 'story.vn'} line ${block.line}`;
     this.refreshVars();
   }
 
@@ -145,7 +145,7 @@ export class StoryMap {
       }) as SVGGElement;
       const kind = meta.ending ? 'ending' : isStart ? 'start' : 'scene';
       g.append(
-        s('title', {}, `${n.id}\n${meta.lines} lines · story.vn line ${meta.line} · ${kind}${n.unreachable ? ' · unreachable' : ''}\nClick to play from here`),
+        s('title', {}, `${n.id}\n${meta.lines} lines · ${meta.file ?? 'story.vn'} line ${meta.line} · ${kind}${n.unreachable ? ' · unreachable' : ''}\nClick to play from here`),
         s('rect', { width: String(n.w), height: String(n.h), rx: meta.ending ? String(n.h / 2) : '8' }),
         s('text', { x: String(n.w / 2), y: '21', class: 'name' }, truncate(n.id, NAME_MAX)),
         s('text', { x: String(n.w / 2), y: '38', class: 'meta' }, `${meta.lines} lines · L${meta.line}`),

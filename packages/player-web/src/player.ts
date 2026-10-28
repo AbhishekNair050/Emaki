@@ -238,9 +238,9 @@ export class Player {
     }
     const preview = this.opts.dev ? parsePreview(location.search, this.story.vars) : null;
     if (preview) {
-      this.jumpToLine(preview.line, preview.vars);
+      this.jumpToLine(preview.line, preview.vars, preview.file);
       const ignored = preview.ignored.length ? ` (ignored: ${preview.ignored.join(', ')})` : '';
-      this.toast(`Previewing from story.vn line ${preview.line}${ignored}`);
+      this.toast(`Previewing from ${preview.file ?? 'story.vn'} line ${preview.line}${ignored}`);
       return;
     }
     this.showTitle();
@@ -269,7 +269,7 @@ export class Player {
    * Play from a line of the script (dev preview). Uses the given variables, or
    * keeps the current ones; the scene is rebuilt from the top of the label.
    */
-  jumpToLine(line: number, vars?: Record<string, Value>): void {
+  jumpToLine(line: number, vars?: Record<string, Value>, file?: string): void {
     const keep = vars ?? (this.mode === 'title' ? {} : { ...this.runner.vars });
     this.enterPlaying();
     this.auto = this.skip = false;
@@ -277,7 +277,7 @@ export class Player {
     this.epoch++;
     this.busy = false;
     this.guard(() => {
-      const step = this.runner.startAtLine(line, { vars: keep });
+      const step = this.runner.startAtLine(line, { vars: keep, ...(file ? { file } : {}) });
       this.syncScene(this.runner.scene());
       this.syncAudio();
       return this.present(step, true);
