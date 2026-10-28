@@ -8,12 +8,12 @@
 import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { indentWithTab, redo, undo } from '@codemirror/commands';
 import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
-import { linter, lintGutter, openLintPanel, type Diagnostic as LintDiagnostic } from '@codemirror/lint';
-import { EditorState, Prec, StateEffect, StateField, type Text } from '@codemirror/state';
+import { forceLinting, linter, lintGutter, openLintPanel, type Diagnostic as LintDiagnostic } from '@codemirror/lint';
+import { EditorState, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { tags as t } from '@lezer/highlight';
-import { Analysis, format, type CompletionKind } from '@emaki/language';
+import { Analysis, format, type CompletionKind, type StoryContext, type StorySymbol } from '@emaki/language';
 import { emakiLanguage } from './mode.ts';
 
 export interface ScriptPaneHooks {
@@ -30,6 +30,10 @@ export interface ScriptPaneHooks {
    * files from the computer. `line` is the 1-based line it was dropped on.
    */
   onDrop?(drop: { asset?: DraggedAsset; files?: File[] }, line: number): void;
+  /** The rest of the story (multi-file stories): the other files' current text. */
+  context?(): StoryContext | undefined;
+  /** Go to a definition in another file (F12, Ctrl+click). */
+  openDefinition?(sym: StorySymbol): void;
 }
 
 /** What the asset browser puts on the drag (see ASSET_MIME). */
@@ -39,82 +43,119 @@ export interface DraggedAsset {
 }
 export const ASSET_MIME = 'application/x-emaki-asset';
 
-/** One analysis per document version, shared by every feature. */
-const analyses = new WeakMap<Text, Analysis>();
+/**
+ * One analysis per document version (and version of the other files), shared
+ * by every feature. The pane says which file is open and where the rest of the
+ * story is, so names from other files are known.
+ */
+const analyses = new WeakMap<Text, { generation: number; analysis: Analysis }>();
+let storyContext: (() => StoryContext | undefined) | null = null;
+let generation = 0;
+let openDefinitionElsewhere: ((sym: StorySymbol) => void) | null = null;
 export function analysisOf(doc: Text): Analysis {
-  let a = analyses.get(doc);
-  if (!a) analyses.set(doc, (a = new Analysis(doc.toString())));
-  return a;
+  const hit = analyses.get(doc);
+  if (hit && hit.generation === generation) return hit.analysis;
+  const analysis = new Analysis(doc.toString(), storyContext?.() ?? undefined);
+  analyses.set(doc, { generation, analysis });
+  return analysis;
 }
 
 export class ScriptPane {
   readonly view: EditorView;
   private readonly hooks: ScriptPaneHooks;
   private applyingExternal = false;
+  private readonly extensions: Extension[];
+  /** Each open file's editor state (text, cursor, undo history), by path. */
+  private readonly states = new Map<string, EditorState>();
+  /** The file shown, as a path in the game folder. */
+  file: string;
 
-  constructor(parent: HTMLElement, text: string, hooks: ScriptPaneHooks) {
+  constructor(parent: HTMLElement, text: string, hooks: ScriptPaneHooks, file = 'story.vn') {
     this.hooks = hooks;
-    this.view = new EditorView({
-      parent,
-      state: EditorState.create({
-        doc: text,
-        extensions: [
-          basicSetup,
-          emakiLanguage,
-          syntaxHighlighting(highlight),
-          indentUnit.of('  '),
-          EditorState.tabSize.of(2),
-          theme,
-          // Dialogue lines are long; a writer needs to see all of each one.
-          EditorView.lineWrapping,
-          playLineField,
-          lintGutter(),
-          linter((view) => problems(view), { delay: 250 }),
-          autocompletion({ override: [complete], icons: false }),
-          hoverTooltip(hover),
-          // Highest precedence: the default keymap also binds Mod-Enter (insert blank line).
-          Prec.highest(keymap.of([
-            { key: 'Mod-Enter', run: (v) => { this.hooks.onRun(lineAt(v)); return true; } },
-            // CodeMirror only binds Ctrl+Y on Windows/Linux; writers coming from VS Code expect this too.
-            { key: 'Mod-Shift-z', run: redo, preventDefault: true },
-            { key: 'Mod-s', run: () => { this.hooks.onSave?.(); return true; }, preventDefault: true },
-            { key: 'F12', run: (v) => goToDefinition(v, v.state.selection.main.head) },
-            { key: 'Shift-Alt-f', run: (v) => formatDocument(v) },
-            { key: 'Mod-Shift-m', run: openLintPanel },
-            indentWithTab,
-          ])),
-          EditorView.domEventHandlers({
-            dragover: (e) => {
-              if (!this.hooks.onDrop || !accepts(e.dataTransfer)) return false;
-              e.preventDefault();
-              e.dataTransfer!.dropEffect = 'copy';
-              return false; // let CodeMirror draw its drop cursor
-            },
-            drop: (e, v) => {
-              if (!this.hooks.onDrop || !accepts(e.dataTransfer)) return false;
-              e.preventDefault();
-              const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.doc.length;
-              const raw = e.dataTransfer!.getData(ASSET_MIME);
-              const files = [...(e.dataTransfer!.files ?? [])];
-              // Dropping between lines inserts before the line under the pointer.
-              const line = v.state.doc.lineAt(pos).number;
-              if (raw) this.hooks.onDrop({ asset: JSON.parse(raw) as DraggedAsset }, line);
-              else if (files.length) this.hooks.onDrop({ files }, line);
-              return true;
-            },
-            mousedown: (e, v) => {
-              if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false;
-              const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
-              return pos !== null && goToDefinition(v, pos) && (e.preventDefault(), true);
-            },
-          }),
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged && !this.applyingExternal) this.hooks.onChange(u.state.doc.toString());
-            if (u.selectionSet || u.docChanged) this.hooks.onCursor?.(lineAt(u.view));
-          }),
-        ],
+    this.file = file;
+    if (hooks.context) storyContext = () => hooks.context!();
+    if (hooks.openDefinition) openDefinitionElsewhere = (sym) => hooks.openDefinition!(sym);
+    this.extensions = [
+      basicSetup,
+      emakiLanguage,
+      syntaxHighlighting(highlight),
+      indentUnit.of('  '),
+      EditorState.tabSize.of(2),
+      theme,
+      // Dialogue lines are long; a writer needs to see all of each one.
+      EditorView.lineWrapping,
+      playLineField,
+      lintGutter(),
+      linter((view) => problems(view), { delay: 250 }),
+      autocompletion({ override: [complete], icons: false }),
+      hoverTooltip(hover),
+      // Highest precedence: the default keymap also binds Mod-Enter (insert blank line).
+      Prec.highest(keymap.of([
+        { key: 'Mod-Enter', run: (v) => { this.hooks.onRun(lineAt(v)); return true; } },
+        // CodeMirror only binds Ctrl+Y on Windows/Linux; writers coming from VS Code expect this too.
+        { key: 'Mod-Shift-z', run: redo, preventDefault: true },
+        { key: 'Mod-s', run: () => { this.hooks.onSave?.(); return true; }, preventDefault: true },
+        { key: 'F12', run: (v) => goToDefinition(v, v.state.selection.main.head) },
+        { key: 'Shift-Alt-f', run: (v) => formatDocument(v) },
+        { key: 'Mod-Shift-m', run: openLintPanel },
+        indentWithTab,
+      ])),
+      EditorView.domEventHandlers({
+        dragover: (e) => {
+          if (!this.hooks.onDrop || !accepts(e.dataTransfer)) return false;
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = 'copy';
+          return false; // let CodeMirror draw its drop cursor
+        },
+        drop: (e, v) => {
+          if (!this.hooks.onDrop || !accepts(e.dataTransfer)) return false;
+          e.preventDefault();
+          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.doc.length;
+          const raw = e.dataTransfer!.getData(ASSET_MIME);
+          const files = [...(e.dataTransfer!.files ?? [])];
+          // Dropping between lines inserts before the line under the pointer.
+          const line = v.state.doc.lineAt(pos).number;
+          if (raw) this.hooks.onDrop({ asset: JSON.parse(raw) as DraggedAsset }, line);
+          else if (files.length) this.hooks.onDrop({ files }, line);
+          return true;
+        },
+        mousedown: (e, v) => {
+          if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false;
+          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+          return pos !== null && goToDefinition(v, pos) && (e.preventDefault(), true);
+        },
       }),
-    });
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && !this.applyingExternal) this.hooks.onChange(u.state.doc.toString());
+        if (u.selectionSet || u.docChanged) this.hooks.onCursor?.(lineAt(u.view));
+      }),
+    ];
+    this.view = new EditorView({ parent, state: EditorState.create({ doc: text, extensions: this.extensions }) });
+  }
+
+  /**
+   * Show another file of the story. Each file keeps its own cursor and undo
+   * history while the writer switches between them.
+   */
+  open(file: string, text: string): void {
+    if (file === this.file) { this.setText(text); return; }
+    this.states.set(this.file, this.view.state);
+    this.file = file;
+    const saved = this.states.get(file);
+    this.view.setState(saved ?? EditorState.create({ doc: text, extensions: this.extensions }));
+    if (saved) this.setText(text);
+    this.contextChanged();
+  }
+
+  /** Forget a file's editor state (it was deleted). */
+  forget(file: string): void {
+    this.states.delete(file);
+  }
+
+  /** The other files changed: re-check this one against them. */
+  contextChanged(): void {
+    generation++;
+    forceLinting(this.view);
   }
 
   get text(): string {
@@ -237,8 +278,13 @@ function hover(view: EditorView, pos: number) {
 
 function goToDefinition(view: EditorView, pos: number): boolean {
   const line = view.state.doc.lineAt(pos);
-  const sym = analysisOf(view.state.doc).definitionAt(line.number - 1, pos - line.from);
+  const analysis = analysisOf(view.state.doc);
+  const sym = analysis.definitionAt(line.number - 1, pos - line.from);
   if (!sym) return false;
+  if (sym.file !== analysis.file) {
+    openDefinitionElsewhere?.(sym);
+    return !!openDefinitionElsewhere;
+  }
   const target = view.state.doc.line(sym.line + 1);
   const at = target.from + Math.max(0, target.text.indexOf(sym.name));
   view.dispatch({

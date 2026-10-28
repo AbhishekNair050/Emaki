@@ -16,6 +16,8 @@ export interface StoryEdge {
   /** Choice text and/or condition that leads here, if any. */
   via: string | null;
   line: number;
+  /** The file the jump is in, when it isn't story.vn. */
+  file?: string;
 }
 
 export interface StoryNode {
@@ -46,7 +48,7 @@ export function buildGraph(program: Program): StoryGraph {
           case 'say': lines++; break;
           case 'end': hasEnd = true; break;
           case 'jump': case 'call':
-            edges.push({ from: l.name, to: s.target, kind: via.length && s.type === 'jump' ? 'choice' : s.type, via: via.length ? via.join(' / ') : null, line: s.loc.line });
+            edges.push({ from: l.name, to: s.target, kind: via.length && s.type === 'jump' ? 'choice' : s.type, via: via.length ? via.join(' / ') : null, line: s.loc.line, ...(s.loc.file ? { file: s.loc.file } : {}) });
             break;
           case 'menu':
             for (const c of s.choices) walk(c.body, [...via, c.text + (c.cond ? ` [${printExpr(c.cond)}]` : '')]);

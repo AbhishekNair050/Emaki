@@ -1,16 +1,21 @@
 /**
  * Vite plugin for the editor: a tiny API over the game folder.
  *
- *   GET  /__emaki/story   → { text, version }
- *   PUT  /__emaki/story   { text, base } → { version } or 409 { text, version }
+ *   GET  /__emaki/files   → { files: ['story.vn', 'chapters/two.vn', ...] }
+ *   POST /__emaki/files   { path } → creates an empty .vn file in the game
+ *   GET  /__emaki/story?file=chapters/two.vn   → { text, version }  (default: story.vn)
+ *   PUT  /__emaki/story?file=…  { text, base } → { version } or 409 { text, version }
  *   GET  /__emaki/assets  → [{ path, kind, size }]
  *   POST /__emaki/assets?name=file.png  (raw bytes) → { path, kind, size }
  *
- * When story.vn changes on disk (another editor, git), connected editors get
- * an `emaki:story-changed` event with the new version and decide what to do;
- * when files appear or disappear under assets/, `emaki:assets-changed`.
+ * When a script changes on disk (another editor, git), connected editors get
+ * an `emaki:story-changed` event with its file and new version and decide what
+ * to do; when .vn files appear or disappear, `emaki:files-changed`; when files
+ * appear or disappear under assets/, `emaki:assets-changed`.
  */
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { MAIN_FILE, storyParts } from '@emaki/format/files';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { AssetError, AssetStore, MAX_ASSET_BYTES } from './asset-store.ts';
@@ -19,13 +24,28 @@ import { StoryFile } from './story-file.ts';
 const MAX_BODY = 10 * 1024 * 1024;
 
 export function emakiEditor(gameDir: string): Plugin {
-  const story = new StoryFile(resolve(gameDir, 'story.vn'));
+  gameDir = resolve(gameDir);
   const assets = new AssetStore(resolve(gameDir, 'assets'));
+  const files = () => [MAIN_FILE, ...storyParts(gameDir)];
+  /** The story file at a path from the browser, or null if it isn't one of the story's files. */
+  const fileAt = (path: string | null): StoryFile | null => {
+    const rel = path ?? MAIN_FILE;
+    return files().includes(rel) ? new StoryFile(join(gameDir, rel)) : null;
+  };
+  const relPath = (abs: string) => relative(gameDir, resolve(abs)).split(sep).join('/');
 
   return {
     name: 'emaki-editor',
     configureServer(server) {
+      server.middlewares.use('/__emaki/files', (req, res) => {
+        void handleFiles(gameDir, files, req, res).catch((err: unknown) => {
+          send(res, 500, { error: err instanceof Error ? err.message : String(err) });
+        });
+      });
+
       server.middlewares.use('/__emaki/story', (req, res) => {
+        const story = fileAt(new URL(req.url ?? '', 'http://x').searchParams.get('file'));
+        if (!story) return send(res, 404, { error: 'That isn’t one of the story’s files.' });
         void handleStory(story, req, res).catch((err: unknown) => {
           send(res, 500, { error: err instanceof Error ? err.message : String(err) });
         });
@@ -37,18 +57,52 @@ export function emakiEditor(gameDir: string): Plugin {
         });
       });
 
-      server.watcher.add([story.path, assets.root]);
-      const assetsChanged = (file: string) => {
+      server.watcher.add([gameDir, assets.root]);
+      const isScript = (file: string) => file.endsWith('.vn') && files().includes(relPath(file));
+      const added = (file: string) => {
         if (resolve(file).startsWith(assets.root)) server.ws.send({ type: 'custom', event: 'emaki:assets-changed', data: {} });
+        else if (isScript(file)) server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
       };
-      server.watcher.on('add', assetsChanged);
-      server.watcher.on('unlink', assetsChanged);
+      server.watcher.on('add', added);
+      server.watcher.on('unlink', (file) => {
+        if (resolve(file).startsWith(assets.root)) server.ws.send({ type: 'custom', event: 'emaki:assets-changed', data: {} });
+        else if (file.endsWith('.vn')) server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
+      });
       server.watcher.on('change', (file) => {
-        if (resolve(file) !== story.path) return;
-        server.ws.send({ type: 'custom', event: 'emaki:story-changed', data: { version: story.version() } });
+        if (!isScript(file)) return;
+        const story = new StoryFile(resolve(file));
+        server.ws.send({ type: 'custom', event: 'emaki:story-changed', data: { file: relPath(file), version: story.version() } });
       });
     },
   };
+}
+
+/** List the story's files, or create a new one (`chapters/two.vn`, inside the game folder, never over an existing file). */
+async function handleFiles(gameDir: string, files: () => string[], req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (!sameOrigin(req)) return send(res, 403, { error: 'Requests from other sites are not allowed.' });
+  if (req.method === 'GET') return send(res, 200, { files: files() });
+  if (req.method !== 'POST') return send(res, 405, { error: 'Use GET or POST.' });
+  if (!req.headers['content-type']?.startsWith('application/json')) return send(res, 415, { error: 'Send JSON.' });
+  const body = JSON.parse(await readBody(req)) as { path?: unknown };
+  const path = typeof body.path === 'string' ? newFilePath(body.path) : null;
+  if (!path) return send(res, 400, { error: 'Use a name like chapter2.vn or chapters/two.vn: letters, digits, - and _, inside the game folder.' });
+  const abs = join(gameDir, path);
+  if (existsSync(abs)) return send(res, 409, { error: `${path} already exists.` });
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, '', 'utf8');
+  send(res, 201, { path, files: files() });
+}
+
+/** A safe relative path for a new script: folders and a name of letters, digits, - and _, ending in .vn. */
+export function newFilePath(raw: string): string | null {
+  let p = raw.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!p.endsWith('.vn')) p += '.vn';
+  const parts = p.split('/');
+  if (!parts.every((x) => /^[A-Za-z0-9_-]+(\.vn)?$/.test(x)) || parts.slice(0, -1).some((x) => x.endsWith('.vn'))) return null;
+  if (p === MAIN_FILE) return null;
+  // Folders that never hold scripts (see @emaki/format/files).
+  if (parts.length > 1 && ['assets', 'lang', 'dist', 'export', 'node_modules', 'tools'].includes(parts[0]!)) return null;
+  return p;
 }
 
 async function handleStory(story: StoryFile, req: IncomingMessage, res: ServerResponse): Promise<void> {

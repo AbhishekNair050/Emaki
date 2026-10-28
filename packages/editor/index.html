@@ -20,14 +20,18 @@
     </header>
 
     <div class="conflict" role="alert" hidden>
-      <p><b>story.vn was changed outside the editor</b> while you had unsaved edits. <span id="conflict-lines"></span></p>
+      <p><b><span id="conflict-file">story.vn</span> was changed outside the editor</b> while you had unsaved edits. <span id="conflict-lines"></span></p>
       <button type="button" id="keep-mine">Keep the editor’s version</button>
       <button type="button" id="take-theirs">Load the file from disk</button>
     </div>
 
     <main class="workspace">
       <section class="pane script-pane" aria-label="Script">
-        <h2 class="pane-head">story.vn</h2>
+        <div class="pane-head file-head">
+          <label for="file">File</label>
+          <select id="file" title="Which file of the story to edit"></select>
+          <button type="button" id="new-file" title="Add a file to the story (chapters, routes)">+ New file</button>
+        </div>
         <div class="cm-host"></div>
       </section>
       <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize script and game" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" tabindex="0"></div>

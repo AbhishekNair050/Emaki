@@ -21,7 +21,8 @@ export interface FlowchartHooks {
   /** Show this label in the script. */
   reveal(label: string): void;
   /** Show this 1-based line in the script. */
-  revealLine(line: number): void;
+  /** Show a line of the script (in `file` when it isn't story.vn). */
+  revealLine(line: number, file?: string): void;
   /** Play from this label. */
   play(label: string): void;
   addScene(name: string, after: string | null): Edit;
@@ -246,8 +247,8 @@ export class Flowchart {
         const label = e.via.length > 1 ? `${e.via.length} choices` : truncate(e.via[0]!, EDGE_LABEL_MAX);
         g.append(s('text', { x: String(e.mid.x), y: String(e.mid.y), class: 'edge-label' }, label));
       }
-      const line = graph.edges.find((x) => x.from === e.from && x.to === e.to)?.line;
-      if (line) g.addEventListener('click', () => this.hooks.revealLine(line));
+      const edge = graph.edges.find((x) => x.from === e.from && x.to === e.to);
+      if (edge?.line) g.addEventListener('click', () => this.hooks.revealLine(edge.line, edge.file));
       svg.append(g);
     }
 
