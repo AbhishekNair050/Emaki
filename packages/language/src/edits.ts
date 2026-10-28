@@ -17,6 +17,19 @@ export type EditResult =
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/**
+ * For stories split across files: what the rest of the story holds. Scene
+ * edits work on one file's text and use this to know about the others.
+ */
+export interface SceneContext {
+  /** Scenes defined in the story's other files. */
+  others: string[];
+  /** The label the story starts at (it can be in another file). */
+  start?: string;
+}
+
+const NO_CONTEXT: SceneContext = { others: [] };
+
 function load(src: string): Program | string {
   const { program, diagnostics } = parse(src);
   const errors = diagnostics.filter((d) => d.severity === 'error');
@@ -35,10 +48,10 @@ function done(program: Program, find: (p: Program) => number | undefined): EditR
   return { ok: true, text, line };
 }
 
-function checkName(program: Program, name: string): string | null {
+function checkName(program: Program, name: string, ctx: SceneContext): string | null {
   if (!IDENT.test(name)) return `'${name}' isn't a valid scene name: use letters, digits and _ (not starting with a digit), like kitchen_talk.`;
   if (KEYWORDS.has(name)) return `'${name}' is a keyword, so it can't name a scene.`;
-  if (program.labels.some((l) => l.name === name)) return `There is already a scene called '${name}'.`;
+  if (program.labels.some((l) => l.name === name) || ctx.others.includes(name)) return `There is already a scene called '${name}'.`;
   return null;
 }
 
@@ -47,10 +60,10 @@ const labelLine = (name: string) => (p: Program) => p.labels.find((l) => l.name 
 // ------------------------------------------------------------------ scenes
 
 /** Add an empty scene (after `after`, or at the end). */
-export function addScene(src: string, name: string, after?: string): EditResult {
+export function addScene(src: string, name: string, after?: string, ctx: SceneContext = NO_CONTEXT): EditResult {
   const program = load(src);
   if (typeof program === 'string') return fail(program);
-  const bad = checkName(program, name.trim());
+  const bad = checkName(program, name.trim(), ctx);
   if (bad) return fail(bad);
   const label: LabelDef = {
     name: name.trim(),
@@ -62,34 +75,38 @@ export function addScene(src: string, name: string, after?: string): EditResult 
   return done(program, labelLine(label.name));
 }
 
-/** Rename a scene, and every jump, call and `start:` that points at it. */
-export function renameScene(src: string, from: string, to: string): EditResult {
+/**
+ * Rename a scene, and every jump, call and `start:` that points at it. In a
+ * multi-file story, run it on every file: the file defining the scene renames
+ * it, the others only update what points at it (`ctx.others` has the scene).
+ */
+export function renameScene(src: string, from: string, to: string, ctx: SceneContext = NO_CONTEXT): EditResult {
   const program = load(src);
   if (typeof program === 'string') return fail(program);
   const label = program.labels.find((l) => l.name === from);
-  if (!label) return fail(`There is no scene called '${from}'.`);
+  if (!label && !ctx.others.includes(from)) return fail(`There is no scene called '${from}'.`);
   to = to.trim();
   if (to === from) return done(program, labelLine(from));
-  const bad = checkName(program, to);
+  const bad = checkName(program, to, { ...ctx, others: ctx.others.filter((o) => o !== from) });
   if (bad) return fail(bad);
-  label.name = to;
+  if (label) label.name = to;
   for (const l of program.labels) {
     walk(l.body, (s) => {
       if ((s.type === 'jump' || s.type === 'call') && s.target === from) s.target = to;
     });
   }
   for (const m of program.meta) if (m[0] === 'start' && m[1].trim() === from) m[1] = to;
-  return done(program, labelLine(to));
+  return done(program, (p) => labelLine(to)(p) ?? firstRef(p, to));
 }
 
-/** Delete a scene. Refused while anything else still leads to it. */
-export function deleteScene(src: string, name: string): EditResult {
+/** Delete a scene. Refused while anything else in this file still leads to it (check the other files first). */
+export function deleteScene(src: string, name: string, ctx: SceneContext = NO_CONTEXT): EditResult {
   const program = load(src);
   if (typeof program === 'string') return fail(program);
   const i = program.labels.findIndex((l) => l.name === name);
   if (i < 0) return fail(`There is no scene called '${name}'.`);
-  if (program.labels.length === 1) return fail('A story needs at least one scene.');
-  const start = program.meta.find((m) => m[0] === 'start')?.[1].trim() ?? program.labels[0]!.name;
+  if (program.labels.length === 1 && !ctx.others.length) return fail('A story needs at least one scene.');
+  const start = ctx.start ?? program.meta.find((m) => m[0] === 'start')?.[1].trim() ?? program.labels[0]!.name;
   if (start === name) return fail(`'${name}' is where the story starts. Choose another start first.`);
   const refs: string[] = [];
   for (const l of program.labels) {
@@ -101,8 +118,8 @@ export function deleteScene(src: string, name: string): EditResult {
   if (refs.length) return fail(`Other scenes still lead to '${name}': ${refs.join(', ')}. Change those first.`);
   // The comments above the scene go with it: they were about that scene.
   program.labels.splice(i, 1);
-  const next = program.labels[i] ?? program.labels[i - 1]!;
-  return done(program, labelLine(next.name));
+  const next = program.labels[i] ?? program.labels[i - 1];
+  return done(program, next ? labelLine(next.name) : () => 1);
 }
 
 /**
@@ -112,12 +129,12 @@ export function deleteScene(src: string, name: string): EditResult {
  *  - a scene that ends in a choice gets one more option
  * New choice text is a placeholder for the writer to replace.
  */
-export function connectScenes(src: string, from: string, to: string): EditResult {
+export function connectScenes(src: string, from: string, to: string, ctx: SceneContext = NO_CONTEXT): EditResult {
   const program = load(src);
   if (typeof program === 'string') return fail(program);
   const label = program.labels.find((l) => l.name === from);
   if (!label) return fail(`There is no scene called '${from}'.`);
-  if (!program.labels.some((l) => l.name === to)) return fail(`There is no scene called '${to}'.`);
+  if (!program.labels.some((l) => l.name === to) && !ctx.others.includes(to)) return fail(`There is no scene called '${to}'.`);
 
   const body = label.body;
   const last = body[body.length - 1];
@@ -253,4 +270,15 @@ function findDecl(p: Program, kind: AssetKind, name: string): number | undefined
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.?\//, '');
+}
+
+/** The line of the first jump or call to `name` (where a rename shows up in a file that only points at the scene). */
+function firstRef(p: Program, name: string): number | undefined {
+  let line: number | undefined;
+  for (const l of p.labels) {
+    walk(l.body, (s) => {
+      if (line === undefined && (s.type === 'jump' || s.type === 'call') && s.target === name) line = s.loc.line;
+    });
+  }
+  return line;
 }

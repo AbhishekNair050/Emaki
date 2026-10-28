@@ -40,3 +40,27 @@ describe('analysis across files', () => {
     expect(part.ownSymbols().map((s) => s.name)).toEqual(['chapter_two']);
   });
 });
+
+describe('scene edits across files', async () => {
+  const { addScene, connectScenes, deleteScene, renameScene } = await import('../src/edits.ts');
+  const ctxForPart = { others: ['start'], start: 'start' };
+
+  it('renames the scene in its file and the jumps to it in the others', () => {
+    const inPart = renameScene(PART, 'chapter_two', 'reunion', { others: ['start'] });
+    expect(inPart.ok && inPart.text).toContain('label reunion:');
+    const inMain = renameScene(MAIN, 'chapter_two', 'reunion', { others: ['chapter_two'] });
+    expect(inMain.ok && inMain.text).toContain('jump reunion');
+    if (inMain.ok) expect(inMain.text.split('\n')[inMain.line - 1]).toBe('  jump reunion');
+    expect(renameScene(MAIN, 'nope', 'x', { others: ['chapter_two'] })).toMatchObject({ ok: false });
+    expect(renameScene(PART, 'chapter_two', 'start', ctxForPart)).toMatchObject({ ok: false, error: "There is already a scene called 'start'." });
+  });
+
+  it('adds, connects and deletes knowing the other files', () => {
+    expect(addScene(PART, 'start', undefined, ctxForPart)).toMatchObject({ ok: false });
+    const c = connectScenes(PART, 'chapter_two', 'start', ctxForPart);
+    expect(c.ok && c.text).toContain('start');
+    // The only scene in a part file can go, as long as it isn't where the story starts.
+    expect(deleteScene(PART, 'chapter_two', ctxForPart).ok).toBe(true);
+    expect(deleteScene(PART, 'chapter_two', { others: ['start'], start: 'chapter_two' })).toMatchObject({ ok: false });
+  });
+});
