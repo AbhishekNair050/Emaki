@@ -10,7 +10,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { compile } from '@emaki/format';
+import { compileGame, where } from '@emaki/format/files';
 import { buildWeb } from '@emaki/player-web/build';
 
 export const TARGETS = ['web', 'desktop', 'android', 'ios'] as const;
@@ -41,10 +41,10 @@ export function gameInfo(game: string, defaultAppId: (title: string) => string):
   const dir = resolve(existsSync(game) && statSync(game).isFile() ? dirname(game) : game);
   const storyPath = join(dir, 'story.vn');
   if (!existsSync(storyPath)) throw new Error(`No story.vn in ${dir}`);
-  const r = compile(readFileSync(storyPath, 'utf8'));
+  const r = compileGame(dir);
   const errors = r.diagnostics.filter((d) => d.severity === 'error');
   if (!r.story) {
-    throw new Error(`story.vn has ${errors.length} error(s); run 'emaki check' to see them. The first: line ${errors[0]?.line}: ${errors[0]?.message}`);
+    throw new Error(`The story has ${errors.length} error(s); run 'emaki check' to see them. The first: ${where(errors[0]!)}: ${errors[0]?.message}`);
   }
   const meta = r.story.meta;
   const title = meta.title?.trim() || basename(dir);
