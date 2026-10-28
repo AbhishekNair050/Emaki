@@ -6,8 +6,8 @@
  * both thin adapters over it, and a language server could be too.
  */
 import {
-  compile, parse, print, KEYWORDS, POSITIONS, TRANSITIONS,
-  type Diagnostic, type Program, type Stmt,
+  compile, compileFiles, parse, print, printExpr, KEYWORDS, POSITIONS, TRANSITIONS,
+  type Diagnostic, type Loc, type Program, type Stmt, type StoryFile,
 } from '@emaki/format';
 
 export * from './edits.ts';
@@ -37,6 +37,18 @@ export interface StorySymbol {
   line: number;
   /** 0-based last line the definition covers (a label's whole body). */
   endLine: number;
+  /** The file it's defined in, when that isn't story.vn (multi-file stories). */
+  file?: string;
+}
+
+/**
+ * Where a document sits in its game. `file` is its path relative to the game
+ * folder (story.vn, chapters/two.vn); `files` are the game's other .vn files,
+ * story.vn included, so names defined in one file are known in all of them.
+ */
+export interface StoryContext {
+  file: string;
+  files: StoryFile[];
 }
 
 export type CompletionKind = SymbolKind | 'keyword' | 'value';
@@ -53,11 +65,25 @@ export class Analysis {
   readonly program: Program;
   readonly diagnostics: Diagnostic[];
 
-  constructor(source: string) {
+  /** This document's file: undefined for story.vn, as in the compiler's locations. */
+  readonly file: string | undefined;
+
+  constructor(source: string, context?: StoryContext) {
     this.lines = source.split(/\r?\n/);
-    const result = compile(source);
+    const file = context && context.file !== 'story.vn' ? context.file : undefined;
+    this.file = file;
+    let result;
+    if (!context) result = compile(source);
+    else {
+      const others = context.files.filter((f) => f.path !== context.file);
+      const main = file ? others.find((f) => f.path === 'story.vn')?.source ?? '' : source;
+      const parts = others.filter((f) => f.path !== 'story.vn');
+      if (file) parts.push({ path: file, source });
+      result = compileFiles(main, parts);
+    }
     this.program = result.program;
-    this.diagnostics = result.diagnostics;
+    // Only this document's problems; the others are reported in their own files.
+    this.diagnostics = result.diagnostics.filter((d) => d.file === file);
   }
 
   // ------------------------------------------------------------ problems
@@ -95,29 +121,36 @@ export class Analysis {
 
   private collectSymbols(): StorySymbol[] {
     const p = this.program;
-    const one = (line: number) => line - 1;
+    const at = (loc: Loc) => ({ line: loc.line - 1, endLine: loc.line - 1, ...(loc.file ? { file: loc.file } : {}) });
     const out: StorySymbol[] = [
-      ...p.characters.map((c): StorySymbol => ({
-        name: c.id, kind: 'character', detail: c.name + (c.color ? ` ${c.color}` : ''), line: one(c.loc.line), endLine: one(c.loc.line),
-      })),
-      ...p.images.map((i): StorySymbol => ({ name: i.name, kind: 'image', detail: i.path, line: one(i.loc.line), endLine: one(i.loc.line) })),
-      ...p.audio.map((a): StorySymbol => ({ name: a.name, kind: 'audio', detail: a.path, line: one(a.loc.line), endLine: one(a.loc.line) })),
-      ...p.achievements.map((a): StorySymbol => ({ name: a.id, kind: 'achievement', detail: a.name, line: one(a.loc.line), endLine: one(a.loc.line) })),
+      ...p.characters.map((c): StorySymbol => ({ name: c.id, kind: 'character', detail: c.name + (c.color ? ` ${c.color}` : ''), ...at(c.loc) })),
+      ...p.images.map((i): StorySymbol => ({ name: i.name, kind: 'image', detail: i.path, ...at(i.loc) })),
+      ...p.audio.map((a): StorySymbol => ({ name: a.name, kind: 'audio', detail: a.path, ...at(a.loc) })),
+      ...p.achievements.map((a): StorySymbol => ({ name: a.id, kind: 'achievement', detail: a.name, ...at(a.loc) })),
       ...p.vars.map((v): StorySymbol => ({
-        name: v.name, kind: 'variable', detail: `= ${this.textAfter(one(v.loc.line), '=')}`, line: one(v.loc.line), endLine: one(v.loc.line),
+        name: v.name, kind: 'variable', detail: `= ${v.loc.file === this.file ? this.textAfter(v.loc.line - 1, '=') : printExpr(v.init)}`, ...at(v.loc),
       })),
     ];
-    const labels = [...p.labels].sort((a, b) => a.loc.line - b.loc.line);
+    // A label covers its body: up to the last indented line before the next label in the same file.
+    const labels = [...p.labels].sort((a, b) => (a.loc.file ?? '').localeCompare(b.loc.file ?? '') || a.loc.line - b.loc.line);
     labels.forEach((l, i) => {
-      const next = labels[i + 1]?.loc.line ?? this.lines.length + 1;
-      let end = next - 2; // 0-based line before the next label
-      while (end > l.loc.line - 1 && !/^\s+\S/.test(this.lines[end] ?? '')) end--;
       const says = countSays(l.body);
-      out.push({
-        name: l.name, kind: 'label', detail: `${says} line${says === 1 ? '' : 's'} of dialogue`, line: l.loc.line - 1, endLine: end,
-      });
+      const sym: StorySymbol = { name: l.name, kind: 'label', detail: `${says} line${says === 1 ? '' : 's'} of dialogue`, ...at(l.loc) };
+      if (l.loc.file === this.file) {
+        const nextLabel = labels[i + 1];
+        const next = nextLabel && nextLabel.loc.file === this.file ? nextLabel.loc.line : this.lines.length + 1;
+        let end = next - 2; // 0-based line before the next label
+        while (end > l.loc.line - 1 && !/^\s+\S/.test(this.lines[end] ?? '')) end--;
+        sym.endLine = end;
+      }
+      out.push(sym);
     });
     return out;
+  }
+
+  /** Definitions in this document (for outlines), as opposed to the whole story's. */
+  ownSymbols(): StorySymbol[] {
+    return this.symbols().filter((s) => s.file === this.file);
   }
 
   private textAfter(line: number, sep: string): string {
@@ -139,7 +172,7 @@ export class Analysis {
       for (const m of text.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
         const hit = this.definitionAt(line, m.index);
         // Several words can name one thing ("show mira smile"): report it once per line.
-        if (hit === target && last !== target && (includeDeclaration || line !== target.line)) {
+        if (hit === target && last !== target && (includeDeclaration || line !== target.line || target.file !== this.file)) {
           out.push({ line, start: m.index, end: m.index + m[0].length });
         }
         last = hit;
@@ -193,14 +226,14 @@ export class Analysis {
   /** Markdown shown when hovering a name. */
   hoverAt(line: number, col: number): string | undefined {
     const s = this.definitionAt(line, col);
-    if (!s || s.line === line) return undefined;
+    if (!s || (s.line === line && s.file === this.file)) return undefined;
     switch (s.kind) {
       case 'character': return `**${s.name}** — character, shown as *${s.detail}*`;
       case 'image': return `**${s.name}** — image \`${s.detail}\``;
       case 'audio': return `**${s.name}** — audio \`${s.detail}\``;
       case 'achievement': return `**${s.name}** — achievement *${s.detail}*`;
       case 'variable': return `**${s.name}** — variable, starts ${s.detail}`;
-      case 'label': return `**${s.name}** — label, ${s.detail} (line ${s.line + 1})`;
+      case 'label': return `**${s.name}** — label, ${s.detail} (${s.file !== this.file ? `${s.file ?? 'story.vn'} ` : ''}line ${s.line + 1})`;
     }
   }
 
