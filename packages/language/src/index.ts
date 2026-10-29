@@ -301,8 +301,9 @@ const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'cal
  * The dev-server address that opens the game at a line (0-based `line` in,
  * 1-based in the URL, matching what the player expects: `?line=52`).
  */
-export function previewUrl(base: string, line: number): string {
+export function previewUrl(base: string, line: number, file?: string): string {
   const url = new URL(base);
+  if (file && file !== 'story.vn') url.searchParams.set('file', file);
   url.searchParams.set('line', String(line + 1));
   return url.toString();
 }
