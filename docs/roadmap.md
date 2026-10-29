@@ -34,6 +34,10 @@ What is done and what comes next.
 - [x] Desktop export (Electron; D-029) for Windows, macOS and Linux + Steamworks: achievements and overlay (D-030); `achievement`/`achieve` in the language
 - [x] Android/iOS export (Capacitor; D-031): generated native projects kept between exports, debug APK when the Android SDK is present, back button and full screen on phones
 - [x] Localization (D-028): `emaki strings` writes PO or CSV catalogs by line id (with review suggestions for edited lines), the game loads `lang/`, and players switch language at any time; the interface is translatable too
+- [x] Lessons from porting a full existing VN (D-035): `aspect: 4:3`, real sound/voice channels with voice volume, `at 30%` positions, `global var`, `narration: plain`
+- [x] Skip read text only (default) or all text (D-032)
+- [x] Title screen customization (D-033): header keys, `theme.css`, and a scripted `label title`
+- [x] Stories split across files (D-034), in the CLI, dev server, editor and VS Code
 - [ ] Ren'Py importer (common subset)
 - [ ] Plugin API v1
 

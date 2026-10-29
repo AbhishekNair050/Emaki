@@ -135,6 +135,19 @@ npm run emaki -- strings games/mygame/story.vn                   # progress of e
 
 Players pick a language in Settings; by default the game matches their device.
 
+## Splitting a story across files
+A long story can live in several files. `story.vn` is the main one (only it has the header); every other `.vn` file in the game folder, in subfolders too, is part of the same story:
+
+```
+mygame/
+  story.vn            header, characters, the opening
+  chapters/one.vn
+  chapters/two.vn
+  routes/mira.vn
+```
+
+Everything is shared: a label in one file can `jump` to a label in another, and characters, images, variables and achievements can be declared in any file (each name once in the whole story). The order of files doesn't matter. Errors name the file they're in (`chapters/two.vn:14`). The folders `assets`, `lang`, `dist`, `export` and `tools` are never searched for scripts. In the editor, pick a file above the script or add one with **+ New file**.
+
 ## Errors
 `npm run check` (or the dev player) lists every problem with its line number and a suggested fix, e.g.
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
