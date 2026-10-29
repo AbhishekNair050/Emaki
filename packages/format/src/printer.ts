@@ -88,13 +88,13 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         break;
       }
       case 'scene':
-        out.push(pad + ['scene', s.image, withT(s.transition)].filter(Boolean).join(' '));
+        out.push(pad + ['scene', s.image, withT(s.transition, s.duration)].filter(Boolean).join(' '));
         break;
       case 'show':
-        out.push(pad + ['show', s.tag, ...s.attrs, s.at ? `at ${s.at}` : '', withT(s.transition)].filter(Boolean).join(' '));
+        out.push(pad + ['show', s.tag, ...s.attrs, s.at ? `at ${s.at}` : '', withT(s.transition, s.duration)].filter(Boolean).join(' '));
         break;
       case 'hide':
-        out.push(pad + ['hide', s.tag, withT(s.transition)].filter(Boolean).join(' '));
+        out.push(pad + ['hide', s.tag, withT(s.transition, s.duration)].filter(Boolean).join(' '));
         break;
       case 'play':
         out.push(pad + [
@@ -141,8 +141,8 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
   }
 }
 
-function withT(t: string | null): string {
-  return t ? `with ${t}` : '';
+function withT(t: string | null, duration?: number): string {
+  return t ? `with ${t}${duration !== undefined ? ` ${duration}` : ''}` : '';
 }
 
 function asset(a: AssetRef): string {

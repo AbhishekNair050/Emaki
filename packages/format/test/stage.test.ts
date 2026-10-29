@@ -34,3 +34,20 @@ describe('narration header', () => {
     expect(compile('---\nnarration: bold\n---\nlabel start:\n  "Hi."\n').diagnostics.map((d) => d.code)).toEqual(['bad-narration']);
   });
 });
+
+describe('transition durations', () => {
+  it('parse, print back and compile; only when given', async () => {
+    const { parse, print } = await import('@emaki/format');
+    const src = 'image a = "a.png"\nimage ann x = "x.png"\nlabel start:\n  scene a with dissolve 1.5\n  show ann x at left with fade 0.25\n  hide ann with dissolve\n  "Hi."\n';
+    const r = compile(src);
+    expect(r.diagnostics).toEqual([]);
+    const [scene, show, hide] = r.story!.code;
+    expect(scene).toMatchObject({ op: 'scene', transition: 'dissolve', duration: 1.5 });
+    expect(show).toMatchObject({ op: 'show', transition: 'fade', duration: 0.25 });
+    expect(hide).not.toHaveProperty('duration');
+    const printed = print(parse(src).program);
+    expect(printed).toContain('  scene a with dissolve 1.5\n  show ann x at left with fade 0.25\n  hide ann with dissolve\n');
+    expect(compile('image a = "a.png"\nlabel start:\n  scene a with dissolve slow\n  "Hi."\n').diagnostics.map((d) => d.code)).toEqual(['bad-transition']);
+    expect(compile('image a = "a.png"\nlabel start:\n  scene a with dissolve 99\n  "Hi."\n').diagnostics.map((d) => d.code)).toEqual(['bad-transition']);
+  });
+});

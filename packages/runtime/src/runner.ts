@@ -55,9 +55,10 @@ export type SayBlock = {
 export interface ChoiceOption { index: number; id: string; text: string; spans?: Span[] }
 
 export type Effect =
-  | { type: 'scene'; bg: string | null; path: string | null; transition: string | null }
-  | { type: 'show'; tag: string; attrs: string[]; path: string; at: string; transition: string | null; isNew: boolean }
-  | { type: 'hide'; tag: string; transition: string | null }
+  /** `duration`: seconds, when the script set one (`with dissolve 1.5`). */
+  | { type: 'scene'; bg: string | null; path: string | null; transition: string | null; duration?: number }
+  | { type: 'show'; tag: string; attrs: string[]; path: string; at: string; transition: string | null; duration?: number; isNew: boolean }
+  | { type: 'hide'; tag: string; transition: string | null; duration?: number }
   | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
   | { type: 'stop'; channel: Channel; fade: number | null }
   /** A `global var` changed: the host should store `values` (all globals) for future playthroughs. */
@@ -531,7 +532,7 @@ export class Runner {
         case 'scene':
           s.pc++;
           s.scene = { bg: ins.image === 'black' ? null : ins.image, sprites: [] };
-          effects.push({ type: 'scene', bg: s.scene.bg, path: this.imagePath(ins.image), transition: ins.transition });
+          effects.push({ type: 'scene', bg: s.scene.bg, path: this.imagePath(ins.image), transition: ins.transition, ...durationOf(ins) });
           break;
         case 'show': {
           s.pc++;
@@ -551,7 +552,7 @@ export class Runner {
           s.pc++;
           if (s.scene.sprites.some((x) => x.tag === ins.tag)) {
             s.scene.sprites = s.scene.sprites.filter((x) => x.tag !== ins.tag);
-            effects.push({ type: 'hide', tag: ins.tag, transition: ins.transition });
+            effects.push({ type: 'hide', tag: ins.tag, transition: ins.transition, ...durationOf(ins) });
           }
           break;
         case 'play':
@@ -610,7 +611,7 @@ export class Runner {
   private showEffect(sp: SpriteState, transition: string | null, isNew: boolean, ins: Instr): Effect {
     const path = this.resolveSprite(sp.tag, sp.attrs);
     if (path === null) throw new StoryError(`No image for '${[sp.tag, ...sp.attrs].join(' ')}'`, ins.src.line);
-    return { type: 'show', tag: sp.tag, attrs: [...sp.attrs], path, at: sp.at, transition, isNew };
+    return { type: 'show', tag: sp.tag, attrs: [...sp.attrs], path, at: sp.at, transition, ...durationOf(ins), isNew };
   }
 
   private resolveSprite(tag: string, attrs: string[]): string | null {
@@ -706,4 +707,8 @@ function trackAudio(audio: AudioState, ins: Extract<Instr, { op: 'play' | 'stop'
 
 function fileOf(ins: Instr): { file?: string } {
   return ins.src.file ? { file: ins.src.file } : {};
+}
+
+function durationOf(ins: Instr): { duration?: number } {
+  return 'duration' in ins && ins.duration !== undefined ? { duration: ins.duration } : {};
 }

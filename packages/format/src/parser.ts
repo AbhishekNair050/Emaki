@@ -274,12 +274,12 @@ export function parse(source: string): ParseResult {
 
     switch (word) {
       case 'scene': {
-        const { words, transition } = splitWith(args, ln.line);
+        const { words, transition, duration } = splitWith(args, ln.line);
         if (words.includes('at')) err(ln.line, 'bad-scene', `'scene' doesn't take 'at'`);
-        return { type: 'scene', image: words.length ? words.join(' ') : null, transition, loc };
+        return { type: 'scene', image: words.length ? words.join(' ') : null, transition, ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'show': {
-        const { words, transition } = splitWith(args, ln.line);
+        const { words, transition, duration } = splitWith(args, ln.line);
         let at: string | null = null;
         const atIdx = words.indexOf('at');
         if (atIdx >= 0) {
@@ -290,12 +290,12 @@ export function parse(source: string): ParseResult {
         }
         if (words.length === 0) { err(ln.line, 'bad-show', `'show' needs an image, e.g. 'show mira smile'`); return null; }
         if (!words.every((w) => IDENT.test(w))) { err(ln.line, 'bad-show', `Image names may only use letters, digits and _`); return null; }
-        return { type: 'show', tag: words[0], attrs: words.slice(1), at, transition, loc };
+        return { type: 'show', tag: words[0], attrs: words.slice(1), at, transition, ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'hide': {
-        const { words, transition } = splitWith(args, ln.line);
+        const { words, transition, duration } = splitWith(args, ln.line);
         if (words.length !== 1) { err(ln.line, 'bad-hide', `Expected 'hide name'`); return null; }
-        return { type: 'hide', tag: words[0], transition, loc };
+        return { type: 'hide', tag: words[0], transition, ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'play': {
         const m = /^(\w+)\s+(.+)$/.exec(args);
@@ -387,14 +387,22 @@ export function parse(source: string): ParseResult {
     }
   }
 
-  function splitWith(args: string, line: number): { words: string[]; transition: string | null } {
+  /** `... with dissolve` or `... with dissolve 1.5` (seconds). */
+  function splitWith(args: string, line: number): { words: string[]; transition: string | null; duration?: number } {
     const words = args.split(/\s+/).filter(Boolean);
     const wi = words.indexOf('with');
     if (wi < 0) return { words, transition: null };
     const transition = words[wi + 1] ?? null;
     if (!transition) err(line, 'bad-transition', `'with' needs a transition name (fade, dissolve)`);
-    if (words.length > wi + 2) err(line, 'bad-transition', `Unexpected '${words.slice(wi + 2).join(' ')}' after transition`);
-    return { words: words.slice(0, wi), transition };
+    let rest = words.slice(wi + 2);
+    let duration: number | undefined;
+    if (rest.length && /^\d+(\.\d+)?$/.test(rest[0]!)) {
+      duration = Number(rest[0]);
+      if (duration > 30) err(line, 'bad-transition', `${rest[0]} seconds is too long for a transition (30 at most)`);
+      rest = rest.slice(1);
+    }
+    if (rest.length) err(line, 'bad-transition', `Unexpected '${rest.join(' ')}' after the transition (only a duration in seconds can follow, like 'with dissolve 1.5')`);
+    return { words: words.slice(0, wi), transition, ...(duration !== undefined ? { duration } : {}) };
   }
 
   function parseAudioOpts(rest: string, line: number, allowLoop: boolean): { loop: boolean | null; fade: number | null } | null {

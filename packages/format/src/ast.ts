@@ -61,9 +61,10 @@ export interface IfBranch extends Trivia {
 
 export type Stmt = Trivia & (
   | { type: 'say'; who: string | null; attrs: string[]; text: string; loc: Loc }
-  | { type: 'scene'; image: string | null; transition: string | null; loc: Loc }
-  | { type: 'show'; tag: string; attrs: string[]; at: string | null; transition: string | null; loc: Loc }
-  | { type: 'hide'; tag: string; transition: string | null; loc: Loc }
+  /** `duration`: seconds, from `with dissolve 1.5` (the transition's default when absent). */
+  | { type: 'scene'; image: string | null; transition: string | null; duration?: number; loc: Loc }
+  | { type: 'show'; tag: string; attrs: string[]; at: string | null; transition: string | null; duration?: number; loc: Loc }
+  | { type: 'hide'; tag: string; transition: string | null; duration?: number; loc: Loc }
   | { type: 'play'; channel: Channel; asset: AssetRef; loop: boolean | null; fade: number | null; loc: Loc }
   | { type: 'stop'; channel: Channel; fade: number | null; loc: Loc }
   | { type: 'set'; name: string; op: AssignOp; expr: Expr; loc: Loc }

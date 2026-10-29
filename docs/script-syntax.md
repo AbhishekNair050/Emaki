@@ -80,7 +80,7 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `achieve first_light` | Award an achievement (once; earning it again does nothing). On Steam it unlocks the Steam achievement; elsewhere the game remembers it and shows a notice. |
 | `end` | The story ends here. |
 
-Transitions: `fade` (through black), `dissolve` (crossfade), `none`.
+Transitions: `fade` (through black), `dissolve` (crossfade), `none`. Add seconds to set the length: `scene beach with dissolve 1.5`, `scene night with fade 3` (the whole fade, out and back in). Without a number, a dissolve takes 0.4 s and a fade 0.9 s.
 
 Reaching the end of a label **returns** to whoever `call`ed it; if nobody did, the story ends. Labels never "fall through" into the next one.
 

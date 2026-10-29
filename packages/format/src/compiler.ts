@@ -237,7 +237,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
           error(s.loc, 'unknown-image', didYouMean(s.image, Object.keys(images)) ?? `No image named '${s.image}'`);
         }
         checkTransition(s.transition, s.loc);
-        code.push({ op: 'scene', image: s.image, transition: s.transition, src });
+        code.push({ op: 'scene', image: s.image, transition: s.transition, ...dur(s), src });
         return;
       }
       case 'show': {
@@ -249,13 +249,13 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         }
         if (s.at && !POSITIONS.includes(s.at) && !isPercentPosition(s.at)) error(s.loc, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')}, or a percentage of the screen's width like 30%)`);
         checkTransition(s.transition, s.loc);
-        code.push({ op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, at: s.at, transition: s.transition, src });
+        code.push({ op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, at: s.at, transition: s.transition, ...dur(s), src });
         return;
       }
       case 'hide':
         if (!imageTags.has(s.tag)) warn(s.loc, 'unknown-image', `Nothing called '${s.tag}' can be shown, so it can't be hidden`);
         checkTransition(s.transition, s.loc);
-        code.push({ op: 'hide', tag: s.tag, transition: s.transition, src });
+        code.push({ op: 'hide', tag: s.tag, transition: s.transition, ...dur(s), src });
         return;
       case 'play': {
         let path = '';
@@ -489,4 +489,9 @@ function srcRef(loc: Loc, label: string): SrcRef {
 
 function lineOf(loc: Loc): { line: number; file?: string } {
   return loc.file ? { line: loc.line, file: loc.file } : { line: loc.line };
+}
+
+/** A transition's duration, only when the script gave one. */
+function dur(s: { duration?: number }): { duration?: number } {
+  return s.duration !== undefined ? { duration: s.duration } : {};
 }

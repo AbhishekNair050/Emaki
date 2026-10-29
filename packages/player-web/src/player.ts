@@ -521,15 +521,21 @@ export class Player {
 
   // ---------------------------------------------------------- visuals
 
-  private duration(transition: string | null, instant: boolean): number {
-    if (instant || this.reducedMotion || !transition || transition === 'none') return 0;
-    return transition === 'fade' ? 450 : 400;
+  /**
+   * How long a transition takes, in ms. `with fade 2` is the whole fade (out to
+   * black and back), so each half is 1 s; `with dissolve 1.5` is the crossfade.
+   */
+  private duration(fx: { transition: string | null; duration?: number }, instant: boolean): number {
+    const t = fx.transition;
+    if (instant || this.reducedMotion || !t || t === 'none') return 0;
+    if (fx.duration !== undefined) return t === 'fade' ? (fx.duration * 1000) / 2 : fx.duration * 1000;
+    return t === 'fade' ? 450 : 400;
   }
 
   private async applyEffect(fx: Effect, instant: boolean): Promise<void> {
     switch (fx.type) {
       case 'scene': {
-        const ms = this.duration(fx.transition, instant);
+        const ms = this.duration(fx, instant);
         if (fx.transition === 'fade' && ms) {
           await this.fadeTo(1, ms);
           this.textbox.hidden = true;
@@ -543,7 +549,7 @@ export class Player {
         return;
       }
       case 'show': {
-        const ms = this.duration(fx.transition, instant);
+        const ms = this.duration(fx, instant);
         let img = this.spriteLayer.querySelector<HTMLImageElement>(`img[data-tag="${cssEscape(fx.tag)}"]`);
         if (!img) {
           img = el('img', 'sprite') as HTMLImageElement;
@@ -562,7 +568,7 @@ export class Player {
       }
       case 'hide': {
         const img = this.spriteLayer.querySelector<HTMLElement>(`img[data-tag="${cssEscape(fx.tag)}"]`);
-        if (img) await fadeOutAndRemove(img, this.duration(fx.transition, instant));
+        if (img) await fadeOutAndRemove(img, this.duration(fx, instant));
         return;
       }
       case 'play': {

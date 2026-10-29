@@ -24,9 +24,10 @@ export interface SrcRef {
 export type Instr =
   /** `text` has markup removed; `spans` (only when styled) carries bold/italic/colour runs. */
   | { op: 'say'; id: string; who: string | null; attrs: string[]; text: string; spans?: Span[]; src: SrcRef }
-  | { op: 'scene'; image: string | null; transition: string | null; src: SrcRef }
-  | { op: 'show'; tag: string; attrs: string[] | null; at: string | null; transition: string | null; src: SrcRef }
-  | { op: 'hide'; tag: string; transition: string | null; src: SrcRef }
+  /** `duration` (seconds) only when the script gives one: `with dissolve 1.5`. */
+  | { op: 'scene'; image: string | null; transition: string | null; duration?: number; src: SrcRef }
+  | { op: 'show'; tag: string; attrs: string[] | null; at: string | null; transition: string | null; duration?: number; src: SrcRef }
+  | { op: 'hide'; tag: string; transition: string | null; duration?: number; src: SrcRef }
   | { op: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null; src: SrcRef }
   | { op: 'stop'; channel: Channel; fade: number | null; src: SrcRef }
   | { op: 'set'; name: string; expr: Expr; src: SrcRef }
