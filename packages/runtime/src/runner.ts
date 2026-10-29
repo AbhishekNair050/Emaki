@@ -38,6 +38,11 @@ export interface RunState {
   ended: boolean;
   /** Most recent dialogue line, shown behind menus (also after load/rollback). */
   lastSay: SayBlock | null;
+  /**
+   * NVL mode (`nvl on`): the lines on the current page, the newest last; null
+   * in ADV mode (the text box). Missing in saves from before NVL existed.
+   */
+  nvl?: SayBlock[] | null;
 }
 
 /** `label` is the story label the line belongs to (for maps, analytics, debugging). */
@@ -106,6 +111,8 @@ const STEP_LIMIT = 100_000;
 /** Instructions the preload lookahead may visit; keeps it cheap on huge stories. */
 const LOOKAHEAD_INSTRUCTIONS = 2_000;
 const DEFAULT_POSITION = 'center';
+/** Lines an NVL page keeps (a full page holds fewer; the player shows the ones that fit). */
+const NVL_PAGE_MAX = 40;
 
 interface HistoryEntry {
   state: RunState;
@@ -207,6 +214,8 @@ export class Runner {
         if (sp) sp.attrs = [...ins.attrs];
       } else if (ins.op === 'play' || ins.op === 'stop') {
         trackAudio(this.state.audio, ins);
+      } else if (ins.op === 'nvl') {
+        this.state.nvl = ins.mode === 'off' ? null : [];
       }
     }
     this.state.pc = pc;
@@ -483,10 +492,17 @@ export class Runner {
       audio: { music: null, sound: null },
       ended: false,
       lastSay: null,
+      nvl: this.story.meta.nvl === 'on' ? [] : null,
     };
   }
 
   /** The line of dialogue most recently shown (e.g. the line a menu responds to). */
+  /** In NVL mode, the lines on the page (the line being shown is the last); null in ADV mode. */
+  get nvlPage(): SayBlock[] | null {
+    const page = this.state.nvl;
+    return page ? page.map((b) => this.localize(b) as SayBlock) : null;
+  }
+
   get lastSay(): SayBlock | null {
     const b = this.state.lastSay;
     return b ? (this.localize(b) as SayBlock) : null;
@@ -514,7 +530,9 @@ export class Runner {
               effects.push(this.showEffect(sp, null, false, ins));
             }
           }
-          return this.blockOn(this.sayBlock(ins, s.vars), effects);
+          const block = this.sayBlock(ins, s.vars);
+          if (s.nvl) s.nvl = [...s.nvl, block].slice(-NVL_PAGE_MAX);
+          return this.blockOn(block, effects);
         }
         case 'menu': {
           const choices = ins.choices
@@ -532,6 +550,7 @@ export class Runner {
         case 'scene':
           s.pc++;
           s.scene = { bg: ins.image === 'black' ? null : ins.image, sprites: [] };
+          if (s.nvl) s.nvl = []; // a new scene starts a new page
           effects.push({ type: 'scene', bg: s.scene.bg, path: this.imagePath(ins.image), transition: ins.transition, ...durationOf(ins) });
           break;
         case 'show': {
@@ -564,6 +583,10 @@ export class Runner {
           s.pc++;
           trackAudio(s.audio, ins);
           effects.push({ type: 'stop', channel: ins.channel, fade: ins.fade });
+          break;
+        case 'nvl':
+          s.pc++;
+          s.nvl = ins.mode === 'off' ? null : [];
           break;
         case 'achieve': {
           s.pc++;

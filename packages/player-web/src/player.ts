@@ -70,6 +70,10 @@ export class Player {
   private readonly textbox: HTMLElement;
   private readonly namebox: HTMLElement;
   private readonly textEl: HTMLElement;
+  /** NVL mode: the page of text over the whole screen. */
+  private readonly nvlEl: HTMLElement;
+  /** Where the typewriter writes: the text box, or the newest line of an NVL page. */
+  private typeTarget: HTMLElement;
   private readonly liveRegion: HTMLElement;
   private readonly choicesEl: HTMLElement;
   private readonly quickMenu: HTMLElement;
@@ -122,6 +126,10 @@ export class Player {
     this.textbox = el('div', 'textbox');
     this.namebox = el('div', 'namebox');
     this.textEl = el('div', 'text');
+    this.typeTarget = this.textEl;
+    this.nvlEl = el('div', 'nvl-page');
+    this.nvlEl.hidden = true;
+    this.nvlEl.setAttribute('aria-hidden', 'true'); // the live region reads each line
     this.textEl.setAttribute('aria-hidden', 'true');
     this.liveRegion = el('div', 'sr-only');
     this.liveRegion.setAttribute('aria-live', 'polite');
@@ -154,7 +162,7 @@ export class Player {
       label(button('', () => this.confirmTitle()), 'ui.menu'),
     );
 
-    this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.textbox, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
+    this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.nvlEl, this.textbox, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
     root.classList.add('stage-host');
     root.replaceChildren(this.stage);
     this.applySettings();
@@ -375,9 +383,14 @@ export class Player {
     this.choicesEl.replaceChildren();
     this.backBtn.disabled = !this.runner.canGoBack;
     this.textbox.classList.toggle('waiting', false);
+    this.nvlEl.classList.remove('waiting');
+    // NVL mode shows a page of lines; ADV mode the text box.
+    const page = b.type === 'say' || b.type === 'menu' ? this.runner.nvlPage : null;
+    if (!page) { this.nvlEl.hidden = true; this.typeTarget = this.textEl; }
 
     switch (b.type) {
       case 'say':
+        if (page) { this.showPage(page, b, instant || this.skip); this.read.add(b.id); break; }
         if (this.skip && this.settings.skipMode === 'read' && !this.read.has(b.id)) {
           this.skip = false;
           this.updateToggles();
@@ -394,7 +407,8 @@ export class Player {
         this.updateToggles();
         // Keep the line being responded to on screen (also after load/rollback).
         const prompt = this.runner.lastSay;
-        if (prompt) this.showLine(prompt, true, false);
+        if (page) this.showPage(page, null, true);
+        else if (prompt) this.showLine(prompt, true, false);
         else this.textbox.hidden = true;
         this.textbox.classList.remove('waiting');
         this.menuShownAt = instant ? 0 : performance.now();
@@ -469,8 +483,46 @@ export class Player {
 
   /** Draw the first `shownChars` characters, keeping bold/italic/colour runs. */
   private renderText(): void {
-    if (!this.fullSpans) this.textEl.textContent = this.fullText.slice(0, this.shownChars);
-    else this.textEl.replaceChildren(...spanNodes(this.fullSpans, this.shownChars));
+    if (!this.fullSpans) this.typeTarget.textContent = this.fullText.slice(0, this.shownChars);
+    else this.typeTarget.replaceChildren(...spanNodes(this.fullSpans, this.shownChars));
+  }
+
+  /**
+   * NVL mode: the page so far, with `current` (the line being shown) typing
+   * out at the bottom. A page that would overflow turns over: the new line
+   * starts a fresh page. Laid out from the first line every time, so rollback
+   * and loading land on the same page breaks.
+   */
+  private showPage(lines: SayBlock[], current: SayBlock | null, instant: boolean): void {
+    this.textbox.hidden = true;
+    this.nvlEl.hidden = false;
+    const nodes = lines.map((b) => {
+      const p = el('p', b.who ? 'nvl-line' : 'nvl-line narration');
+      if (b.who) {
+        const name = el('span', 'nvl-name', b.who.name);
+        name.style.color = b.who.color ?? '';
+        p.append(name);
+      }
+      const text = el('span', 'nvl-text');
+      if (b.spans) text.append(...spanNodes(b.spans));
+      else text.textContent = b.text;
+      p.append(text);
+      return p;
+    });
+    this.nvlEl.replaceChildren();
+    for (const n of nodes) {
+      this.nvlEl.append(n);
+      if (this.nvlEl.scrollHeight > this.nvlEl.clientHeight + 1 && this.nvlEl.childElementCount > 1) {
+        this.nvlEl.replaceChildren(n); // turn the page
+      }
+    }
+    if (!current) {
+      window.clearInterval(this.typingTimer);
+      return;
+    }
+    this.liveRegion.textContent = current.who ? `${current.who.name}: ${current.text}` : current.text;
+    this.typeTarget = nodes[nodes.length - 1]!.querySelector<HTMLElement>('.nvl-text')!;
+    this.typeText(current.text, current.spans ?? null, instant || this.settings.textSpeed >= INSTANT_SPEED);
   }
 
   private finishTyping(): void {
@@ -483,6 +535,7 @@ export class Player {
 
   private onTextDone(): void {
     this.textbox.classList.add('waiting');
+    this.nvlEl.classList.add('waiting');
     if (this.skip) {
       this.pendingTimer = window.setTimeout(() => this.onAdvance(), 40);
     } else if (this.auto && !(this.voice && !this.voice.paused && !this.voice.ended)) {
@@ -535,6 +588,7 @@ export class Player {
   private async applyEffect(fx: Effect, instant: boolean): Promise<void> {
     switch (fx.type) {
       case 'scene': {
+        this.nvlEl.replaceChildren();
         const ms = this.duration(fx, instant);
         if (fx.transition === 'fade' && ms) {
           await this.fadeTo(1, ms);

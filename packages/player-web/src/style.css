@@ -112,6 +112,30 @@ html, body {
   letter-spacing: 0.02em;
 }
 .text { white-space: pre-wrap; text-wrap: pretty; }
+
+/* ---- NVL mode: pages of text over the whole screen ---- */
+.nvl-page {
+  position: absolute;
+  inset: 0;
+  padding: calc(6 * var(--u)) 9cqw calc(9 * var(--u));
+  background: rgb(6 8 14 / calc(var(--box-alpha, 0.88) * 0.82));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.6 * var(--u));
+  font-family: var(--story-font);
+  font-size: calc(max(15px, calc(3.4 * var(--u))) * var(--text-scale, 1));
+  line-height: 1.55;
+  cursor: pointer;
+}
+.nvl-page[hidden] { display: none; }
+.nvl-line { margin: 0; white-space: pre-wrap; text-wrap: pretty; }
+.nvl-name { font-family: var(--ui-font); font-weight: 650; margin-right: 0.6em; }
+.nvl-line.narration .nvl-text { font-style: italic; color: #e3ddd0; }
+.nvl-line.narration .rt-i { font-style: normal; }
+.stage.narration-plain .nvl-line.narration .nvl-text { font-style: normal; }
+.stage.narration-plain .nvl-line.narration .rt-i { font-style: italic; }
+.nvl-page.waiting .nvl-line:last-child::after { content: ' ▾'; color: var(--accent); }
 .next-indicator {
   position: absolute;
   right: 2cqw;
@@ -178,7 +202,7 @@ html, body {
 .quickmenu button[aria-pressed='true'] { color: var(--accent); }
 .quickmenu button:disabled { opacity: 0.35; cursor: default; }
 
-.stage.hide-ui .textbox, .stage.hide-ui .quickmenu { display: none; }
+.stage.hide-ui .textbox, .stage.hide-ui .quickmenu, .stage.hide-ui .nvl-page { display: none; }
 
 /* ---- Overlays (title, panels) ---- */
 .overlay { position: absolute; inset: 0; display: none; }

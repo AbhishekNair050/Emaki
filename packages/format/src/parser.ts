@@ -24,7 +24,7 @@ interface Line {
 export const KEYWORDS = new Set([
   'define', 'image', 'audio', 'var', 'global', 'label', 'achievement', 'achieve',
   'scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end',
-  'wait', 'menu', 'if', 'elif', 'else', 'with', 'at',
+  'wait', 'menu', 'if', 'elif', 'else', 'with', 'at', 'nvl',
 ]);
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -347,6 +347,9 @@ export function parse(source: string): ParseResult {
       case 'achieve':
         if (!IDENT.test(args)) { err(ln.line, 'bad-achieve', `Expected 'achieve achievement_id'`); return null; }
         return { type: 'achieve', id: args, loc };
+      case 'nvl':
+        if (args !== 'on' && args !== 'off' && args !== 'clear') { err(ln.line, 'bad-nvl', `Expected 'nvl on', 'nvl off' or 'nvl clear'`); return null; }
+        return { type: 'nvl', mode: args, loc };
       case 'wait': {
         const n = Number(args);
         if (!args || !Number.isFinite(n) || n < 0) { err(ln.line, 'bad-wait', `Expected 'wait seconds', e.g. 'wait 1.5'`); return null; }

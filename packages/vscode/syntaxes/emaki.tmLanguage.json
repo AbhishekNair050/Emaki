@@ -301,6 +301,17 @@
           }
         },
         {
+          "match": "^\\s+(nvl)\\s+(on|off|clear)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.nvl.emaki"
+            },
+            "2": {
+              "name": "constant.language.emaki"
+            }
+          }
+        },
+        {
           "match": "^\\s+(wait)\\s+(\\d+(?:\\.\\d+)?)\\s*$",
           "captures": {
             "1": {

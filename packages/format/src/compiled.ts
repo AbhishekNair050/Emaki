@@ -39,7 +39,8 @@ export type Instr =
   | { op: 'end'; src: SrcRef }
   | { op: 'wait'; seconds: number; src: SrcRef }
   /** Unlock an achievement (declared in `achievements`). Non-blocking. */
-  | { op: 'achieve'; id: string; src: SrcRef };
+  | { op: 'achieve'; id: string; src: SrcRef }
+  | { op: 'nvl'; mode: 'on' | 'off' | 'clear'; src: SrcRef };
 
 export interface CompiledChoice {
   id: string;

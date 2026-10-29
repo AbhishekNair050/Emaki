@@ -43,6 +43,7 @@ export interface Program {
 }
 
 export type Channel = 'music' | 'sound' | 'voice';
+export type NvlMode = 'on' | 'off' | 'clear';
 export type AssignOp = '=' | '+=' | '-=';
 
 export interface Choice extends Trivia {
@@ -74,6 +75,8 @@ export type Stmt = Trivia & (
   | { type: 'end'; loc: Loc }
   | { type: 'wait'; seconds: number; loc: Loc }
   | { type: 'achieve'; id: string; loc: Loc }
+  /** `nvl on` (full-screen pages of text), `nvl off` (back to the text box), `nvl clear` (a new page). */
+  | { type: 'nvl'; mode: NvlMode; loc: Loc }
   | { type: 'menu'; choices: Choice[]; loc: Loc }
   | { type: 'if'; branches: IfBranch[]; loc: Loc }
 );

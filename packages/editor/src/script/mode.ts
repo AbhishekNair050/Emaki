@@ -18,7 +18,7 @@ interface State {
 }
 
 const TOP_LEVEL = /^(define|image|audio|global\s+var|var|label|achievement)\b/;
-const STATEMENT = /^(scene|show|hide|play|stop|set|jump|call|return|end|wait|menu|if|elif|else|achieve)\b/;
+const STATEMENT = /^(scene|show|hide|play|stop|set|jump|call|return|end|wait|menu|if|elif|else|achieve|nvl)\b/;
 const WORD_KEYWORD = /^(with|at|fade|loop|and|or|not|if)\b/;
 const ATOM = /^(true|false)\b/;
 

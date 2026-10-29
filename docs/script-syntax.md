@@ -41,6 +41,7 @@ Between `---` lines at the very top: `key: value` pairs.
 - `title`, `author`: shown on the title screen.
 - `start`: the label the story begins at (default: `start`, else the first label).
 - `title_image`, `title_music`, `title_logo`, `title_layout`, `title_buttons`: the title screen's look. A label named `title` replaces the title screen with a scene of your own. See [Theming](theming.md).
+- `nvl`: `on` to start the story in full-screen text (see [NVL mode](#full-screen-text-nvl-mode)).
 - `narration`: `italic` (the default) or `plain`. Plain suits stories told mostly in narration, such as first-person novels.
 - `aspect`: the shape of the screen, as width:height (default `16:9`). Use `4:3` for art drawn for older screens; the game is letterboxed to fit.
 - `language`: the language the script is written in, as a code (`en`, `fr`, `pt-BR`; default `en`).
@@ -83,6 +84,26 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 Transitions: `fade` (through black), `dissolve` (crossfade), `none`. Add seconds to set the length: `scene beach with dissolve 1.5`, `scene night with fade 3` (the whole fade, out and back in). Without a number, a dissolve takes 0.4 s and a fade 0.9 s.
 
 Reaching the end of a label **returns** to whoever `call`ed it; if nobody did, the story ends. Labels never "fall through" into the next one.
+
+## Full-screen text (NVL mode)
+Narration-heavy stories often show text as pages of paragraphs over the whole screen instead of one line in a box.
+
+```
+label night_walk:
+  scene street_night with fade
+  nvl on
+  "The street was empty."
+  "Somewhere a dog barked, twice, and gave up."
+  mira: You came.
+  nvl clear
+  "Later, I would wonder why I did."
+  nvl off
+  mira: Well? Say something.
+```
+
+- `nvl on` switches to pages; `nvl off` goes back to the text box. `nvl: on` in the header starts the whole story in NVL mode.
+- A page fills up line by line and turns over by itself when it's full. `nvl clear` starts a new page sooner, and so does a new `scene`.
+- Dialogue shows the speaker's name before the line. Menus appear over the page.
 
 ## Choices
 ```
@@ -153,4 +174,4 @@ Everything is shared: a label in one file can `jump` to a label in another, and 
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Animations, layered sprites, NVL mode, voice-line auto-mapping, plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.
+Animations, layered sprites, voice-line auto-mapping, plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.

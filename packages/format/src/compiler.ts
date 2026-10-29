@@ -301,6 +301,9 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         }
         code.push({ op: 'achieve', id: s.id, src });
         return;
+      case 'nvl':
+        code.push({ op: 'nvl', mode: s.mode, src });
+        return;
       case 'menu': {
         const choices: CompiledChoice[] = s.choices.map((c) => {
           if (c.cond) checkVars(c.cond, c.loc);
@@ -381,6 +384,9 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   }
   if (meta.title_music !== undefined && !audio[meta.title_music] && !/\.[A-Za-z0-9]+$/.test(meta.title_music)) {
     warn(1, 'unknown-audio', `'title_music: ${meta.title_music}' is neither an audio name nor a file path`);
+  }
+  if (meta.nvl !== undefined && meta.nvl !== 'on' && meta.nvl !== 'off') {
+    warn(1, 'bad-nvl', `'nvl: ${meta.nvl}' should be 'on' (start in full-screen text) or 'off' (the default)`);
   }
   if (meta.narration !== undefined && !['italic', 'plain'].includes(meta.narration)) {
     warn(1, 'bad-narration', `'narration: ${meta.narration}' should be 'italic' (the default) or 'plain'`);

@@ -121,6 +121,9 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
       case 'achieve':
         out.push(`${pad}achieve ${s.id}`);
         break;
+      case 'nvl':
+        out.push(`${pad}nvl ${s.mode}`);
+        break;
       case 'menu':
         out.push(`${pad}menu:`);
         for (const c of s.choices) {
