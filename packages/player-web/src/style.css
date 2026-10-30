@@ -55,6 +55,9 @@ html, body {
 .layer { position: absolute; inset: 0; }
 .bg { position: absolute; inset: 0; background: #000 center / cover no-repeat; }
 .fader { background: #000; opacity: 0; pointer-events: none; }
+.flash { opacity: 0; pointer-events: none; }
+/* `camera`: the player zooms these layers; see moveCamera(). */
+.bg-layer, .sprite-layer { transform-origin: 0 0; }
 
 .sprite {
   position: absolute;

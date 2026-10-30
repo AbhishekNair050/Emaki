@@ -8,7 +8,7 @@
 import { isPercentPosition, parseAspect, type CompiledStory, type CompiledTranslation, type Span, type Value } from '@emaki/format';
 import {
   Runner, StoryError,
-  type Block, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
+  type Block, type CameraState, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
 } from '@emaki/runtime';
 import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
@@ -68,6 +68,8 @@ export class Player {
   private readonly bgLayer: HTMLElement;
   private readonly spriteLayer: HTMLElement;
   private readonly fader: HTMLElement;
+  /** `flash`: a colour over the whole picture and text box for a moment. */
+  private readonly flashEl: HTMLElement;
   private readonly textbox: HTMLElement;
   private readonly namebox: HTMLElement;
   private readonly textEl: HTMLElement;
@@ -129,6 +131,7 @@ export class Player {
     this.bgLayer = el('div', 'layer bg-layer');
     this.spriteLayer = el('div', 'layer sprite-layer');
     this.fader = el('div', 'layer fader');
+    this.flashEl = el('div', 'layer flash');
     this.textbox = el('div', 'textbox');
     this.namebox = el('div', 'namebox');
     this.textEl = el('div', 'text');
@@ -168,7 +171,7 @@ export class Player {
       label(button('', () => this.confirmTitle()), 'ui.menu'),
     );
 
-    this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.nvlEl, this.textbox, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
+    this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.nvlEl, this.textbox, this.flashEl, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
     root.classList.add('stage-host');
     root.replaceChildren(this.stage);
     this.applySettings();
@@ -589,7 +592,7 @@ export class Player {
     const t = fx.transition;
     if (instant || this.reducedMotion || !t || t === 'none') return 0;
     if (fx.duration !== undefined) return t === 'fade' ? (fx.duration * 1000) / 2 : fx.duration * 1000;
-    return t === 'fade' ? 450 : 400;
+    return t === 'fade' ? 450 : t === 'move' ? 500 : 400;
   }
 
   private async applyEffect(fx: Effect, instant: boolean): Promise<void> {
@@ -603,8 +606,11 @@ export class Player {
           this.textbox.hidden = true;
           this.setBackground(fx.path, 0);
           this.spriteLayer.replaceChildren();
+          this.moveCamera(null, 0);
           await this.fadeTo(0, ms);
         } else {
+          // A dissolve also eases a zoomed camera back out, so the old picture doesn't jump.
+          this.moveCamera(null, ms);
           for (const s of this.spriteLayer.children) fadeOutAndRemove(s as HTMLElement, ms);
           await this.setBackground(fx.path, ms);
         }
@@ -624,8 +630,14 @@ export class Player {
           this.spriteLayer.append(img);
           if (ms) await animateOpacity(img, 1, ms);
         } else {
-          img.style.left = positionLeft(fx.at) ?? img.style.left;
+          const left = positionLeft(fx.at) ?? img.style.left;
           if (img.getAttribute('src') !== asset(fx.path)) img.src = asset(fx.path);
+          if (fx.transition === 'move' && ms && left !== img.style.left) {
+            img.style.transition = `left ${ms}ms ease-in-out`;
+            img.style.left = left;
+            await delay(ms);
+            img.style.transition = '';
+          } else img.style.left = left;
         }
         return;
       }
@@ -661,7 +673,58 @@ export class Player {
         this.progress.reachEnding(fx.id);
         this.endingName = fx.name;
         return;
+      case 'shake':
+        if (!instant && !this.reducedMotion) this.shake((fx.duration ?? 0.5) * 1000);
+        return;
+      case 'flash':
+        // Flashing is skipped with reduced motion (it can be uncomfortable), and while skipping.
+        if (!instant && !this.reducedMotion) await this.flash(fx.color, (fx.duration ?? 0.6) * 1000);
+        return;
+      case 'camera':
+        this.moveCamera(fx.camera, instant || this.reducedMotion ? 0 : (fx.duration ?? 0) * 1000);
+        return;
     }
+  }
+
+  // ---------------------------------------------------------- screen effects
+
+  /**
+   * Zoom the picture toward a point. With the transform origin at the top left,
+   * `translate((1 - z) * x%, (1 - z) * y%) scale(z)` keeps the point (x%, y%)
+   * where it is on screen, so a zoom of 1 or more never shows past the edges.
+   * Runs in the background: a slow pan can play under the next lines.
+   */
+  private moveCamera(cam: CameraState | null, ms: number): void {
+    const transform = cam ? `translate(${(1 - cam.zoom) * cam.x}%, ${(1 - cam.zoom) * cam.y}%) scale(${cam.zoom})` : '';
+    for (const layer of [this.bgLayer, this.spriteLayer]) {
+      if (layer.style.transform === transform) continue;
+      layer.style.transition = ms ? `transform ${ms}ms ease-in-out` : 'none';
+      layer.style.transform = transform;
+    }
+  }
+
+  /** Shake the picture for `ms`, dying down; the text keeps going meanwhile. */
+  private shake(ms: number): void {
+    const frames: Keyframe[] = [];
+    const n = Math.max(4, Math.round(ms / 45));
+    for (let i = 0; i < n; i++) {
+      const a = 1.4 * (1 - i / n); // percent of the screen
+      frames.push({ translate: `${i % 2 ? a : -a}% ${((i * 7) % 3 - 1) * a * 0.6}%` });
+    }
+    frames.push({ translate: '0 0' });
+    for (const layer of [this.bgLayer, this.spriteLayer]) layer.animate(frames, { duration: ms });
+  }
+
+  /**
+   * Flash the screen: the colour comes up fast and fades out over the rest of
+   * `ms`. Waits only until the screen is covered, so a `scene` right after a
+   * `flash` changes under it.
+   */
+  private async flash(color: string, ms: number): Promise<void> {
+    const rise = Math.min(120, ms * 0.25);
+    this.flashEl.style.background = color;
+    this.flashEl.animate([{ opacity: 0 }, { opacity: 1, offset: rise / ms }, { opacity: 0 }], { duration: ms, easing: 'ease-out' });
+    await delay(rise);
   }
 
   /** `global var` values from earlier playthroughs on this device. */
@@ -705,6 +768,7 @@ export class Player {
   private syncScene(scene: SceneState): void {
     this.fader.style.opacity = '0';
     void this.setBackground(this.runner.imagePath(scene.bg), 0);
+    this.moveCamera(scene.camera ?? null, 0);
     this.spriteLayer.replaceChildren();
     for (const sp of scene.sprites) {
       const path = this.runner.spritePath(sp);
@@ -872,6 +936,7 @@ export class Player {
     this.textbox.hidden = true;
     this.choicesEl.replaceChildren();
     this.spriteLayer.replaceChildren();
+    this.moveCamera(null, 0);
     this.closeOverlay();
 
     if (this.story.labels.title !== undefined) {
@@ -1466,6 +1531,8 @@ function animateOpacity(node: HTMLElement, to: number, ms: number): Promise<void
     anim.cancel();
   }, () => { node.style.opacity = String(to); });
 }
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function fadeOutAndRemove(node: HTMLElement, ms: number): Promise<void> {
   await animateOpacity(node, 0, ms);
