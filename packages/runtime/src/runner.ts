@@ -17,10 +17,19 @@ export interface SpriteState {
   at: string;
 }
 
+/** `camera zoom 1.5 at 70% 30%`: zoom toward a point given in percent of the screen. */
+export interface CameraState {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
 export interface SceneState {
   /** Background image name, or null for black. */
   bg: string | null;
   sprites: SpriteState[];
+  /** Absent (or null) when the camera shows the whole picture. */
+  camera?: CameraState | null;
 }
 
 export interface AudioState {
@@ -71,7 +80,12 @@ export type Effect =
   /** A `global var` changed: the host should store `values` (all globals) for future playthroughs. */
   | { type: 'globals'; values: Record<string, Value> }
   /** `name` is in the current language. */
-  | { type: 'achieve'; id: string; name: string };
+  | { type: 'achieve'; id: string; name: string }
+  /** Screen effects (`shake`, `flash red`); `duration` in seconds when the script set one. */
+  | { type: 'shake'; duration?: number }
+  | { type: 'flash'; color: string; duration?: number }
+  /** Move the camera to `camera` (null: the whole picture) over `duration` seconds (instant when absent). */
+  | { type: 'camera'; camera: CameraState | null; duration?: number };
 
 export interface Speaker {
   id: string;
@@ -218,6 +232,8 @@ export class Runner {
         trackAudio(this.state.audio, ins);
       } else if (ins.op === 'nvl') {
         this.state.nvl = ins.mode === 'off' ? null : [];
+      } else if (ins.op === 'camera') {
+        scene.camera = cameraOf(ins);
       }
     }
     this.state.pc = pc;
@@ -590,6 +606,19 @@ export class Runner {
           s.pc++;
           s.nvl = ins.mode === 'off' ? null : [];
           break;
+        case 'shake':
+          s.pc++;
+          effects.push({ type: 'shake', ...durationOf(ins) });
+          break;
+        case 'flash':
+          s.pc++;
+          effects.push({ type: 'flash', color: ins.color, ...durationOf(ins) });
+          break;
+        case 'camera':
+          s.pc++;
+          s.scene.camera = cameraOf(ins);
+          effects.push({ type: 'camera', camera: s.scene.camera, ...durationOf(ins) });
+          break;
         case 'achieve': {
           s.pc++;
           const name = this.translation?.strings[`achievement.${ins.id}`]?.text ?? this.story.achievements?.[ins.id]?.name ?? ins.id;
@@ -736,6 +765,11 @@ function trackAudio(audio: AudioState, ins: Extract<Instr, { op: 'play' | 'stop'
 
 function fileOf(ins: Instr): { file?: string } {
   return ins.src.file ? { file: ins.src.file } : {};
+}
+
+/** The camera a `camera` instruction leaves; null for the whole picture (`camera reset`). */
+function cameraOf(ins: Extract<Instr, { op: 'camera' }>): CameraState | null {
+  return ins.zoom === 1 && ins.x === 50 && ins.y === 50 ? null : { zoom: ins.zoom, x: ins.x, y: ins.y };
 }
 
 function durationOf(ins: Instr): { duration?: number } {

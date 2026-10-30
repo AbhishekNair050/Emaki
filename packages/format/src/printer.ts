@@ -128,6 +128,19 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
       case 'nvl':
         out.push(`${pad}nvl ${s.mode}`);
         break;
+      case 'shake':
+        out.push(pad + ['shake', s.duration].filter((x) => x !== undefined).join(' '));
+        break;
+      case 'flash':
+        out.push(pad + ['flash', s.color, s.duration].filter((x) => x !== undefined && x !== null).join(' '));
+        break;
+      case 'camera':
+        out.push(pad + [
+          'camera', s.zoom === null ? 'reset' : `zoom ${s.zoom}`,
+          s.at ? `at ${s.at[0]}% ${s.at[1]}%` : '',
+          s.over !== null ? `over ${s.over}` : '',
+        ].filter(Boolean).join(' '));
+        break;
       case 'menu':
         out.push(`${pad}menu:`);
         for (const c of s.choices) {

@@ -40,7 +40,16 @@ export type Instr =
   | { op: 'wait'; seconds: number; src: SrcRef }
   /** Unlock an achievement (declared in `achievements`). Non-blocking. */
   | { op: 'achieve'; id: string; src: SrcRef }
-  | { op: 'nvl'; mode: 'on' | 'off' | 'clear'; src: SrcRef };
+  | { op: 'nvl'; mode: 'on' | 'off' | 'clear'; src: SrcRef }
+  /** Screen effects; `duration` (seconds) only when the script gives one. Non-blocking. */
+  | { op: 'shake'; duration?: number; src: SrcRef }
+  | { op: 'flash'; color: string; duration?: number; src: SrcRef }
+  /**
+   * Zoom the picture (backgrounds and characters, not the text) by `zoom` (1 =
+   * the whole picture) toward the point `x`, `y` (percent of the screen), over
+   * `duration` seconds (instant when absent). Non-blocking; a new scene resets it.
+   */
+  | { op: 'camera'; zoom: number; x: number; y: number; duration?: number; src: SrcRef };
 
 export interface CompiledChoice {
   id: string;

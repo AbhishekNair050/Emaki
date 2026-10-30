@@ -87,6 +87,15 @@ export type Stmt = Trivia & (
   | { type: 'achieve'; id: string; loc: Loc }
   /** `nvl on` (full-screen pages of text), `nvl off` (back to the text box), `nvl clear` (a new page). */
   | { type: 'nvl'; mode: NvlMode; loc: Loc }
+  /** `shake` or `shake 0.8` (seconds): the picture shakes. */
+  | { type: 'shake'; duration?: number; loc: Loc }
+  /** `flash`, `flash red`, `flash #fff 0.3`: the screen flashes a colour (white by default). */
+  | { type: 'flash'; color: string | null; duration?: number; loc: Loc }
+  /**
+   * `camera zoom 1.5 at 70% 30% over 3`: zoom the picture toward a point (over
+   * seconds); `camera reset` (zoom null) goes back to the whole picture.
+   */
+  | { type: 'camera'; zoom: number | null; at: [number, number] | null; over: number | null; loc: Loc }
   | { type: 'menu'; choices: Choice[]; loc: Loc }
   | { type: 'if'; branches: IfBranch[]; loc: Loc }
 );

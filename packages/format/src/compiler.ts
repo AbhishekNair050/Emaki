@@ -16,7 +16,7 @@ import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts'
 import { parseMarkup, type Span } from './markup.ts';
 import { parse } from './parser.ts';
 
-export const TRANSITIONS = ['fade', 'dissolve', 'none'];
+export const TRANSITIONS = ['fade', 'dissolve', 'move', 'none'];
 export const POSITIONS = ['left', 'center', 'right'];
 
 /** `at 30%`: the sprite's centre, as a percentage of the screen's width from the left (may go past the edges). */
@@ -315,6 +315,18 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         return;
       case 'nvl':
         code.push({ op: 'nvl', mode: s.mode, src });
+        return;
+      case 'shake':
+        code.push({ op: 'shake', ...dur(s), src });
+        return;
+      case 'flash':
+        code.push({ op: 'flash', color: s.color ?? 'white', ...dur(s), src });
+        return;
+      case 'camera':
+        code.push({
+          op: 'camera', zoom: s.zoom ?? 1, x: s.at?.[0] ?? 50, y: s.at?.[1] ?? 50,
+          ...(s.over !== null ? { duration: s.over } : {}), src,
+        });
         return;
       case 'menu': {
         const choices: CompiledChoice[] = s.choices.map((c) => {

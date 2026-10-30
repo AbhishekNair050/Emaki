@@ -142,7 +142,7 @@ describe('completion', () => {
   });
 
   it('offers transitions, positions, variables and channels', () => {
-    expect(labels(edit('  scene kitchen with '), 27)).toEqual(['fade', 'dissolve', 'none']);
+    expect(labels(edit('  scene kitchen with '), 27)).toEqual(['fade', 'dissolve', 'move', 'none']);
     expect(labels(edit('  show mira smile at '), 27)).toEqual(['left', 'center', 'right']);
     expect(labels(edit('  set '), 27)).toEqual(['trust']);
     expect(labels(edit('  "You have {'), 27)).toEqual(['trust']);

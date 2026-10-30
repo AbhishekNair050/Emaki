@@ -28,6 +28,12 @@ export const KEYWORDS = new Set([
 ]);
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** Statements that aren't keywords: `flash: Hi!` is still a character named flash speaking. */
+export const EFFECTS = new Set(['shake', 'flash', 'camera']);
+/** Colours `flash` accepts besides #rgb / #rrggbb. */
+export const FLASH_COLORS = ['white', 'black', 'red'];
+const SECONDS = /^\d+(\.\d+)?$/;
+const PERCENT = /^(\d+(\.\d+)?)%$/;
 const CHANNELS: Channel[] = ['music', 'sound', 'voice'];
 
 export interface ParseResult {
@@ -259,6 +265,8 @@ export function parse(source: string): ParseResult {
     }
 
     if (word && KEYWORDS.has(word)) return parseCommand(word, t, ln);
+    // Screen effects aren't reserved words, so a character may still be called `flash`.
+    if (word && EFFECTS.has(word) && !/^\w+(\s+\w+)*\s*:/.test(t)) return parseEffect(word, t.slice(word.length).trim(), ln);
 
     // Dialogue: `who [attr ...]: text`
     const m = /^([A-Za-z_]\w*)((?:\s+[A-Za-z_]\w*)*)\s*:\s*(.*)$/.exec(t);
@@ -373,6 +381,66 @@ export function parse(source: string): ParseResult {
         err(ln.line, 'misplaced-keyword', `'${word}' can't be used here`);
         return null;
     }
+  }
+
+  /** `shake [s]`, `flash [colour] [s]`, `camera zoom Z [at X% Y%] [over s]`, `camera reset [over s]`. */
+  function parseEffect(word: string, args: string, ln: Line): Stmt | null {
+    const loc = { line: ln.line };
+    const words = args.split(/\s+/).filter(Boolean);
+    const seconds = (w: string | undefined, max: number, what: string): number | null => {
+      if (!w || !SECONDS.test(w)) { err(ln.line, `bad-${word}`, `'${what}' needs seconds, e.g. '${what} 0.5'`); return null; }
+      const n = Number(w);
+      if (n > max) { err(ln.line, `bad-${word}`, `${w} seconds is too long for '${word}' (${max} at most)`); return null; }
+      return n;
+    };
+    if (word === 'shake') {
+      if (words.length > 1) { err(ln.line, 'bad-shake', `Expected 'shake' or 'shake seconds'`); return null; }
+      if (!words.length) return { type: 'shake', loc };
+      const d = seconds(words[0], 10, 'shake');
+      return d === null ? null : { type: 'shake', duration: d, loc };
+    }
+    if (word === 'flash') {
+      let color: string | null = null;
+      if (words[0] && !SECONDS.test(words[0])) {
+        color = words.shift()!;
+        if (!FLASH_COLORS.includes(color) && !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
+          err(ln.line, 'bad-flash', `Unknown colour '${color}' (use ${FLASH_COLORS.join(', ')}, or #rrggbb)`);
+          return null;
+        }
+      }
+      if (words.length > 1) { err(ln.line, 'bad-flash', `Expected 'flash [colour] [seconds]'`); return null; }
+      if (!words.length) return { type: 'flash', color, loc };
+      const d = seconds(words[0], 10, 'flash');
+      return d === null ? null : { type: 'flash', color, duration: d, loc };
+    }
+    // camera
+    let zoom: number | null = null;
+    let at: [number, number] | null = null;
+    let over: number | null = null;
+    const usage = `Expected 'camera zoom 1.5 at 70% 30% over 2' or 'camera reset'`;
+    const next = (w: string): boolean => (words[0] === w ? (words.shift(), true) : false);
+    if (next('reset')) { /* the whole picture */ }
+    else if (next('zoom')) {
+      const z = words.shift();
+      if (!z || !SECONDS.test(z)) { err(ln.line, 'bad-camera', `'zoom' needs a number, e.g. 'camera zoom 1.5' (1 is the whole picture)`); return null; }
+      zoom = Number(z);
+      if (zoom < 1 || zoom > 10) { err(ln.line, 'bad-camera', `Zoom ${z} is out of range: 1 is the whole picture, 10 the closest`); return null; }
+      if (next('at')) {
+        const x = PERCENT.exec(words.shift() ?? '');
+        const y = PERCENT.exec(words.shift() ?? '');
+        if (!x || !y || Number(x[1]) > 100 || Number(y[1]) > 100) {
+          err(ln.line, 'bad-camera', `'at' needs a point as two percentages of the screen, across then down: 'at 70% 30%'`);
+          return null;
+        }
+        at = [Number(x[1]), Number(y[1])];
+      }
+    } else { err(ln.line, 'bad-camera', usage); return null; }
+    if (next('over')) {
+      over = seconds(words.shift(), 60, 'over');
+      if (over === null) return null;
+    }
+    if (words.length) { err(ln.line, 'bad-camera', `Unexpected '${words.join(' ')}'. ${usage}`); return null; }
+    return { type: 'camera', zoom, at, over, loc };
   }
 
   function parseChoice(ln: Line): Choice | null {
