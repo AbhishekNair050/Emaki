@@ -32,10 +32,11 @@ export function print(program: Program): string {
 
   const sections: Array<Array<Trivia & { text: string }>> = [
     program.characters.map((c) => ({ leading: c.leading, text: `define ${c.id} ${q(c.name)}${c.color ? ` color=${c.color}` : ''}` })),
-    program.images.map((i) => ({ leading: i.leading, text: `image ${i.name} = ${q(i.path)}` })),
+    program.images.map((i) => ({ leading: i.leading, text: `image ${i.name} = ${q(i.path)}${i.gallery ? ' gallery' : ''}` })),
     program.audio.map((a) => ({ leading: a.leading, text: `audio ${a.name} = ${q(a.path)}` })),
     program.vars.map((v) => ({ leading: v.leading, text: `${v.global ? 'global ' : ''}var ${v.name} = ${printExpr(v.init)}` })),
     program.achievements.map((a) => ({ leading: a.leading, text: `achievement ${a.id} ${q(a.name)}` })),
+    program.endings.map((e) => ({ leading: e.leading, text: `ending ${e.id} ${q(e.name)}` })),
   ];
   for (const section of sections) {
     if (!section.length) continue;
@@ -112,8 +113,11 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
       case 'jump': case 'call':
         out.push(`${pad}${s.type} ${s.target}`);
         break;
-      case 'return': case 'end':
+      case 'return':
         out.push(pad + s.type);
+        break;
+      case 'end':
+        out.push(pad + (s.ending ? `end ${s.ending}` : 'end'));
         break;
       case 'wait':
         out.push(`${pad}wait ${s.seconds}`);

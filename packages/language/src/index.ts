@@ -26,7 +26,7 @@ export interface Problem {
   code: string;
 }
 
-export type SymbolKind = 'label' | 'character' | 'image' | 'audio' | 'variable' | 'achievement';
+export type SymbolKind = 'label' | 'character' | 'image' | 'audio' | 'variable' | 'achievement' | 'ending';
 
 export interface StorySymbol {
   name: string;
@@ -127,6 +127,7 @@ export class Analysis {
       ...p.images.map((i): StorySymbol => ({ name: i.name, kind: 'image', detail: i.path, ...at(i.loc) })),
       ...p.audio.map((a): StorySymbol => ({ name: a.name, kind: 'audio', detail: a.path, ...at(a.loc) })),
       ...p.achievements.map((a): StorySymbol => ({ name: a.id, kind: 'achievement', detail: a.name, ...at(a.loc) })),
+      ...p.endings.map((e): StorySymbol => ({ name: e.id, kind: 'ending', detail: e.name, ...at(e.loc) })),
       ...p.vars.map((v): StorySymbol => ({
         name: v.name, kind: 'variable', detail: `= ${v.loc.file === this.file ? this.textAfter(v.loc.line - 1, '=') : printExpr(v.init)}`, ...at(v.loc),
       })),
@@ -203,7 +204,11 @@ export class Analysis {
       const a = this.find('achievement', word.text);
       if (a) return a;
     }
-    for (const kind of ['label', 'variable', 'character', 'image', 'audio', 'achievement'] as const) {
+    if (/^\s+end\s/.test(text)) {
+      const e = this.find('ending', word.text);
+      if (e) return e;
+    }
+    for (const kind of ['label', 'variable', 'character', 'image', 'audio', 'achievement', 'ending'] as const) {
       const hit = this.find(kind, word.text);
       if (hit) return hit;
     }
@@ -232,6 +237,7 @@ export class Analysis {
       case 'image': return `**${s.name}** — image \`${s.detail}\``;
       case 'audio': return `**${s.name}** — audio \`${s.detail}\``;
       case 'achievement': return `**${s.name}** — achievement *${s.detail}*`;
+      case 'ending': return `**${s.name}** — ending *${s.detail}*`;
       case 'variable': return `**${s.name}** — variable, starts ${s.detail}`;
       case 'label': return `**${s.name}** — label, ${s.detail} (${s.file !== this.file ? `${s.file ?? 'story.vn'} ` : ''}line ${s.line + 1})`;
     }
@@ -271,6 +277,7 @@ export class Analysis {
       return of('variable');
     }
     if (/^\s+achieve\s+\w*$/.test(before)) return of('achievement');
+    if (/^\s+end\s+\w*$/.test(before)) return of('ending');
     if (/^\s+(play|stop)\s+\w*$/.test(before)) return values(['music', 'sound', 'voice'], 'channel');
     if (/^\s+play\s+\w+\s+\w*$/.test(before)) return of('audio');
     if (/^\s+\w*$/.test(before)) {
@@ -294,7 +301,7 @@ export class Analysis {
   }
 }
 
-const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'global var', 'achievement', 'label'];
+const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'global var', 'achievement', 'ending', 'label'];
 const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl'];
 
 /**

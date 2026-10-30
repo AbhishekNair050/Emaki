@@ -6,7 +6,7 @@
  * once.
  */
 import type {
-  AchievementDef,
+  AchievementDef, EndingDef,
   AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, Program, Stmt,
   Trivia, VarDef,
 } from './ast.ts';
@@ -22,7 +22,7 @@ interface Line {
 }
 
 export const KEYWORDS = new Set([
-  'define', 'image', 'audio', 'var', 'global', 'label', 'achievement', 'achieve',
+  'define', 'image', 'audio', 'var', 'global', 'label', 'achievement', 'achieve', 'ending',
   'scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end',
   'wait', 'menu', 'if', 'elif', 'else', 'with', 'at', 'nvl',
 ]);
@@ -40,7 +40,7 @@ export function parse(source: string): ParseResult {
   const err = (line: number, code: string, message: string) =>
     diagnostics.push({ severity: 'error', line, code, message });
 
-  const program: Program = { meta: [], characters: [], images: [], audio: [], vars: [], achievements: [], labels: [] };
+  const program: Program = { meta: [], characters: [], images: [], audio: [], vars: [], achievements: [], endings: [], labels: [] };
   const rawLines = source.replace(/\r\n?/g, '\n').split('\n');
 
   // --- Frontmatter -------------------------------------------------------
@@ -131,14 +131,15 @@ export function parse(source: string): ParseResult {
       if (!m) { err(ln.line, `bad-${word}`, `Expected '${word} name = "path"'`); return; }
       const q = safeQuoted(m[2], ln.line);
       if (!q) return;
-      if (q.rest) err(ln.line, `bad-${word}`, `Unexpected text after path: '${q.rest}'`);
+      const gallery = word === 'image' && q.rest === 'gallery';
+      if (q.rest && !gallery) err(ln.line, `bad-${word}`, word === 'image' ? `Unexpected text after path: '${q.rest}' (only 'gallery' can follow)` : `Unexpected text after path: '${q.rest}'`);
       const name = m[1].trim().split(/\s+/).join(' ');
       if (!name.split(' ').every((p) => IDENT.test(p))) {
         err(ln.line, `bad-${word}`, `Names may only use letters, digits and _`);
         return;
       }
       const list = word === 'image' ? program.images : program.audio;
-      list.push(attach<ImageDef | AudioDef>({ name, path: q.value, loc: { line: ln.line } }, ln, list.length === 0));
+      list.push(attach<ImageDef | AudioDef>({ name, path: q.value, ...(gallery ? { gallery: true } : {}), loc: { line: ln.line } }, ln, list.length === 0));
       return;
     }
 
@@ -148,6 +149,17 @@ export function parse(source: string): ParseResult {
       const e = safeExpr(m[3], ln.line);
       const def: VarDef = { name: m[2], init: e!, ...(m[1] ? { global: true } : {}), loc: { line: ln.line } };
       if (e) program.vars.push(attach<VarDef>(def, ln, program.vars.length === 0));
+      return;
+    }
+
+    if (word === 'ending') {
+      const m = /^ending\s+([A-Za-z_]\w*)\s+(".*)$/.exec(t);
+      if (!m) { err(ln.line, 'bad-ending', `Expected 'ending id "Name"', e.g. ending light_holds "The Light Holds"`); return; }
+      const q = safeQuoted(m[2], ln.line);
+      if (!q) return;
+      if (q.rest) err(ln.line, 'bad-ending', `Unexpected text after the name: '${q.rest}'`);
+      if (KEYWORDS.has(m[1])) { err(ln.line, 'reserved-name', `'${m[1]}' is a keyword and can't be an ending id`); return; }
+      program.endings.push(attach<EndingDef>({ id: m[1], name: q.value, loc: { line: ln.line } }, ln, program.endings.length === 0));
       return;
     }
 
@@ -341,9 +353,11 @@ export function parse(source: string): ParseResult {
         return { type: word, target: args, loc };
       }
       case 'return':
+        if (args) err(ln.line, 'bad-return', `'return' takes no arguments`);
+        return { type: 'return', loc };
       case 'end':
-        if (args) err(ln.line, `bad-${word}`, `'${word}' takes no arguments`);
-        return { type: word, loc };
+        if (args && !IDENT.test(args)) { err(ln.line, 'bad-end', `Expected 'end' or 'end ending_id'`); return null; }
+        return args ? { type: 'end', ending: args, loc } : { type: 'end', loc };
       case 'achieve':
         if (!IDENT.test(args)) { err(ln.line, 'bad-achieve', `Expected 'achieve achievement_id'`); return null; }
         return { type: 'achieve', id: args, loc };

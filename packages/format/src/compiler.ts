@@ -41,7 +41,7 @@ export interface CompileResult {
  */
 export interface SourceString {
   id: string;
-  kind: 'line' | 'choice' | 'name' | 'meta' | 'achievement' | 'ui';
+  kind: 'line' | 'choice' | 'name' | 'meta' | 'achievement' | 'ending' | 'ui';
   /** Character id for dialogue, null for narration and everything else. */
   speaker: string | null;
   /** Source text, with its markup and {variables}. */
@@ -86,6 +86,7 @@ export function compileFiles(main: string, parts: StoryFile[] = []): CompileResu
     program.audio.push(...r.program.audio);
     program.vars.push(...r.program.vars);
     program.achievements.push(...r.program.achievements);
+    program.endings.push(...r.program.endings);
     program.labels.push(...r.program.labels);
   }
   const res = compileProgram(program);
@@ -120,6 +121,11 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   const meta: Record<string, string> = {};
   for (const [k, v] of program.meta) meta[k] = v;
 
+  const endings: Record<string, { name: string }> = {};
+  for (const e of program.endings) {
+    if (endings[e.id]) error(e.loc, 'duplicate', `Ending '${e.id}' is already declared`);
+    endings[e.id] = { name: e.name };
+  }
   const achievements: Record<string, { name: string }> = {};
   for (const a of program.achievements) {
     if (achievements[a.id]) error(a.loc, 'duplicate', `Achievement '${a.id}' is already declared`);
@@ -292,7 +298,13 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         return;
       }
       case 'return': code.push({ op: 'return', src }); return;
-      case 'end': code.push({ op: 'end', src }); return;
+      case 'end':
+        if (s.ending && !endings[s.ending]) {
+          error(s.loc, 'unknown-ending', didYouMean(s.ending, Object.keys(endings))
+            ?? `Unknown ending '${s.ending}'. Declare it at the top: ending ${s.ending} "Its Name"`);
+        }
+        code.push(s.ending ? { op: 'end', ending: s.ending, src } : { op: 'end', src });
+        return;
       case 'wait': code.push({ op: 'wait', seconds: s.seconds, src }); return;
       case 'achieve':
         if (!achievements[s.id]) {
@@ -373,8 +385,8 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     warn(1, 'bad-title-layout', `'title_layout: ${meta.title_layout}' should be center, left, right or bottom`);
   }
   if (meta.title_buttons !== undefined) {
-    const unknown = meta.title_buttons.split(/[\s,]+/).filter((b) => b && !['start', 'load', 'settings', 'quit'].includes(b));
-    if (unknown.length) warn(1, 'bad-title-buttons', `Unknown title button '${unknown[0]}' (use start, load, settings, quit)`);
+    const unknown = meta.title_buttons.split(/[\s,]+/).filter((b) => b && !['start', 'load', 'extras', 'settings', 'quit'].includes(b));
+    if (unknown.length) warn(1, 'bad-title-buttons', `Unknown title button '${unknown[0]}' (use start, load, extras, settings, quit)`);
   }
   for (const key of ['title_image', 'title_logo'] as const) {
     const v = meta[key];
@@ -409,6 +421,8 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     version: FORMAT_VERSION,
     meta, start, characters, images, audio,
     ...(Object.keys(achievements).length ? { achievements } : {}),
+    ...(Object.keys(endings).length ? { endings } : {}),
+    ...(program.images.some((i) => i.gallery) ? { gallery: program.images.filter((i) => i.gallery).map((i) => i.name) } : {}),
     vars,
     ...(program.vars.some((v) => v.global) ? { globals: program.vars.filter((v) => v.global).map((v) => v.name) } : {}),
     labels, code,
@@ -420,6 +434,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     ...program.meta.filter(([k]) => k === 'title').map(([k, v]): SourceString => ({ id: `meta.${k}`, kind: 'meta', speaker: null, text: v, label: null, line: 0 })),
     ...program.characters.map((c): SourceString => ({ id: `name.${c.id}`, kind: 'name', speaker: c.id, text: c.name, label: null, ...lineOf(c.loc) })),
     ...program.achievements.map((a): SourceString => ({ id: `achievement.${a.id}`, kind: 'achievement', speaker: null, text: a.name, label: null, ...lineOf(a.loc) })),
+    ...program.endings.map((e): SourceString => ({ id: `ending.${e.id}`, kind: 'ending', speaker: null, text: e.name, label: null, ...lineOf(e.loc) })),
   ];
   return { story, diagnostics, strings: [...header, ...strings] };
 }

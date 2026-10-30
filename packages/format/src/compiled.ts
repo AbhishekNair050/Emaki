@@ -36,7 +36,7 @@ export type Instr =
   | { op: 'menu'; id: string; choices: CompiledChoice[]; src: SrcRef }
   | { op: 'call'; target: number; label: string; src: SrcRef }
   | { op: 'return'; src: SrcRef }
-  | { op: 'end'; src: SrcRef }
+  | { op: 'end'; ending?: string; src: SrcRef }
   | { op: 'wait'; seconds: number; src: SrcRef }
   /** Unlock an achievement (declared in `achievements`). Non-blocking. */
   | { op: 'achieve'; id: string; src: SrcRef }
@@ -64,6 +64,10 @@ export interface CompiledStory {
   achievements?: Record<string, { name: string }>;
   /** Initial variable values. */
   vars: Record<string, Value>;
+  /** Images for the Extras gallery, in the order they're declared (`image ... gallery`). */
+  gallery?: string[];
+  /** Endings (`ending id "Name"`), reached with `end id`. */
+  endings?: Record<string, { name: string }>;
   /** Variables declared `global var`: the player keeps their values across playthroughs. */
   globals?: string[];
   /** Label name -> instruction index. */

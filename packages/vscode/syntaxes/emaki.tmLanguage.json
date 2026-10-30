@@ -293,7 +293,7 @@
           }
         },
         {
-          "match": "^\\s+(return|end)\\s*$",
+          "match": "^\\s+(return|end)(?:\\s+[A-Za-z_][A-Za-z0-9_]*)?\\s*$",
           "captures": {
             "1": {
               "name": "keyword.control.flow.$1.emaki"
@@ -578,7 +578,7 @@
       ]
     },
     "achievement": {
-      "match": "^(achievement)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")",
+      "match": "^(achievement|ending)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")",
       "captures": {
         "1": {
           "name": "storage.type.achievement.emaki"

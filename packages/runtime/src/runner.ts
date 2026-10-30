@@ -66,6 +66,8 @@ export type Effect =
   | { type: 'hide'; tag: string; transition: string | null; duration?: number }
   | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
   | { type: 'stop'; channel: Channel; fade: number | null }
+  /** The story reached a declared ending (`end light_holds`); `name` is translated. */
+  | { type: 'ending'; id: string; name: string }
   /** A `global var` changed: the host should store `values` (all globals) for future playthroughs. */
   | { type: 'globals'; values: Record<string, Value> }
   /** `name` is in the current language. */
@@ -618,6 +620,10 @@ export class Runner {
           break;
         case 'end':
           s.ended = true;
+          if (ins.ending) {
+            const name = this.translation?.strings[`ending.${ins.ending}`]?.text ?? this.story.endings?.[ins.ending]?.name ?? ins.ending;
+            effects.push({ type: 'ending', id: ins.ending, name });
+          }
           break;
       }
     }

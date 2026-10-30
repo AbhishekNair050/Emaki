@@ -17,7 +17,13 @@ export interface Trivia {
 }
 
 export interface CharacterDef extends Trivia { id: string; name: string; color: string | null; loc: Loc }
-export interface ImageDef extends Trivia { name: string; path: string; loc: Loc }
+export interface ImageDef extends Trivia {
+  name: string;
+  path: string;
+  /** `image beach = "cg/beach.png" gallery`: shown in the Extras gallery once seen. */
+  gallery?: boolean;
+  loc: Loc;
+}
 export interface AudioDef extends Trivia { name: string; path: string; loc: Loc }
 export interface VarDef extends Trivia {
   name: string;
@@ -27,6 +33,8 @@ export interface VarDef extends Trivia {
   loc: Loc;
 }
 export interface AchievementDef extends Trivia { id: string; name: string; loc: Loc }
+/** `ending light_holds "The Light Holds"`, reached with `end light_holds`. */
+export interface EndingDef extends Trivia { id: string; name: string; loc: Loc }
 export interface LabelDef extends Trivia { name: string; body: Stmt[]; loc: Loc }
 
 export interface Program {
@@ -37,6 +45,7 @@ export interface Program {
   audio: AudioDef[];
   vars: VarDef[];
   achievements: AchievementDef[];
+  endings: EndingDef[];
   labels: LabelDef[];
   /** Comments after the last line of the file. */
   trailing?: string[];
@@ -72,7 +81,8 @@ export type Stmt = Trivia & (
   | { type: 'jump'; target: string; loc: Loc }
   | { type: 'call'; target: string; loc: Loc }
   | { type: 'return'; loc: Loc }
-  | { type: 'end'; loc: Loc }
+  /** `end`, or `end light_holds` to reach a declared ending. */
+  | { type: 'end'; ending?: string; loc: Loc }
   | { type: 'wait'; seconds: number; loc: Loc }
   | { type: 'achieve'; id: string; loc: Loc }
   /** `nvl on` (full-screen pages of text), `nvl off` (back to the text box), `nvl clear` (a new page). */

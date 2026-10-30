@@ -14,7 +14,7 @@ describe('title screen', () => {
     const head = (h: string) => codes(`---\n${h}\n---\nimage bg = "bg.png"\naudio theme = "theme.ogg"\nlabel start:\n  "Hi."\n`);
     expect(head('title_layout: left\ntitle_buttons: start, settings\ntitle_image: bg\ntitle_logo: logo.png\ntitle_music: theme')).toEqual([]);
     expect(head('title_layout: diagonal')).toEqual(['bad-title-layout']);
-    expect(head('title_buttons: start, extras')).toEqual(['bad-title-buttons']);
+    expect(head('title_buttons: start, credits')).toEqual(['bad-title-buttons']);
     expect(head('title_image: nope')).toEqual(['unknown-image']);
     expect(head('title_music: nope')).toEqual(['unknown-audio']);
   });

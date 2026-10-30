@@ -57,6 +57,8 @@ Between `---` lines at the very top: `key: value` pairs.
 | `audio rain = "audio/rain.ogg"` | A named sound. |
 | `var trust = 0` | A variable with its starting value. Numbers, `"text"`, `true`/`false`. Must be declared before use. |
 | `global var endings_seen = 0` | A variable that keeps its value across playthroughs on this device (endings seen, unlocked extras). Loading a save or going back never undoes it. |
+| `image beach_kiss = "cg/beach.png" gallery` | An image that appears in the **Extras** gallery once a player has seen it (in any playthrough). |
+| `ending light_holds "The Light Holds"` | An ending, reached with `end light_holds`. Extras lists every ending, with the ones not reached yet as ???. |
 | `achievement first_light "First Light"` | An achievement players can earn. Use the same id as on Steam. |
 | `label name:` | A scene of your story. Everything indented under it runs in order. |
 
@@ -79,7 +81,7 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `call label_name` / `return` | Visit a label and come back when it ends. |
 | `wait 1.5` | Pause for 1.5 seconds. |
 | `achieve first_light` | Award an achievement (once; earning it again does nothing). On Steam it unlocks the Steam achievement; elsewhere the game remembers it and shows a notice. |
-| `end` | The story ends here. |
+| `end` | The story ends here. `end light_holds` reaches a declared ending: its name shows on the end screen and it's recorded for Extras. |
 
 Transitions: `fade` (through black), `dissolve` (crossfade), `none`. Add seconds to set the length: `scene beach with dissolve 1.5`, `scene night with fade 3` (the whole fade, out and back in). Without a number, a dissolve takes 0.4 s and a fade 0.9 s.
 

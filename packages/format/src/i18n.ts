@@ -242,6 +242,7 @@ function describe(e: CatalogEntry): string {
     case 'name': return `Name of the character '${e.speaker}'`;
     case 'meta': return 'Title of the game';
     case 'achievement': return 'Name of an achievement';
+    case 'ending': return 'Name of an ending';
     case 'ui': return 'Game interface';
   }
 }
@@ -332,6 +333,7 @@ function kindOf(id: string): CatalogEntry['kind'] {
   if (id.startsWith('meta.')) return 'meta';
   if (id.startsWith('ui.')) return 'ui';
   if (id.startsWith('achievement.')) return 'achievement';
+  if (id.startsWith('ending.')) return 'ending';
   return 'line'; // lines and choices are told apart by the script on the next update
 }
 
@@ -343,7 +345,7 @@ const CSV_HEADER = ['id', 'speaker', 'source', 'translation', 'status'];
 export function writeCsv(catalog: Catalog): string {
   const rows = [CSV_HEADER];
   for (const e of catalog.entries) {
-    const speaker = e.kind === 'line' ? e.speaker ?? '' : e.kind === 'name' ? '(name)' : e.kind === 'choice' ? '(choice)' : e.kind === 'meta' ? '(title)' : e.kind === 'achievement' ? '(achievement)' : '(interface)';
+    const speaker = e.kind === 'line' ? e.speaker ?? '' : e.kind === 'name' ? '(name)' : e.kind === 'choice' ? '(choice)' : e.kind === 'meta' ? '(title)' : e.kind === 'achievement' ? '(achievement)' : e.kind === 'ending' ? '(ending)' : '(interface)';
     rows.push([e.id, speaker, e.source, e.translation, e.status === 'ok' ? '' : e.status]);
   }
   // A byte-order mark so Excel opens UTF-8 correctly.

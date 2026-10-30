@@ -10,10 +10,10 @@ title_image: cliff_road          # background: an image name or a path in assets
 title_music: theme               # music: an audio name or a path
 title_logo: ui/logo.png          # an image shown instead of the title text
 title_layout: left               # where the title and buttons sit: center (default), left, right, bottom
-title_buttons: start, settings   # built-in buttons and their order (default: start, load, settings, quit)
+title_buttons: start, settings   # built-in buttons and their order (default: start, load, extras, settings, quit)
 ---
 ```
-Load only appears when there are saves, and Quit only in desktop and phone apps.
+Load only appears when there are saves, Extras only when the story has gallery images, endings or achievements, and Quit only in desktop and phone apps.
 
 ## 2. A scripted title screen (`label title`)
 Give your story a label named `title` and it *is* the title screen. It plays like any other scene (backgrounds, characters, music, opening lines such as a content warning), and its `menu:` becomes the title menu:
@@ -58,7 +58,9 @@ These class names are kept stable between versions:
 | `.quickmenu` | Back / Log / Auto / Skip / Save / Load / Settings / Menu. |
 | `.overlay.title-screen`, `.title`, `.title-logo`, `.byline`, `.title-menu`, `.title-choice`, `.made-with` | The title screen (`.title-left`, `.title-right`, `.title-bottom` for the layouts). |
 | `.overlay.panel`, `.settings`, `.slots`, `.log` | Settings, save/load and history screens. |
-| `.end-screen` | "The End". |
+| `.end-screen`, `.ending-name` | "The End" and the ending reached. |
+| `.extras-panel`, `.extras-tabs`, `.gallery`, `.gallery-item`, `.gallery-item.locked`, `.extras-list`, `.gallery-view` | The Extras screen. |
+| `.nvl-page`, `.nvl-line`, `.nvl-name`, `.nvl-text` | NVL mode pages. |
 | `.toast` | Short notices (achievements, "Saved"). |
 
 Players' accessibility settings (text size, fonts, box opacity, reduced motion) still apply on top of your theme; please don't fight them with `!important`.

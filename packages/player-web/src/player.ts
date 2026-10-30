@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
+import { Progress } from './progress.ts';
 import { ReadLines } from './read-lines.ts';
 import { detectHost, type EmakiHost } from './host.ts';
 import { parsePreview } from './preview.ts';
@@ -37,7 +38,7 @@ const IMAGE_WAIT_MS = 1500;
 type Mode = 'title' | 'intro' | 'playing' | 'ended';
 
 /** Built-in title screen buttons, in their default order (header `title_buttons`). */
-const TITLE_BUTTONS = ['start', 'load', 'settings', 'quit'] as const;
+const TITLE_BUTTONS = ['start', 'load', 'extras', 'settings', 'quit'] as const;
 
 export interface PlayerOptions {
   /** Dev mode: resume at the same line after the script is edited. */
@@ -106,6 +107,10 @@ export class Player {
   private readonly images = new ImagePreloader();
   /** Lines read in any playthrough, so skip can stop at new text. */
   private readonly read: ReadLines;
+  /** Gallery images seen and endings reached, in any playthrough (the Extras screen). */
+  private readonly progress: Progress;
+  /** The ending this playthrough reached, for the end screen. */
+  private endingName: string | null = null;
   private readonly systemReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(root: HTMLElement, story: CompiledStory, opts: PlayerOptions = {}) {
@@ -116,6 +121,7 @@ export class Player {
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
     this.settings = loadSettings(this.storeKey + ':settings');
     this.read = new ReadLines(`${this.storeKey}:read`, storage);
+    this.progress = new Progress(this.storeKey, storage);
     this.loadGlobals();
 
     this.stage = el('div', 'stage');
@@ -300,6 +306,7 @@ export class Player {
   // ---------------------------------------------------------------- flow
 
   private start(): void {
+    this.endingName = null;
     this.enterPlaying();
     this.syncScene({ bg: null, sprites: [] });
     this.stopMusic();
@@ -588,6 +595,7 @@ export class Player {
   private async applyEffect(fx: Effect, instant: boolean): Promise<void> {
     switch (fx.type) {
       case 'scene': {
+        if (fx.bg) this.markSeen(fx.bg);
         this.nvlEl.replaceChildren();
         const ms = this.duration(fx, instant);
         if (fx.transition === 'fade' && ms) {
@@ -603,6 +611,7 @@ export class Player {
         return;
       }
       case 'show': {
+        this.markSeen(`${fx.tag} ${fx.attrs.join(' ')}`.trim());
         const ms = this.duration(fx, instant);
         let img = this.spriteLayer.querySelector<HTMLImageElement>(`img[data-tag="${cssEscape(fx.tag)}"]`);
         if (!img) {
@@ -647,6 +656,10 @@ export class Player {
         return;
       case 'globals':
         storage.set(`${this.storeKey}:globals`, JSON.stringify(fx.values));
+        return;
+      case 'ending':
+        this.progress.reachEnding(fx.id);
+        this.endingName = fx.name;
         return;
     }
   }
@@ -809,6 +822,7 @@ export class Player {
 
   private openOverlay(cls: string, ...children: Node[]): void {
     this.clearTimers();
+    this.overlay.onkeydown = null;
     this.overlay.className = `overlay open ${cls}`;
     this.overlay.replaceChildren(...children);
     this.claimFocus(this.overlay.querySelector('button'));
@@ -894,6 +908,7 @@ export class Player {
     for (const id of titleButtons(meta.title_buttons)) {
       if (id === 'start' && !own) menu.append(button(this.t('ui.start'), () => this.start()));
       if (id === 'load' && hasSaves) menu.append(button(this.t('ui.load'), () => this.showSlots('load')));
+      if (id === 'extras' && this.extrasTabs().length) menu.append(button(this.t('ui.extras'), () => this.showExtras()));
       if (id === 'settings') menu.append(button(this.t('ui.settings'), () => this.showSettings()));
       if (id === 'quit' && quit && this.opts.ownsDocument) menu.append(button(this.t('ui.quit'), () => quit()));
     }
@@ -913,9 +928,104 @@ export class Player {
     );
   }
 
+  // ---------------------------------------------------------- extras
+
+  /** A gallery image was shown: remember it for the Extras gallery. */
+  private markSeen(image: string): void {
+    if (this.story.gallery?.includes(image)) this.progress.seeImage(image);
+  }
+
+  /** The Extras tabs this story has something for. */
+  private extrasTabs(): Array<'gallery' | 'endings' | 'achievements'> {
+    const s = this.story;
+    return [
+      ...(s.gallery?.length ? ['gallery' as const] : []),
+      ...(s.endings && Object.keys(s.endings).length ? ['endings' as const] : []),
+      ...(s.achievements && Object.keys(s.achievements).length ? ['achievements' as const] : []),
+    ];
+  }
+
+  /** Extras: gallery images seen, endings reached and achievements earned (locked ones as ???). */
+  private showExtras(tab = this.extrasTabs()[0]): void {
+    const tabs = this.extrasTabs();
+    if (!tab) return;
+    const bar = el('div', 'row extras-tabs');
+    bar.setAttribute('role', 'tablist');
+    for (const t of tabs) {
+      const b = button(this.t(`ui.${t}`), () => this.showExtras(t));
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(t === tab));
+      bar.append(b);
+    }
+    const name = (id: string, table: Record<string, { name: string }> | undefined, kind: string) =>
+      this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
+    let body: HTMLElement;
+    let count: string;
+    if (tab === 'gallery') {
+      const images = this.story.gallery ?? [];
+      const seen = images.filter((i) => this.progress.hasSeen(i));
+      count = this.t('ui.count', { n: seen.length, total: images.length });
+      body = el('div', 'gallery');
+      for (const image of images) {
+        if (!this.progress.hasSeen(image)) { body.append(el('div', 'gallery-item locked', '?')); continue; }
+        const b = button('', () => this.viewImage(seen, seen.indexOf(image)));
+        b.className = 'gallery-item';
+        const img = el('img') as HTMLImageElement;
+        img.src = asset(this.story.images[image]!);
+        img.alt = '';
+        img.loading = 'lazy';
+        b.append(img);
+        body.append(b);
+      }
+    } else {
+      const table = tab === 'endings' ? this.story.endings : this.story.achievements;
+      const ids = Object.keys(table ?? {});
+      const earned = tab === 'endings' ? (id: string) => this.progress.hasReached(id) : (id: string) => this.achievements().includes(id);
+      count = this.t('ui.count', { n: ids.filter(earned).length, total: ids.length });
+      body = el('ol', 'extras-list');
+      for (const id of ids) {
+        const got = earned(id);
+        body.append(el('li', got ? 'unlocked' : 'locked', got ? name(id, table, tab === 'endings' ? 'ending' : 'achievement') : this.t('ui.locked')));
+      }
+    }
+    this.openOverlay('panel extras-panel', el('h2', '', this.t('ui.extras')), ...(tabs.length > 1 ? [bar] : []),
+      el('p', 'extras-count', count), body, button(this.t('ui.close'), () => this.showTitleMenu()));
+  }
+
+  /** One gallery image over the whole screen; click, arrows or Esc. */
+  private viewImage(images: string[], index: number): void {
+    const show = (i: number) => {
+      const n = (i + images.length) % images.length;
+      const img = el('img', 'gallery-full') as HTMLImageElement;
+      img.src = asset(this.story.images[images[n]!]!);
+      img.alt = '';
+      const close = button(this.t('ui.close'), () => this.showExtras('gallery'));
+      close.className = 'gallery-close';
+      this.openOverlay('gallery-view', img, close);
+      img.addEventListener('click', () => (images.length > 1 ? show(n + 1) : this.showExtras('gallery')));
+      this.overlay.onkeydown = (e) => {
+        if (e.key === 'Escape') this.showExtras('gallery');
+        else if (e.key === 'ArrowRight') show(n + 1);
+        else if (e.key === 'ArrowLeft') show(n - 1);
+        else return;
+        e.preventDefault();
+      };
+    };
+    show(index);
+  }
+
+  /** Ids of the achievements earned on this device. */
+  private achievements(): string[] {
+    try {
+      const raw = JSON.parse(storage.get(`${this.storeKey}:achievements`) ?? '[]') as unknown;
+      return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+    } catch { return []; }
+  }
+
   /** A choice on a scripted title screen: the story continues from that choice as a new game. */
   private startFromTitle(index: number): void {
     if (this.busy) return;
+    this.endingName = null;
     this.enterPlaying();
     this.runner.clearHistory(); // going back can't return into the title screen
     this.guard(() => this.present(this.runner.choose(index)));
@@ -934,6 +1044,7 @@ export class Player {
     this.updateToggles();
     this.openOverlay('end-screen',
       el('h2', '', this.t('ui.the_end')),
+      ...(this.endingName ? [el('p', 'ending-name', this.endingName)] : []),
       button(this.t('ui.back_to_title'), () => this.showTitle()),
       button(this.t('ui.undo_last_line'), () => { this.mode = 'playing'; this.closeOverlay(); this.back(); }),
     );
