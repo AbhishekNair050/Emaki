@@ -30,7 +30,7 @@ What is done and what comes next.
 - [x] Editing in the flowchart writes clean text via the printer (round-trip): add, rename, delete and connect scenes (a second connection turns a jump into a choice); every edit is undoable in the script
 - [x] Asset browser: thumbnails and audio preview; drag an asset onto the script → `image`/`audio` line declared and `scene`/`show`/`play` placed where it was dropped; drop files from the computer to add them to the game
 
-## ▶ Milestone 3 — Ship games (next)
+## ✅ Milestone 3 — Ship games (done, 2026-11-14)
 - [x] Desktop export (Electron; D-029) for Windows, macOS and Linux + Steamworks: achievements and overlay (D-030); `achievement`/`achieve` in the language
 - [x] Android/iOS export (Capacitor; D-031): generated native projects kept between exports, debug APK when the Android SDK is present, back button and full screen on phones
 - [x] Localization (D-028): `emaki strings` writes PO or CSV catalogs by line id (with review suggestions for edited lines), the game loads `lang/`, and players switch language at any time; the interface is translatable too
@@ -38,8 +38,23 @@ What is done and what comes next.
 - [x] Skip read text only (default) or all text (D-032)
 - [x] Title screen customization (D-033): header keys, `theme.css`, and a scripted `label title`
 - [x] Stories split across files (D-034), in the CLI, dev server, editor and VS Code
-- [ ] Ren'Py importer (common subset)
-- [ ] Plugin API v1
+- [x] NVL mode: `nvl on` / `nvl off` / `nvl clear`, pages that turn over by themselves (D-036)
+- [x] Extras screen: CG gallery (`image ... gallery`), endings (`ending` + `end id`), achievements (D-037)
+- [x] Transition lengths: `scene beach with dissolve 1.5`
+
+## ▶ Milestone 4 — Expressive scenes (next)
+What a finished commercial VN does on screen and in the ear that Emaki can't yet.
+- [ ] Movement and effects: slide characters between positions (`show mira at right with move 0.6`), screen shake and flash, zoom and pan on backgrounds and CGs
+- [ ] Layered sprites: a character built from body, outfit and face layers, so 3 outfits × 12 expressions don't need 36 images
+- [ ] Pauses and pacing inside a line: wait for a click mid-line, timed pauses, a line that advances by itself
+- [ ] Voice by convention: voice files found by line id or speaker, so a voiced game doesn't need a `play voice` line before every line; voice replay from the history log
+- [ ] Audio polish: gapless music loops (Web Audio) and an ambience channel that plays under music
+- [ ] Characters' side images (a portrait in the text box) and per-character text box styling
+- [ ] The editor shows the game as players see it: the game's `theme.css`, NVL pages and the scripted title in the preview pane
+
+## ⏸ On hold
+- Ren'Py importer (common subset)
+- Plugin API v1
 
 ## Later
-Gapless music loops (Web Audio), an ambience channel that plays under music, layered sprites, Live2D/Spine plugins, NVL mode, achievements, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles.
+Live2D/Spine plugins, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles, plural forms in translations, explicit line ids, inline (end-of-line) comments.
