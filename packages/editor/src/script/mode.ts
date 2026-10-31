@@ -18,8 +18,9 @@ interface State {
 }
 
 const TOP_LEVEL = /^(define|image|audio|global\s+var|var|label|achievement|ending)\b/;
-const STATEMENT = /^(scene|show|hide|play|stop|set|jump|call|return|end|wait|menu|if|elif|else|achieve|nvl)\b/;
-const WORD_KEYWORD = /^(with|at|fade|loop|and|or|not|if)\b/;
+// shake/flash/camera aren't reserved: `flash: Hi!` is a character called flash speaking.
+const STATEMENT = /^(scene|show|hide|play|stop|set|jump|call|return|end|wait|menu|if|elif|else|achieve|nvl|(?:shake|flash|camera)(?![\w ]*:))\b/;
+const WORD_KEYWORD = /^(with|at|fade|loop|and|or|not|if|zoom|over|reset)\b/;
 const ATOM = /^(true|false)\b/;
 
 const parser: StreamParser<State> = {

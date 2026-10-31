@@ -312,6 +312,63 @@
           }
         },
         {
+          "match": "^\\s+(shake)(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.shake.emaki"
+            },
+            "2": {
+              "name": "constant.numeric.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(flash)(?:\\s+(white|black|red|#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}))?(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.flash.emaki"
+            },
+            "2": {
+              "name": "constant.language.emaki"
+            },
+            "3": {
+              "name": "constant.numeric.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(camera)\\s+(?:(reset)|(zoom)\\s+(\\d+(?:\\.\\d+)?)(?:\\s+(at)\\s+(\\d+(?:\\.\\d+)?%)\\s+(\\d+(?:\\.\\d+)?%))?)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.camera.emaki"
+            },
+            "2": {
+              "name": "constant.language.emaki"
+            },
+            "3": {
+              "name": "keyword.other.zoom.emaki"
+            },
+            "4": {
+              "name": "constant.numeric.emaki"
+            },
+            "5": {
+              "name": "keyword.other.at.emaki"
+            },
+            "6": {
+              "name": "constant.numeric.emaki"
+            },
+            "7": {
+              "name": "constant.numeric.emaki"
+            },
+            "8": {
+              "name": "keyword.other.over.emaki"
+            },
+            "9": {
+              "name": "constant.numeric.emaki"
+            }
+          }
+        },
+        {
           "match": "^\\s+(wait)\\s+(\\d+(?:\\.\\d+)?)\\s*$",
           "captures": {
             "1": {

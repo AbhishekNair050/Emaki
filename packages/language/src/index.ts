@@ -302,7 +302,7 @@ export class Analysis {
 }
 
 const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'global var', 'achievement', 'ending', 'label'];
-const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl'];
+const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl', 'shake', 'flash', 'camera'];
 
 /**
  * The dev-server address that opens the game at a line (0-based `line` in,
