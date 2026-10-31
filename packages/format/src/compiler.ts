@@ -380,7 +380,9 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         const choices: CompiledChoice[] = s.choices.map((c) => {
           if (c.cond) checkVars(c.cond, c.loc);
           checkText(c.text, c.loc);
-          return { id: '', ...styledText(c.text, c.loc), cond: c.cond, target: -1 };
+          const text = styledText(c.text, c.loc);
+          if (text.spans?.some((sp) => sp.pause !== undefined)) error(c.loc, 'bad-markup', `Pauses ([w], [nw]) only work in dialogue and narration, not in choices`);
+          return { id: '', ...text, cond: c.cond, target: -1 };
         });
         const menuId = lineId(label, `menu|${s.choices.map((c) => c.text).join('|')}`);
         choices.forEach((c, i) => {

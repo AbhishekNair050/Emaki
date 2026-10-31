@@ -91,3 +91,33 @@ label start:
     expect(noSrc(compile(printed).story!.code)).toEqual(noSrc(r.story!.code));
   });
 });
+
+describe('pauses inside a line', () => {
+  it('parse [w], [w=seconds] and [nw] into empty pause spans', () => {
+    const r = parseMarkup('Well...[w] *fine*.[w=1.5] Go[nw]');
+    expect(r.error).toBeNull();
+    expect(r.plain).toBe('Well... fine. Go');
+    expect(r.styled).toBe(true);
+    expect(r.spans).toEqual([
+      { text: 'Well...' }, { text: '', pause: 'click' }, { text: ' ' }, { text: 'fine', i: true }, { text: '.' },
+      { text: '', pause: 1.5 }, { text: ' Go' }, { text: '', pause: 'next' },
+    ]);
+  });
+
+  it('keep plain-text-only lines unstyled and escaped brackets literal', () => {
+    expect(parseMarkup('No pause \\[w] here').spans).toEqual([{ text: 'No pause [w] here' }]);
+    expect(parseMarkup('[wink]').spans).toEqual([{ text: '[wink]' }]);
+  });
+
+  it('reject misplaced or malformed pauses', () => {
+    expect(parseMarkup('Go[nw] on').error).toMatch(/very end/);
+    expect(parseMarkup('Hm[w=soon]').error).toMatch(/seconds/);
+    expect(parseMarkup('Hm[w=99]').error).toMatch(/seconds/);
+  });
+
+  it('are not allowed in choices', async () => {
+    const { compile } = await import('../src/index.ts');
+    const r = compile('label start:\n  menu:\n    "Wait[w] for it":\n      end\n');
+    expect(r.diagnostics.map((d) => d.code)).toEqual(['bad-markup']);
+  });
+});

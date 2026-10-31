@@ -2,6 +2,7 @@
  * Text styling inside dialogue, narration and choices.
  *
  *   *italic*   **bold**   ***both***   [color=#e8b04b]coloured[/color]
+ *   [w] wait for a click   [w=1.5] pause 1.5 s   [nw] (at the end) go on without a click
  *   \*  \[  \]  \\   literal characters
  *
  * Parsed at compile time into styled spans so runtimes never re-parse
@@ -14,13 +15,22 @@ export interface Span {
   b?: true;
   i?: true;
   color?: string;
+  /**
+   * A pause in the text (the span's text is empty): `'click'` waits for the
+   * player (`[w]`), a number waits that many seconds (`[w=1.5]`), and `'next'`
+   * (`[nw]`, only last) moves on to the next line without a click.
+   */
+  pause?: 'click' | 'next' | number;
 }
+
+/** Longest `[w=...]` pause, in seconds. */
+export const MAX_PAUSE = 30;
 
 export interface MarkupResult {
   spans: Span[];
   /** The text with markup removed (for logs, screen readers, plain runtimes). */
   plain: string;
-  /** True if any styling is present (spans are only worth storing then). */
+  /** True if any styling or pause is present (spans are only worth storing then). */
   styled: boolean;
   /** Friendly error message, or null. */
   error: string | null;
@@ -28,6 +38,7 @@ export interface MarkupResult {
 
 const COLOR_OPEN = /^\[color=([^\]\s]*)\]/;
 const COLOR_CLOSE = '[/color]';
+const PAUSE = /^\[(w|nw)(?:=([^\]]*))?\]/;
 const COLOR_VALUE = /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|[a-zA-Z]{3,20})$/;
 const ESCAPABLE = '*[]\\';
 
@@ -46,7 +57,7 @@ export function parseMarkup(src: string): MarkupResult {
     if (italic) span.i = true;
     if (colors.length) span.color = colors[colors.length - 1];
     const prev = spans[spans.length - 1];
-    if (prev && prev.b === span.b && prev.i === span.i && prev.color === span.color) prev.text += buf;
+    if (prev && prev.pause === undefined && prev.b === span.b && prev.i === span.i && prev.color === span.color) prev.text += buf;
     else spans.push(span);
     buf = '';
   };
@@ -81,6 +92,22 @@ export function parseMarkup(src: string): MarkupResult {
         k += open[0].length;
         continue;
       }
+      const pause = PAUSE.exec(src.slice(k));
+      if (pause) {
+        flush();
+        k += pause[0].length;
+        if (pause[1] === 'nw') {
+          if (pause[2] !== undefined) error ??= `'[nw]' takes no value`;
+          if (src.slice(k).trim()) error ??= `'[nw]' goes at the very end of the line`;
+          spans.push({ text: '', pause: 'next' });
+        } else if (pause[2] === undefined) spans.push({ text: '', pause: 'click' });
+        else {
+          const n = Number(pause[2]);
+          if (!/^\d+(\.\d+)?$/.test(pause[2]) || n > MAX_PAUSE) error ??= `'[w=${pause[2]}]' needs seconds from 0 to ${MAX_PAUSE}, like [w=1.5]`;
+          else spans.push({ text: '', pause: n });
+        }
+        continue;
+      }
       if (src.startsWith(COLOR_CLOSE, k)) {
         if (!colors.length) error ??= `'[/color]' has no matching '[color=...]' before it`;
         flush();
@@ -99,6 +126,6 @@ export function parseMarkup(src: string): MarkupResult {
   if (colors.length) error ??= `Unclosed '[color=${colors[colors.length - 1]}]'. Add [/color] where the colour should end`;
 
   const plain = spans.map((s) => s.text).join('');
-  const styled = spans.some((s) => s.b || s.i || s.color);
+  const styled = spans.some((s) => s.b || s.i || s.color || s.pause !== undefined);
   return { spans, plain, styled, error };
 }
