@@ -125,6 +125,9 @@ export class Analysis {
     const out: StorySymbol[] = [
       ...p.characters.map((c): StorySymbol => ({ name: c.id, kind: 'character', detail: c.name + (c.color ? ` ${c.color}` : ''), ...at(c.loc) })),
       ...p.images.map((i): StorySymbol => ({ name: i.name, kind: 'image', detail: i.path, ...at(i.loc) })),
+      ...p.layered.flatMap((l) => l.layers.flatMap((layer) => (layer.kind === 'group' ? layer.options : []).map((o): StorySymbol => ({
+        name: `${l.tag} ${o.attr}`, kind: 'image', detail: o.path, ...at(o.loc),
+      })))),
       ...p.audio.map((a): StorySymbol => ({ name: a.name, kind: 'audio', detail: a.path, ...at(a.loc) })),
       ...p.achievements.map((a): StorySymbol => ({ name: a.id, kind: 'achievement', detail: a.name, ...at(a.loc) })),
       ...p.endings.map((e): StorySymbol => ({ name: e.id, kind: 'ending', detail: e.name, ...at(e.loc) })),
@@ -301,7 +304,7 @@ export class Analysis {
   }
 }
 
-const TOP_LEVEL = ['define', 'image', 'audio', 'var', 'global var', 'achievement', 'ending', 'label'];
+const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'var', 'global var', 'achievement', 'ending', 'label'];
 const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl', 'shake', 'flash', 'camera'];
 
 /**

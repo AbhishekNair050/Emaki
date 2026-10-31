@@ -22,6 +22,59 @@
       "include": "#achievement"
     },
     {
+      "match": "^(layered)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.layered.emaki"
+        },
+        "2": {
+          "name": "entity.name.type.emaki"
+        },
+        "3": {
+          "name": "punctuation.separator.emaki"
+        }
+      }
+    },
+    {
+      "match": "^\\s+(always)\\s+(\\\"(?:[^\\\"\\\\]|\\\\.)*\\\")\\s*$",
+      "captures": {
+        "1": {
+          "name": "keyword.other.always.emaki"
+        },
+        "2": {
+          "name": "string.quoted.double.emaki"
+        }
+      }
+    },
+    {
+      "match": "^\\s+(group)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(optional))?\\s*(:)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.group.emaki"
+        },
+        "2": {
+          "name": "entity.name.type.emaki"
+        },
+        "3": {
+          "name": "keyword.other.optional.emaki"
+        },
+        "4": {
+          "name": "punctuation.separator.emaki"
+        }
+      }
+    },
+    {
+      "match": "^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\\\"(?:[^\\\"\\\\]|\\\\.)*\\\")\\s*$",
+      "captures": {
+        "1": {
+          "name": "entity.name.type.emaki"
+        },
+        "2": {
+          "name": "string.quoted.double.emaki"
+        }
+      }
+    },
+    {
       "include": "#label"
     },
     {
@@ -194,7 +247,7 @@
           }
         },
         {
-          "match": "^\\s+(show)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!(?:at|with)\\b)[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(at)\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
+          "match": "^\\s+(show)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!(?:at|with)\\b)-?[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(at)\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
           "captures": {
             "1": {
               "name": "keyword.other.show.emaki"
@@ -458,7 +511,7 @@
           ]
         },
         {
-          "begin": "^\\s+([A-Za-z_][A-Za-z0-9_]*)((?:\\s+[A-Za-z_][A-Za-z0-9_]*)*)\\s*(:)\\s*",
+          "begin": "^\\s+([A-Za-z_][A-Za-z0-9_]*)((?:\\s+-?[A-Za-z_][A-Za-z0-9_]*)*)\\s*(:)\\s*",
           "end": "$",
           "beginCaptures": {
             "1": {
