@@ -56,6 +56,9 @@ html, body {
 .bg { position: absolute; inset: 0; background: #000 center / cover no-repeat; }
 .fader { background: #000; opacity: 0; pointer-events: none; }
 .flash { opacity: 0; pointer-events: none; }
+/* A sprite is a box of stacked layers: the first image sets the size, the rest lie on top of it. */
+.sprite img { display: block; height: 100%; width: auto; }
+.sprite img + img { position: absolute; left: 0; top: 0; }
 /* `camera`: the player zooms these layers; see moveCamera(). */
 .bg-layer, .sprite-layer { transform-origin: 0 0; }
 

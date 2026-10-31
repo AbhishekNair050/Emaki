@@ -367,7 +367,7 @@ export class Player {
     this.busy = true;
     try {
       // Hold the step (briefly) until its pictures are ready, so nothing fades in half-loaded.
-      const needed = step.effects.flatMap((fx) => (fx.type === 'scene' || fx.type === 'show') && fx.path ? [asset(fx.path)] : []);
+      const needed = step.effects.flatMap((fx) => fx.type === 'show' ? fx.layers.map(asset) : fx.type === 'scene' && fx.path ? [asset(fx.path)] : []);
       this.images.want(needed);
       this.preloadAhead();
       const wait = instant || this.skip ? 0 : IMAGE_WAIT_MS;
@@ -619,31 +619,27 @@ export class Player {
       case 'show': {
         this.markSeen(`${fx.tag} ${fx.attrs.join(' ')}`.trim());
         const ms = this.duration(fx, instant);
-        let img = this.spriteLayer.querySelector<HTMLImageElement>(`img[data-tag="${cssEscape(fx.tag)}"]`);
-        if (!img) {
-          img = el('img', 'sprite') as HTMLImageElement;
-          img.dataset.tag = fx.tag;
-          img.alt = '';
-          img.style.left = positionLeft(fx.at) ?? POSITIONS.center!;
-          img.src = asset(fx.path);
-          img.style.opacity = ms ? '0' : '1';
-          this.spriteLayer.append(img);
-          if (ms) await animateOpacity(img, 1, ms);
+        let sprite = this.spriteEl(fx.tag);
+        if (!sprite) {
+          sprite = makeSprite(fx.tag, fx.layers, fx.at);
+          sprite.style.opacity = ms ? '0' : '1';
+          this.spriteLayer.append(sprite);
+          if (ms) await animateOpacity(sprite, 1, ms);
         } else {
-          const left = positionLeft(fx.at) ?? img.style.left;
-          if (img.getAttribute('src') !== asset(fx.path)) img.src = asset(fx.path);
-          if (fx.transition === 'move' && ms && left !== img.style.left) {
-            img.style.transition = `left ${ms}ms ease-in-out`;
-            img.style.left = left;
+          const left = positionLeft(fx.at) ?? sprite.style.left;
+          setLayers(sprite, fx.layers);
+          if (fx.transition === 'move' && ms && left !== sprite.style.left) {
+            sprite.style.transition = `left ${ms}ms ease-in-out`;
+            sprite.style.left = left;
             await delay(ms);
-            img.style.transition = '';
-          } else img.style.left = left;
+            sprite.style.transition = '';
+          } else sprite.style.left = left;
         }
         return;
       }
       case 'hide': {
-        const img = this.spriteLayer.querySelector<HTMLElement>(`img[data-tag="${cssEscape(fx.tag)}"]`);
-        if (img) await fadeOutAndRemove(img, this.duration(fx, instant));
+        const sprite = this.spriteEl(fx.tag);
+        if (sprite) await fadeOutAndRemove(sprite, this.duration(fx, instant));
         return;
       }
       case 'play': {
@@ -764,6 +760,11 @@ export class Player {
     return animateOpacity(this.fader, opacity, ms);
   }
 
+  /** The character on screen with this tag. */
+  private spriteEl(tag: string): HTMLElement | null {
+    return this.spriteLayer.querySelector<HTMLElement>(`.sprite[data-tag="${cssEscape(tag)}"]`);
+  }
+
   /** Redraw the scene from state, without animation (load, rollback). */
   private syncScene(scene: SceneState): void {
     this.fader.style.opacity = '0';
@@ -771,14 +772,8 @@ export class Player {
     this.moveCamera(scene.camera ?? null, 0);
     this.spriteLayer.replaceChildren();
     for (const sp of scene.sprites) {
-      const path = this.runner.spritePath(sp);
-      if (!path) continue;
-      const img = el('img', 'sprite') as HTMLImageElement;
-      img.dataset.tag = sp.tag;
-      img.alt = '';
-      img.src = asset(path);
-      img.style.left = positionLeft(sp.at) ?? POSITIONS.center!;
-      this.spriteLayer.append(img);
+      const layers = this.runner.spriteLayers(sp);
+      if (layers?.length) this.spriteLayer.append(makeSprite(sp.tag, layers, sp.at));
     }
   }
 
@@ -1530,6 +1525,33 @@ function animateOpacity(node: HTMLElement, to: number, ms: number): Promise<void
     node.style.opacity = String(to);
     anim.cancel();
   }, () => { node.style.opacity = String(to); });
+}
+
+/**
+ * A character on screen: a box holding one image per layer, bottom first (a
+ * plain sprite has one). The first image sizes the box; the others lie on top.
+ */
+function makeSprite(tag: string, layers: string[], at: string): HTMLElement {
+  const sprite = el('div', 'sprite');
+  sprite.dataset.tag = tag;
+  sprite.style.left = positionLeft(at) ?? POSITIONS.center!;
+  setLayers(sprite, layers);
+  return sprite;
+}
+
+/** Point a sprite's images at `layers`, keeping the ones that don't change (no reload, no flicker). */
+function setLayers(sprite: HTMLElement, layers: string[]): void {
+  const imgs = [...sprite.children] as HTMLImageElement[];
+  layers.forEach((path, i) => {
+    let img = imgs[i];
+    if (!img) {
+      img = el('img') as HTMLImageElement;
+      img.alt = '';
+      sprite.append(img);
+    }
+    if (img.getAttribute('src') !== asset(path)) img.src = asset(path);
+  });
+  for (const extra of imgs.slice(layers.length)) extra.remove();
 }
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
