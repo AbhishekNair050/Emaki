@@ -30,8 +30,8 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `menu` | `id, choices[{id, text, spans?, cond (expr or null), target}]` | **yes** | Offer choices whose `cond` is truthy (keep original indices). On pick: pc = choice.target. Error if none visible. |
 | `wait` | `seconds` | **yes** | Pause. pc+1. |
 | `achieve` | `id` | no | Unlock achievement `id` (a key of `achievements`). Unlocking twice is harmless. pc+1. |
-| `scene` | `image (name, "black" or null), transition` | no | Background = image (`black`/null = none); remove all sprites. |
-| `show` | `tag, attrs (array or null), at (null/"left"/"center"/"right"), transition` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. |
+| `scene` | `image (name, "black" or null), transition, duration?` | no | Background = image (`black`/null = none); remove all sprites; camera back to the whole picture. `duration` (seconds) only when the script gave one. |
+| `show` | `tag, attrs (array or null), at (null, "left"/"center"/"right" or a percentage like "30%"), transition, duration?` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. |
 | `hide` | `tag, transition` | no | Remove sprite if present. |
 | `play` | `channel (music/sound/voice), path, loop, fade` | no | Music state = {path, loop}. |
 | `stop` | `channel, fade` | no | Music state = null for `music`. |
@@ -40,7 +40,11 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `jumpIfNot` | `cond, target` | no | pc = truthy(cond) ? pc+1 : target. |
 | `call` | `target, label` | no | push pc+1; pc = target. |
 | `return` | — | no | pop into pc; if stack empty, the story ends. (Compiler appends one to every label.) |
-| `end` | — | no | Story ends. |
+| `end` | `ending?` | no | Story ends. With `ending` (a key of `endings`), that ending was reached. |
+| `nvl` | `mode (on/off/clear)` | no | `on`/`clear`: start an empty page of full-screen text; `off`: back to the text box. Lines shown while a page is open are added to it. |
+| `shake` | `duration?` | no | Shake the picture (effect only, no state). |
+| `flash` | `color, duration?` | no | Flash the screen in `color` (`white`, `black`, `red` or `#rrggbb`); effect only. |
+| `camera` | `zoom, x, y, duration?` | no | Scene camera = zoom `zoom` (≥ 1) toward the point `x`%, `y`% of the screen; `zoom 1, x 50, y 50` is the whole picture. Animated over `duration` seconds without blocking. Part of the scene, so saved and rolled back with it. |
 
 A runtime should guard against loops that execute many instructions without blocking (reference: 100,000).
 

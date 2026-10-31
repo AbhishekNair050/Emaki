@@ -72,6 +72,7 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `mira smile: Glad you came.` | Mira speaks **and** switches to her `smile` image (if she's on screen). |
 | `scene kitchen with fade` | New background; clears characters. `scene black` for a black screen. |
 | `show mira smile at left with dissolve` | Show (or change) a character. Positions: `left`, `center`, `right`, or a percentage of the screen's width for the character's centre (`at 30%`). |
+| `show mira at right with move` | Slide a character who's already on screen to a new position (`with move 1.2` for a slower slide). |
 | `hide mira with dissolve` | Remove a character. |
 | `play music "audio/theme.ogg"` / `play sound rain` | Audio. Music loops by default. Options: `loop`, `noloop`, `fade 1.5`. |
 | `play voice "voice/ann_001.ogg"` | A voice line, put just before the line it belongs to. It stops when the player moves on, and auto mode waits for it to finish. |
@@ -83,7 +84,7 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `achieve first_light` | Award an achievement (once; earning it again does nothing). On Steam it unlocks the Steam achievement; elsewhere the game remembers it and shows a notice. |
 | `end` | The story ends here. `end light_holds` reaches a declared ending: its name shows on the end screen and it's recorded for Extras. |
 
-Transitions: `fade` (through black), `dissolve` (crossfade), `none`. Add seconds to set the length: `scene beach with dissolve 1.5`, `scene night with fade 3` (the whole fade, out and back in). Without a number, a dissolve takes 0.4 s and a fade 0.9 s.
+Transitions: `fade` (through black), `dissolve` (crossfade), `move` (slide to the new position), `none`. Add seconds to set the length: `scene beach with dissolve 1.5`, `scene night with fade 3` (the whole fade, out and back in). Without a number, a dissolve takes 0.4 s and a fade 0.9 s.
 
 Reaching the end of a label **returns** to whoever `call`ed it; if nobody did, the story ends. Labels never "fall through" into the next one.
 
@@ -106,6 +107,33 @@ label night_walk:
 - `nvl on` switches to pages; `nvl off` goes back to the text box. `nvl: on` in the header starts the whole story in NVL mode.
 - A page fills up line by line and turns over by itself when it's full. `nvl clear` starts a new page sooner, and so does a new `scene`.
 - Dialogue shows the speaker's name before the line. Menus appear over the page.
+
+## Camera and screen effects
+```
+label storm:
+  scene cliff_road with fade
+  camera zoom 1.6 at 80% 30% over 6
+  "Far off, a light came on in the tower."
+  flash
+  scene cliff_lightning
+  shake 0.8
+  mira: That was close!
+  camera reset over 2
+```
+
+| Line | Meaning |
+|---|---|
+| `camera zoom 1.6 at 80% 30% over 6` | Zoom in on the picture (backgrounds and characters; the text box stays put). `1` is the whole picture, `2` twice as close. `at` is the point to zoom toward, across then down, as percentages of the screen (the centre if left out). `over` is how long the move takes (instant if left out). |
+| `camera reset over 2` | Back to the whole picture. |
+| `shake` / `shake 0.8` | Shake the picture for half a second (or the seconds given). |
+| `flash` / `flash red 0.4` | Flash the screen: `white` (the default), `black`, `red` or `#rrggbb`, for 0.6 s or the seconds given. |
+
+- Camera moves don't hold up the story: a slow pan plays while the next lines appear. Put a `wait` after one to watch it finish first.
+- Panning is zooming toward a different point at the same zoom: `camera zoom 1.6 at 20% 50% over 5` after the line above sweeps across to the left.
+- The camera stays where it is until `camera reset` or a new `scene`, and saves and going back keep it.
+- A `flash` covers the screen before the next line runs, so `flash` followed by `scene` changes the picture under the white.
+- With the player's **Animations: reduced** setting, the camera jumps straight to its place and shakes and flashes are left out.
+- `shake`, `flash` and `camera` aren't reserved words: a character can still be called `flash` (`flash: Hi!` is dialogue).
 
 ## Choices
 ```
