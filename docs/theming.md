@@ -52,7 +52,7 @@ These class names are kept stable between versions:
 | Class | What it is |
 |---|---|
 | `.stage` | The whole game screen. Set variables here: `--accent`, `--story-font`, `--ui-font`, `--ui-text`, `--ui-muted`, `--ui-border`, `--choice-bg`, `--choice-hover`, `--pos-left`, `--pos-center`, `--pos-right`. |
-| `.bg`, `.sprite` | Backgrounds and characters (`.sprite[data-tag="mira"]` for one character). |
+| `.bg`, `.sprite` | Backgrounds and characters (`.sprite[data-tag="mira"]` for one character). A `.sprite` is a box holding one `img` per layer (just one for a plain image). |
 | `.textbox`, `.textbox.narration`, `.namebox`, `.text`, `.next-indicator` | The text box. |
 | `.choices`, `.choice` | In-story choices. |
 | `.quickmenu` | Back / Log / Auto / Skip / Save / Load / Settings / Menu. |

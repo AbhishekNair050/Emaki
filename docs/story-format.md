@@ -31,7 +31,7 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `wait` | `seconds` | **yes** | Pause. pc+1. |
 | `achieve` | `id` | no | Unlock achievement `id` (a key of `achievements`). Unlocking twice is harmless. pc+1. |
 | `scene` | `image (name, "black" or null), transition, duration?` | no | Background = image (`black`/null = none); remove all sprites; camera back to the whole picture. `duration` (seconds) only when the script gave one. |
-| `show` | `tag, attrs (array or null), at (null, "left"/"center"/"right" or a percentage like "30%"), transition, duration?` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. |
+| `show` | `tag, attrs (array or null), at (null, "left"/"center"/"right" or a percentage like "30%"), transition, duration?` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. For a layered tag see below. |
 | `hide` | `tag, transition` | no | Remove sprite if present. |
 | `play` | `channel (music/sound/voice), path, loop, fade` | no | Music state = {path, loop}. |
 | `stop` | `channel, fade` | no | Music state = null for `music`. |
@@ -45,6 +45,8 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `shake` | `duration?` | no | Shake the picture (effect only, no state). |
 | `flash` | `color, duration?` | no | Flash the screen in `color` (`white`, `black`, `red` or `#rrggbb`); effect only. |
 | `camera` | `zoom, x, y, duration?` | no | Scene camera = zoom `zoom` (≥ 1) toward the point `x`%, `y`% of the screen; `zoom 1, x 50, y 50` is the whole picture. Animated over `duration` seconds without blocking. Part of the scene, so saved and rolled back with it. |
+
+**Layered characters.** `layered` maps a tag to its layers, bottom first: `{ path }` is always drawn; `{ group, options: {attr: path}, default }` draws the option currently chosen for the group (`default` until one is chosen; `null` means nothing). For a layered tag, a sprite's attrs are the chosen option per group. Each attr in a `show` or `say` replaces the option of the group that contains it; `-attr` clears that group. With no attrs, a new sprite starts with every group's default.
 
 A runtime should guard against loops that execute many instructions without blocking (reference: 100,000).
 

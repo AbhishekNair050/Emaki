@@ -54,6 +54,7 @@ Between `---` lines at the very top: `key: value` pairs.
 | `define mira "Mira" color=#e8b04b` | A character. `mira` is what you type; `"Mira"` is what players see. |
 | `image kitchen = "bg/kitchen.png"` | A background or any image. Paths are relative to the game's `assets/` folder. |
 | `image mira smile = "sprites/mira_smile.png"` | A character image: first word is the **tag** (`mira`), the rest are **attributes** (`smile`). |
+| `layered mira:` | A character drawn from stacked layers (body, outfit, face), so outfits and expressions combine freely. See [Layered characters](#layered-characters). |
 | `audio rain = "audio/rain.ogg"` | A named sound. |
 | `var trust = 0` | A variable with its starting value. Numbers, `"text"`, `true`/`false`. Must be declared before use. |
 | `global var endings_seen = 0` | A variable that keeps its value across playthroughs on this device (endings seen, unlocked extras). Loading a save or going back never undoes it. |
@@ -107,6 +108,30 @@ label night_walk:
 - `nvl on` switches to pages; `nvl off` goes back to the text box. `nvl: on` in the header starts the whole story in NVL mode.
 - A page fills up line by line and turns over by itself when it's full. `nvl clear` starts a new page sooner, and so does a new `scene`.
 - Dialogue shows the speaker's name before the line. Menus appear over the page.
+
+## Layered characters
+Drawing every outfit with every expression adds up fast: 3 outfits × 12 faces is 36 images. A layered character is drawn from parts instead, stacked bottom first:
+
+```
+layered mira:
+  always "sprites/mira/body.png"
+  group outfit:
+    casual "sprites/mira/casual.png"
+    coat "sprites/mira/coat.png"
+  group face:
+    neutral "sprites/mira/neutral.png"
+    smile "sprites/mira/smile.png"
+    sad "sprites/mira/sad.png"
+  group blush optional:
+    blush "sprites/mira/blush.png"
+```
+
+- `always` is a layer that's always drawn. Each `group` shows one of its options at a time; the first is the default.
+- An `optional` group shows nothing until you pick one of its options.
+- Options are picked like attributes of a plain image, and each one replaces only its own group: `show mira coat` changes the outfit and keeps the face; `mira smile: Hi!` changes the face and keeps the coat. `show mira sad casual` changes both.
+- `-option` takes an optional group's layer off: `show mira -blush`, or `mira -blush: Anyway.`
+- Draw every layer on the same canvas size, lined up, with transparent backgrounds; the player lays them exactly on top of each other.
+- A tag is either layered or plain images: `layered mira` and `image mira smile = ...` together is an error. Option names must be unique within a character, since a name picks its group.
 
 ## Camera and screen effects
 ```
