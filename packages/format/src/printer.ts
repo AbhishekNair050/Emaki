@@ -47,6 +47,21 @@ export function print(program: Program): string {
     }
   }
 
+  for (const l of program.layered) {
+    blank();
+    trivia(l.leading, '', out);
+    out.push(`layered ${l.tag}:`);
+    for (const layer of l.layers) {
+      trivia(layer.leading, INDENT, out);
+      if (layer.kind === 'always') { out.push(`${INDENT}always ${q(layer.path)}`); continue; }
+      out.push(`${INDENT}group ${layer.name}${layer.optional ? ' optional' : ''}:`);
+      for (const o of layer.options) {
+        trivia(o.leading, INDENT + INDENT, out);
+        out.push(`${INDENT}${INDENT}${o.attr} ${q(o.path)}`);
+      }
+    }
+  }
+
   for (const l of program.labels) {
     blank();
     trivia(l.leading, '', out);

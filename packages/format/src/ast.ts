@@ -25,6 +25,16 @@ export interface ImageDef extends Trivia {
   loc: Loc;
 }
 export interface AudioDef extends Trivia { name: string; path: string; loc: Loc }
+/** One option of a layer group: `smile "sprites/mira/smile.png"`. */
+export interface LayerOption extends Trivia { attr: string; path: string; loc: Loc }
+/** A layer of a `layered` character: drawn always, or one option of a group at a time. */
+export type LayerDef = Trivia & (
+  | { kind: 'always'; path: string; loc: Loc }
+  /** `optional`: nothing is drawn until one of its options is shown (`show mira blush`, `show mira -blush`). */
+  | { kind: 'group'; name: string; optional: boolean; options: LayerOption[]; loc: Loc }
+);
+/** `layered mira:` a character drawn from stacked layers (body, outfit, face), bottom first. */
+export interface LayeredDef extends Trivia { tag: string; layers: LayerDef[]; loc: Loc }
 export interface VarDef extends Trivia {
   name: string;
   init: Expr;
@@ -43,6 +53,7 @@ export interface Program {
   characters: CharacterDef[];
   images: ImageDef[];
   audio: AudioDef[];
+  layered: LayeredDef[];
   vars: VarDef[];
   achievements: AchievementDef[];
   endings: EndingDef[];
@@ -70,6 +81,7 @@ export interface IfBranch extends Trivia {
 }
 
 export type Stmt = Trivia & (
+  /** `attrs` may take an optional layer off: `mira -blush: Fine.` */
   | { type: 'say'; who: string | null; attrs: string[]; text: string; loc: Loc }
   /** `duration`: seconds, from `with dissolve 1.5` (the transition's default when absent). */
   | { type: 'scene'; image: string | null; transition: string | null; duration?: number; loc: Loc }

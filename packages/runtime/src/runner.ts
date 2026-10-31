@@ -13,6 +13,7 @@ import {
 
 export interface SpriteState {
   tag: string;
+  /** The image's attributes; for a layered character, the option shown in each group, bottom first. */
   attrs: string[];
   at: string;
 }
@@ -71,7 +72,8 @@ export interface ChoiceOption { index: number; id: string; text: string; spans?:
 export type Effect =
   /** `duration`: seconds, when the script set one (`with dissolve 1.5`). */
   | { type: 'scene'; bg: string | null; path: string | null; transition: string | null; duration?: number }
-  | { type: 'show'; tag: string; attrs: string[]; path: string; at: string; transition: string | null; duration?: number; isNew: boolean }
+  /** `layers`: the images to stack, bottom first (one for a plain image; `path` is the first). */
+  | { type: 'show'; tag: string; attrs: string[]; path: string; layers: string[]; at: string; transition: string | null; duration?: number; isNew: boolean }
   | { type: 'hide'; tag: string; transition: string | null; duration?: number }
   | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
   | { type: 'stop'; channel: Channel; fade: number | null }
@@ -218,16 +220,16 @@ export class Runner {
         scene.sprites = [];
       } else if (ins.op === 'show') {
         const sp = scene.sprites.find((x) => x.tag === ins.tag);
-        if (!sp) scene.sprites.push({ tag: ins.tag, attrs: ins.attrs ?? this.defaultAttrs(ins.tag), at: ins.at ?? DEFAULT_POSITION });
+        if (!sp) scene.sprites.push({ tag: ins.tag, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION });
         else {
-          if (ins.attrs) sp.attrs = [...ins.attrs];
+          if (ins.attrs) sp.attrs = this.nextAttrs(ins.tag, sp.attrs, ins.attrs);
           if (ins.at) sp.at = ins.at;
         }
       } else if (ins.op === 'hide') {
         scene.sprites = scene.sprites.filter((x) => x.tag !== ins.tag);
       } else if (ins.op === 'say' && ins.who && ins.attrs.length) {
         const sp = scene.sprites.find((x) => x.tag === ins.who);
-        if (sp) sp.attrs = [...ins.attrs];
+        if (sp) sp.attrs = this.nextAttrs(ins.who, sp.attrs, ins.attrs);
       } else if (ins.op === 'play' || ins.op === 'stop') {
         trackAudio(this.state.audio, ins);
       } else if (ins.op === 'nvl') {
@@ -358,7 +360,8 @@ export class Runner {
     return this.story.images[name] ?? null;
   }
 
-  spritePath(s: SpriteState): string | null {
+  /** The images a sprite is drawn from, bottom first (one unless it's layered); null if it has none. */
+  spriteLayers(s: SpriteState): string[] | null {
     return this.resolveSprite(s.tag, s.attrs);
   }
 
@@ -396,7 +399,7 @@ export class Runner {
         if (!ins) continue;
         switch (ins.op) {
           case 'say':
-            if (ins.who && ins.attrs.length) add(this.resolveSprite(ins.who, ins.attrs));
+            if (ins.who && ins.attrs.length) this.previewImages(ins.who, ins.attrs).forEach(add);
             push(pc + 1, stack, cost + 1);
             break;
           case 'menu':
@@ -410,8 +413,8 @@ export class Runner {
             push(pc + 1, stack, cost);
             break;
           case 'show':
-            if (ins.attrs) add(this.resolveSprite(ins.tag, ins.attrs));
-            else if (!onScreen.has(ins.tag)) add(this.resolveSprite(ins.tag, this.defaultAttrs(ins.tag)));
+            if (ins.attrs) this.previewImages(ins.tag, ins.attrs).forEach(add);
+            else if (!onScreen.has(ins.tag)) this.resolveSprite(ins.tag, this.nextAttrs(ins.tag, null, null))?.forEach(add);
             push(pc + 1, stack, cost);
             break;
           case 'jump':
@@ -544,7 +547,7 @@ export class Runner {
           if (ins.who && ins.attrs.length) {
             const sp = s.scene.sprites.find((x) => x.tag === ins.who);
             if (sp) {
-              sp.attrs = [...ins.attrs];
+              sp.attrs = this.nextAttrs(ins.who, sp.attrs, ins.attrs);
               effects.push(this.showEffect(sp, null, false, ins));
             }
           }
@@ -576,10 +579,10 @@ export class Runner {
           let sp = s.scene.sprites.find((x) => x.tag === ins.tag);
           const isNew = !sp;
           if (!sp) {
-            sp = { tag: ins.tag, attrs: ins.attrs ?? this.defaultAttrs(ins.tag), at: ins.at ?? DEFAULT_POSITION };
+            sp = { tag: ins.tag, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION };
             s.scene.sprites.push(sp);
           } else {
-            if (ins.attrs) sp.attrs = [...ins.attrs];
+            if (ins.attrs) sp.attrs = this.nextAttrs(ins.tag, sp.attrs, ins.attrs);
             if (ins.at) sp.at = ins.at;
           }
           effects.push(this.showEffect(sp, ins.transition, isNew, ins));
@@ -667,14 +670,51 @@ export class Runner {
   }
 
   private showEffect(sp: SpriteState, transition: string | null, isNew: boolean, ins: Instr): Effect {
-    const path = this.resolveSprite(sp.tag, sp.attrs);
-    if (path === null) throw new StoryError(`No image for '${[sp.tag, ...sp.attrs].join(' ')}'`, ins.src.line);
-    return { type: 'show', tag: sp.tag, attrs: [...sp.attrs], path, at: sp.at, transition, ...durationOf(ins), isNew };
+    const layers = this.resolveSprite(sp.tag, sp.attrs);
+    if (!layers?.length) throw new StoryError(`No image for '${[sp.tag, ...sp.attrs].join(' ')}'`, ins.src.line);
+    return { type: 'show', tag: sp.tag, attrs: [...sp.attrs], path: layers[0]!, layers, at: sp.at, transition, ...durationOf(ins), isNew };
   }
 
-  private resolveSprite(tag: string, attrs: string[]): string | null {
-    const name = [tag, ...attrs].join(' ');
-    return this.story.images[name] ?? null;
+  /** A sprite's images, bottom first: the image named `tag attrs...`, or a layered character's layers. */
+  private resolveSprite(tag: string, attrs: string[]): string[] | null {
+    const layers = this.story.layered?.[tag];
+    if (!layers) {
+      const path = this.story.images[[tag, ...attrs].join(' ')];
+      return path === undefined ? null : [path];
+    }
+    return layers.flatMap((l) => {
+      if ('path' in l) return [l.path];
+      const chosen = attrs.find((a) => Object.hasOwn(l.options, a));
+      return chosen ? [l.options[chosen]!] : [];
+    });
+  }
+
+  /**
+   * A sprite's attributes after a line gives `given` (null: none given) to a
+   * sprite showing `current` (null: not on screen yet). A plain image swaps
+   * all of them; a layered character swaps one group's option per attribute,
+   * and `-blush` takes an optional group's option off.
+   */
+  private nextAttrs(tag: string, current: string[] | null, given: string[] | null): string[] {
+    const layers = this.story.layered?.[tag];
+    if (!layers) return given ? [...given] : current ? [...current] : this.defaultAttrs(tag);
+    const groupOf = (a: string) => layers.findIndex((l) => 'group' in l && Object.hasOwn(l.options, a));
+    let attrs = current ? [...current] : layers.flatMap((l) => ('group' in l && l.default ? [l.default] : []));
+    for (const g of given ?? []) {
+      const name = g.replace(/^-/, '');
+      const i = groupOf(name);
+      if (i < 0) continue;
+      attrs = attrs.filter((a) => groupOf(a) !== i);
+      if (!g.startsWith('-')) attrs.push(name);
+    }
+    return attrs.sort((a, b) => groupOf(a) - groupOf(b));
+  }
+
+  /** Images a line could bring in, for preloading (a layered character's named options only). */
+  private previewImages(tag: string, attrs: string[]): string[] {
+    const layers = this.story.layered?.[tag];
+    if (!layers) return this.resolveSprite(tag, attrs) ?? [];
+    return attrs.flatMap((a) => layers.flatMap((l) => ('group' in l && Object.hasOwn(l.options, a) ? [l.options[a]!] : [])));
   }
 
   /** Attributes to use when showing a tag with none given: exact tag image, else the first declared. */

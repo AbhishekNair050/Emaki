@@ -10,7 +10,7 @@
 import type { Diagnostic, Loc, Program, Stmt } from './ast.ts';
 import {
   FORMAT_ID, FORMAT_VERSION,
-  type CompiledChoice, type CompiledStory, type Instr, type SrcRef,
+  type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
 import { parseMarkup, type Span } from './markup.ts';
@@ -84,6 +84,7 @@ export function compileFiles(main: string, parts: StoryFile[] = []): CompileResu
     program.characters.push(...r.program.characters);
     program.images.push(...r.program.images);
     program.audio.push(...r.program.audio);
+    program.layered.push(...r.program.layered);
     program.vars.push(...r.program.vars);
     program.achievements.push(...r.program.achievements);
     program.endings.push(...r.program.endings);
@@ -143,6 +144,58 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     images[im.name] = im.path;
   }
 
+  // Layered characters: which layer each option belongs to, to check `show mira coat smile`.
+  const layered: Record<string, CompiledLayer[]> = {};
+  const optionLayer: Record<string, Map<string, number>> = {};
+  for (const l of program.layered) {
+    if (layered[l.tag]) { error(l.loc, 'duplicate', `'layered ${l.tag}' is already defined`); continue; }
+    if (Object.keys(images).some((n) => n === l.tag || n.startsWith(l.tag + ' '))) {
+      error(l.loc, 'duplicate', `'${l.tag}' already has images declared with 'image'; a character is either layered or plain images`);
+    }
+    const options = new Map<string, number>();
+    const groups = new Set<string>();
+    layered[l.tag] = l.layers.map((layer, i): CompiledLayer => {
+      if (layer.kind === 'always') return { path: layer.path };
+      if (groups.has(layer.name)) error(layer.loc, 'duplicate', `${l.tag} already has a group called '${layer.name}'`);
+      groups.add(layer.name);
+      const paths: Record<string, string> = {};
+      for (const o of layer.options) {
+        if (options.has(o.attr)) error(o.loc, 'duplicate', `${l.tag} already has an option called '${o.attr}' (each name picks one layer, so it can only be used once)`);
+        options.set(o.attr, i);
+        paths[o.attr] = o.path;
+      }
+      return { group: layer.name, options: paths, default: layer.optional ? null : layer.options[0]?.attr ?? null };
+    });
+    optionLayer[l.tag] = options;
+  }
+
+  /** `show mira coat smile` / `mira -blush:`: plain images must exist; layered options must exist, one per group. */
+  const checkSprite = (tag: string, attrs: string[], loc: Loc) => {
+    const options = optionLayer[tag];
+    if (!options) {
+      const off = attrs.find((a) => a.startsWith('-'));
+      if (off) { error(loc, 'bad-attribute', `Only a layered character can take a layer off ('${off}')`); return; }
+      const name = `${tag} ${attrs.join(' ')}`;
+      if (!images[name]) error(loc, 'unknown-image', `No image named '${name}'`);
+      return;
+    }
+    const used = new Set<number>();
+    for (const a of attrs) {
+      const name = a.replace(/^-/, '');
+      const i = options.get(name);
+      if (i === undefined) {
+        error(loc, 'unknown-image', didYouMean(name, [...options.keys()]) ?? `${tag} has no option '${name}' (see 'layered ${tag}')`);
+        continue;
+      }
+      const layer = layered[tag]![i] as Extract<CompiledLayer, { group: string }>;
+      if (a.startsWith('-') && layer.default !== null) {
+        error(loc, 'bad-attribute', `${tag}'s ${layer.group} always shows one of its options, so '${a}' can't take it off (declare it 'group ${layer.group} optional:')`);
+      }
+      if (used.has(i)) error(loc, 'bad-attribute', `Two options of ${tag}'s ${layer.group} group at once; pick one`);
+      used.add(i);
+    }
+  };
+
   const audio: Record<string, string> = {};
   for (const a of program.audio) {
     if (audio[a.name]) error(a.loc, 'duplicate', `Audio '${a.name}' is already defined`);
@@ -170,7 +223,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     labelNames.add(l.name);
   }
 
-  const imageTags = new Set([...Object.keys(images), ...BUILTIN_IMAGES].map((n) => n.split(' ')[0]));
+  const imageTags = new Set([...Object.keys(images), ...BUILTIN_IMAGES, ...Object.keys(layered)].map((n) => n.split(' ')[0]));
 
   // --- Code generation --------------------------------------------------
   const code: Instr[] = [];
@@ -227,10 +280,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         if (s.who !== null && !characters[s.who]) {
           error(s.loc, 'unknown-character', didYouMean(s.who, Object.keys(characters)) ?? `Unknown character '${s.who}'. Add: define ${s.who} "Name"`);
         }
-        if (s.attrs.length && s.who) {
-          const name = `${s.who} ${s.attrs.join(' ')}`;
-          if (!images[name]) error(s.loc, 'unknown-image', `No image named '${name}'`);
-        }
+        if (s.attrs.length && s.who) checkSprite(s.who, s.attrs, s.loc);
         checkText(s.text, s.loc);
         const styled = styledText(s.text, s.loc);
         const id = lineId(label, `${s.who ?? ''}|${s.text}`);
@@ -247,10 +297,8 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         return;
       }
       case 'show': {
-        if (s.attrs.length) {
-          const name = `${s.tag} ${s.attrs.join(' ')}`;
-          if (!images[name]) error(s.loc, 'unknown-image', `No image named '${name}'`);
-        } else if (!imageTags.has(s.tag)) {
+        if (s.attrs.length) checkSprite(s.tag, s.attrs, s.loc);
+        else if (!imageTags.has(s.tag)) {
           error(s.loc, 'unknown-image', `No image named '${s.tag}'`);
         }
         if (s.at && !POSITIONS.includes(s.at) && !isPercentPosition(s.at)) error(s.loc, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')}, or a percentage of the screen's width like 30%)`);
@@ -432,6 +480,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     format: FORMAT_ID,
     version: FORMAT_VERSION,
     meta, start, characters, images, audio,
+    ...(Object.keys(layered).length ? { layered } : {}),
     ...(Object.keys(achievements).length ? { achievements } : {}),
     ...(Object.keys(endings).length ? { endings } : {}),
     ...(program.images.some((i) => i.gallery) ? { gallery: program.images.filter((i) => i.gallery).map((i) => i.name) } : {}),

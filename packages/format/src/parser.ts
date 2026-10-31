@@ -7,7 +7,7 @@
  */
 import type {
   AchievementDef, EndingDef,
-  AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, Program, Stmt,
+  AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, Stmt,
   Trivia, VarDef,
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
@@ -22,7 +22,7 @@ interface Line {
 }
 
 export const KEYWORDS = new Set([
-  'define', 'image', 'audio', 'var', 'global', 'label', 'achievement', 'achieve', 'ending',
+  'define', 'image', 'audio', 'var', 'global', 'label', 'achievement', 'achieve', 'ending', 'layered',
   'scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end',
   'wait', 'menu', 'if', 'elif', 'else', 'with', 'at', 'nvl',
 ]);
@@ -46,7 +46,7 @@ export function parse(source: string): ParseResult {
   const err = (line: number, code: string, message: string) =>
     diagnostics.push({ severity: 'error', line, code, message });
 
-  const program: Program = { meta: [], characters: [], images: [], audio: [], vars: [], achievements: [], endings: [], labels: [] };
+  const program: Program = { meta: [], characters: [], images: [], audio: [], layered: [], vars: [], achievements: [], endings: [], labels: [] };
   const rawLines = source.replace(/\r\n?/g, '\n').split('\n');
 
   // --- Frontmatter -------------------------------------------------------
@@ -111,6 +111,11 @@ export function parse(source: string): ParseResult {
       if (ln.children.length === 0) err(ln.line, 'empty-block', `Label '${m[1]}' has no lines`);
       const label: LabelDef = { name: m[1], body: parseBlock(ln.children), loc: { line: ln.line } };
       program.labels.push(attach(label, ln, true));
+      return;
+    }
+
+    if (word === 'layered') {
+      parseLayered(ln);
       return;
     }
 
@@ -269,7 +274,7 @@ export function parse(source: string): ParseResult {
     if (word && EFFECTS.has(word) && !/^\w+(\s+\w+)*\s*:/.test(t)) return parseEffect(word, t.slice(word.length).trim(), ln);
 
     // Dialogue: `who [attr ...]: text`
-    const m = /^([A-Za-z_]\w*)((?:\s+[A-Za-z_]\w*)*)\s*:\s*(.*)$/.exec(t);
+    const m = /^([A-Za-z_]\w*)((?:\s+-?[A-Za-z_]\w*)*)\s*:\s*(.*)$/.exec(t);
     if (m) {
       let text = m[3].trim();
       if (!text) {
@@ -309,7 +314,10 @@ export function parse(source: string): ParseResult {
           words.splice(atIdx);
         }
         if (words.length === 0) { err(ln.line, 'bad-show', `'show' needs an image, e.g. 'show mira smile'`); return null; }
-        if (!words.every((w) => IDENT.test(w))) { err(ln.line, 'bad-show', `Image names may only use letters, digits and _`); return null; }
+        if (!IDENT.test(words[0]) || !words.slice(1).every((w) => IDENT.test(w.replace(/^-/, '')))) {
+          err(ln.line, 'bad-show', `Image names may only use letters, digits and _`);
+          return null;
+        }
         return { type: 'show', tag: words[0], attrs: words.slice(1), at, transition, ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'hide': {
@@ -381,6 +389,48 @@ export function parse(source: string): ParseResult {
         err(ln.line, 'misplaced-keyword', `'${word}' can't be used here`);
         return null;
     }
+  }
+
+  /**
+   * layered mira:
+   *   always "sprites/mira/body.png"
+   *   group face:
+   *     neutral "sprites/mira/neutral.png"
+   */
+  function parseLayered(ln: Line): void {
+    const m = /^layered\s+([A-Za-z_]\w*)\s*:$/.exec(ln.text);
+    if (!m) { err(ln.line, 'bad-layered', `Expected 'layered name:'`); return; }
+    if (!ln.children.length) err(ln.line, 'empty-block', `'layered ${m[1]}' has no layers`);
+    const path = (text: string, line: number): string | null => {
+      const q = safeQuoted(text, line);
+      if (!q) return null;
+      if (q.rest) err(line, 'bad-layered', `Unexpected text after the path: '${q.rest}'`);
+      return q.value;
+    };
+    const def: LayeredDef = { tag: m[1], layers: [], loc: { line: ln.line } };
+    ln.children.forEach((c, i) => {
+      const word = firstWord(c.text);
+      if (word === 'always') {
+        noChildren(c);
+        const p = path(c.text.slice('always'.length).trim(), c.line);
+        if (p !== null) def.layers.push(attach<LayerDef>({ kind: 'always', path: p, loc: { line: c.line } }, c, i === 0));
+        return;
+      }
+      if (word !== 'group') { err(c.line, 'bad-layered', `Inside 'layered', write 'always "path"' or 'group name:'`); return; }
+      const g = /^group\s+([A-Za-z_]\w*)(\s+optional)?\s*:$/.exec(c.text);
+      if (!g) { err(c.line, 'bad-layered', `Expected 'group name:' or 'group name optional:'`); return; }
+      if (!c.children.length) err(c.line, 'empty-block', `Group '${g[1]}' has no options`);
+      const options: LayerOption[] = [];
+      c.children.forEach((o, j) => {
+        noChildren(o);
+        const om = /^([A-Za-z_]\w*)\s+(".*)$/.exec(o.text);
+        if (!om) { err(o.line, 'bad-layered', `Expected an option and its image: 'smile "sprites/mira/smile.png"'`); return; }
+        const p = path(om[2], o.line);
+        if (p !== null) options.push(attach<LayerOption>({ attr: om[1], path: p, loc: { line: o.line } }, o, j === 0));
+      });
+      def.layers.push(attach<LayerDef>({ kind: 'group', name: g[1], optional: !!g[2], options, loc: { line: c.line } }, c, i === 0));
+    });
+    program.layered.push(attach(def, ln, program.layered.length === 0));
   }
 
   /** `shake [s]`, `flash [colour] [s]`, `camera zoom Z [at X% Y%] [over s]`, `camera reset [over s]`. */

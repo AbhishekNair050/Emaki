@@ -51,6 +51,11 @@ export type Instr =
    */
   | { op: 'camera'; zoom: number; x: number; y: number; duration?: number; src: SrcRef };
 
+/** A layer of a layered character: always drawn, or the group's chosen option (`default` when none was chosen; null for an optional group). */
+export type CompiledLayer =
+  | { path: string }
+  | { group: string; options: Record<string, string>; default: string | null };
+
 export interface CompiledChoice {
   id: string;
   text: string;
@@ -69,6 +74,8 @@ export interface CompiledStory {
   /** Image name ("mira smile", "kitchen") -> asset path. */
   images: Record<string, string>;
   audio: Record<string, string>;
+  /** Characters drawn from layers (`layered mira:`): tag -> layers, bottom first. Absent when none. */
+  layered?: Record<string, CompiledLayer[]>;
   /** Achievement id -> display name. Absent when the story has none. */
   achievements?: Record<string, { name: string }>;
   /** Initial variable values. */
