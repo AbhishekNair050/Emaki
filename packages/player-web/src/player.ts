@@ -92,6 +92,15 @@ export class Player {
   private fullText = '';
   private fullSpans: Span[] | null = null;
   private shownChars = 0;
+  /** Pauses still ahead in the line being typed (`[w]`, `[w=1.5]`), by character position. */
+  private stops: Array<{ at: number; pause: 'click' | number }> = [];
+  /** Typing is held at a `[w]` until the player clicks. */
+  private held = false;
+  /** The line ends with `[nw]`: move on by itself, after `endPause` seconds. */
+  private autoNext = false;
+  private endPause = 0;
+  private instantText = false;
+  private pauseTimer = 0;
   private auto = false;
   private skip = false;
   private pendingTimer = 0;
@@ -329,7 +338,7 @@ export class Player {
     const b = this.runner.block;
     if (!b) return;
     if (b.type === 'say' && this.isTyping) {
-      this.finishTyping();
+      this.hurryTyping();
       return;
     }
     if (b.type === 'say' || b.type === 'wait') this.guard(() => this.present(this.runner.advance()));
@@ -475,20 +484,60 @@ export class Player {
 
   private typeText(text: string, spans: Span[] | null, instant: boolean): void {
     window.clearInterval(this.typingTimer);
+    window.clearTimeout(this.pauseTimer);
     this.fullText = text;
     this.fullSpans = spans;
-    this.shownChars = instant ? text.length : 0;
-    this.renderText();
-    if (instant) { this.onTextDone(); return; }
-    const step = 1000 / this.settings.textSpeed;
+    this.shownChars = 0;
+    this.held = false;
+    this.instantText = instant;
+    // Pauses inside the line stop the typing; ones at the very end only matter with [nw].
+    this.stops = [];
+    this.autoNext = false;
+    this.endPause = 0;
+    let at = 0;
+    for (const sp of spans ?? []) {
+      at += sp.text.length;
+      if (sp.pause === 'next') this.autoNext = true;
+      else if (sp.pause !== undefined && at < text.length) this.stops.push({ at, pause: sp.pause });
+      else if (typeof sp.pause === 'number') this.endPause += sp.pause;
+    }
+    this.typeOn();
+  }
+
+  /** Type up to the next pause, or to the end of the line. */
+  private typeOn(): void {
+    window.clearInterval(this.typingTimer);
+    const stop = this.stops[0];
+    const until = stop ? stop.at : this.fullText.length;
+    const arrive = () => {
+      if (!stop) { this.onTextDone(); return; }
+      this.stops.shift();
+      if (this.skip) this.typeOn();
+      else if (stop.pause === 'click') this.holdForClick();
+      else this.pauseTimer = window.setTimeout(() => this.typeOn(), stop.pause * 1000);
+    };
+    if (this.instantText || this.skip || this.shownChars >= until) {
+      this.shownChars = until;
+      this.renderText();
+      arrive();
+      return;
+    }
     this.typingTimer = window.setInterval(() => {
       this.shownChars++;
       this.renderText();
-      if (!this.isTyping) {
+      if (this.shownChars >= until) {
         window.clearInterval(this.typingTimer);
-        this.onTextDone();
+        arrive();
       }
-    }, step);
+    }, 1000 / this.settings.textSpeed);
+  }
+
+  /** Stop at a `[w]` with the "click to continue" mark; auto mode carries on after its delay. */
+  private holdForClick(): void {
+    this.held = true;
+    this.textbox.classList.add('waiting');
+    this.nvlEl.classList.add('waiting');
+    if (this.auto) this.pendingTimer = window.setTimeout(() => this.hurryTyping(), this.settings.autoDelay * 1000);
   }
 
   /** Draw the first `shownChars` characters, keeping bold/italic/colour runs. */
@@ -535,18 +584,40 @@ export class Player {
     this.typeText(current.text, current.spans ?? null, instant || this.settings.textSpeed >= INSTANT_SPEED);
   }
 
-  private finishTyping(): void {
+  /**
+   * A click while the line is still typing: at a `[w]`, go on; otherwise show
+   * the rest up to the next `[w]` at once (timed pauses on the way are dropped).
+   * `all` shows the whole line (skip mode).
+   */
+  private hurryTyping(all = false): void {
     if (!this.isTyping) return;
     window.clearInterval(this.typingTimer);
-    this.shownChars = this.fullText.length;
+    window.clearTimeout(this.pauseTimer);
+    window.clearTimeout(this.pendingTimer);
+    this.textbox.classList.remove('waiting');
+    this.nvlEl.classList.remove('waiting');
+    if (this.held && !all) {
+      this.held = false;
+      this.typeOn();
+      return;
+    }
+    this.held = false;
+    if (all) this.stops = [];
+    while (this.stops[0] && this.stops[0].pause !== 'click') this.stops.shift();
+    const next = this.stops.shift();
+    this.shownChars = next ? next.at : this.fullText.length;
     this.renderText();
-    this.onTextDone();
+    if (next) this.holdForClick();
+    else this.onTextDone();
   }
 
   private onTextDone(): void {
     this.textbox.classList.add('waiting');
     this.nvlEl.classList.add('waiting');
-    if (this.skip) {
+    if (this.autoNext && !this.skip) {
+      // [nw]: the line moves on by itself, after any pause at its end.
+      this.pendingTimer = window.setTimeout(() => this.onAdvance(), this.endPause * 1000);
+    } else if (this.skip) {
       this.pendingTimer = window.setTimeout(() => this.onAdvance(), 40);
     } else if (this.auto && !(this.voice && !this.voice.paused && !this.voice.ended)) {
       const wait = this.settings.autoDelay * 1000 + this.fullText.length * AUTO_PER_CHAR_MS;
@@ -556,6 +627,7 @@ export class Player {
 
   private clearTimers(): void {
     window.clearTimeout(this.pendingTimer);
+    window.clearTimeout(this.pauseTimer);
     window.clearInterval(this.typingTimer);
   }
 
@@ -563,7 +635,8 @@ export class Player {
     this.auto = !this.auto;
     if (this.auto) this.skip = false;
     this.updateToggles();
-    if (this.auto && !this.isTyping && this.runner.block?.type === 'say') this.onTextDone();
+    if (this.auto && this.held) this.holdForClick();
+    else if (this.auto && !this.isTyping && this.runner.block?.type === 'say') this.onTextDone();
     if (!this.auto) window.clearTimeout(this.pendingTimer);
   }
 
@@ -572,8 +645,8 @@ export class Player {
     if (this.skip) this.auto = false;
     this.updateToggles();
     if (this.skip) {
-      this.finishTyping();
-      if (this.runner.block?.type === 'say') this.onTextDone();
+      if (this.isTyping) this.hurryTyping(true);
+      else if (this.runner.block?.type === 'say') this.onTextDone();
     } else window.clearTimeout(this.pendingTimer);
   }
 
