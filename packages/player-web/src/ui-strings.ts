@@ -32,6 +32,7 @@ export const UI_STRINGS = {
   'ui.untitled': 'Untitled',
   'ui.made_with': 'Made with Emaki',
   'ui.the_end': 'The End',
+  'ui.replay_voice': 'Play the voice again',
   'ui.extras': 'Extras',
   'ui.gallery': 'Gallery',
   'ui.endings': 'Endings',

@@ -1204,6 +1204,13 @@ export class Player {
       if (b.spans) line.append(...spanNodes(b.spans));
       else line.textContent = b.text;
       li.append(line);
+      if (b.voice) {
+        const voice = b.voice;
+        const play = button('▶', () => this.playVoice(voice), this.t('ui.replay_voice'));
+        play.className = 'log-voice';
+        play.setAttribute('aria-label', this.t('ui.replay_voice'));
+        li.append(play);
+      }
       list.append(li);
     }
     this.openOverlay('panel log-panel', el('h2', '', this.t('ui.history')), list, button(this.t('ui.close'), () => this.closeOverlay()));

@@ -305,6 +305,7 @@ html, body {
 .log li { padding: calc(0.9 * var(--u)) 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
 .log li.narration { font-style: italic; color: #d8d2c4; }
 .log-name { font-family: var(--ui-font); font-weight: 650; margin-right: 0.8cqw; }
+.log-voice { margin-left: 0.8cqw; min-width: 0 !important; padding: 0.1em 0.7em !important; font-size: 0.8em; vertical-align: middle; }
 
 .error-panel h2 { color: #ff9b8a; }
 
