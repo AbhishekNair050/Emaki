@@ -287,7 +287,7 @@
           }
         },
         {
-          "begin": "^\\s+(play|stop)\\s+(music|sound|voice)\\b",
+          "begin": "^\\s+(play|stop)\\s+(music|ambience|sound|voice)\\b",
           "end": "$",
           "beginCaptures": {
             "1": {

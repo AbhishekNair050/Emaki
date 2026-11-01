@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
+import { fadeVolume, LoopAudio, type Track } from './loop-audio.ts';
 import { Progress } from './progress.ts';
 import { ReadLines } from './read-lines.ts';
 import { detectHost, type EmakiHost } from './host.ts';
@@ -107,11 +108,15 @@ export class Player {
   private epoch = 0;
   private busy = false;
   private menuShownAt = 0;
-  private music: HTMLAudioElement | null = null;
+  /** Music, ambience and looping sounds, looped without a gap. */
+  private readonly loops = new LoopAudio();
+  private music: Track | null = null;
+  /** The ambience loop under the music (`play ambience rain`). */
+  private ambience: Track | null = null;
   /** The voice line playing now; a new line (or the next click) stops it. */
   private voice: HTMLAudioElement | null = null;
   /** The looping sound playing now (rain, a crowd), kept until stopped or replaced. */
-  private loopSound: HTMLAudioElement | null = null;
+  private loopSound: Track | null = null;
   /** One-shot sound effects still playing, so 'stop sound' can cut them. */
   private readonly sounds = new Set<HTMLAudioElement>();
   private settings: Settings;
@@ -206,6 +211,7 @@ export class Player {
     this.epoch++;
     this.clearTimers();
     this.stopMusic();
+    this.stopAmbience();
     this.stopSounds();
     this.stopVoice();
     this.read.flush();
@@ -322,6 +328,7 @@ export class Player {
     this.enterPlaying();
     this.syncScene({ bg: null, sprites: [] });
     this.stopMusic();
+    this.stopAmbience();
     this.stopSounds();
     this.stopVoice();
     this.guard(() => this.present(this.runner.start()));
@@ -718,6 +725,7 @@ export class Player {
       case 'play': {
         const fadeMs = instant ? 0 : (fx.fade ?? 0) * 1000;
         if (fx.channel === 'music') this.playMusic(fx.path, fx.loop, fadeMs);
+        else if (fx.channel === 'ambience') this.playAmbience(fx.path, fx.loop, fadeMs);
         else if (fx.channel === 'sound' && fx.loop) this.playLoopSound(fx.path, fadeMs);
         // Skipping, rolling back or loading: don't fire a burst of old sound effects or voices.
         else if (instant) return;
@@ -728,6 +736,7 @@ export class Player {
       case 'stop': {
         const fadeMs = instant ? 0 : (fx.fade ?? 0) * 1000;
         if (fx.channel === 'music') this.stopMusic(fadeMs);
+        else if (fx.channel === 'ambience') this.stopAmbience(fadeMs);
         else if (fx.channel === 'sound') this.stopSounds(fadeMs);
         else this.stopVoice();
         return;
@@ -854,34 +863,35 @@ export class Player {
 
   /** Start a music track; with `fadeMs`, the old track fades out while the new one fades in. */
   private playMusic(path: string, loop: boolean, fadeMs = 0): void {
-    if (this.music?.dataset.path === path) return;
+    if (this.music?.path === path) return;
     this.stopMusic(fadeMs);
-    const a = new Audio(asset(path));
-    a.dataset.path = path;
-    a.loop = loop;
-    a.volume = fadeMs ? 0 : this.settings.musicVolume;
-    a.play().catch(() => { /* autoplay blocked or file missing: stay silent */ });
-    this.music = a;
-    if (fadeMs) void fadeVolume(a, () => this.settings.musicVolume, fadeMs);
+    this.music = this.loops.play(path, asset(path), loop, this.settings.musicVolume, fadeMs);
   }
 
   private stopMusic(fadeMs = 0): void {
-    const old = this.music;
+    this.music?.stop(fadeMs);
     this.music = null;
-    if (!old) return;
-    if (!fadeMs) {
-      fadeVolume(old, () => old.volume, 0); // cancel any fade in progress
-      old.pause();
-      return;
-    }
-    void fadeVolume(old, () => 0, fadeMs).then(() => old.pause());
+  }
+
+  /** `play ambience rain`: a loop under the music, at the sound effects volume. */
+  private playAmbience(path: string, loop: boolean, fadeMs = 0): void {
+    if (this.ambience?.path === path) return;
+    this.stopAmbience(fadeMs);
+    this.ambience = this.loops.play(path, asset(path), loop, this.settings.soundVolume, fadeMs);
+  }
+
+  private stopAmbience(fadeMs = 0): void {
+    this.ambience?.stop(fadeMs);
+    this.ambience = null;
   }
 
   /** Match the audio to the story's state after a jump in time (load, rollback, edit). */
   private syncAudio(): void {
-    const { music, sound } = this.runner.audio();
+    const { music, sound, ambience } = this.runner.audio();
     if (music) this.playMusic(music.path, music.loop);
     else this.stopMusic();
+    if (ambience) this.playAmbience(ambience.path, true);
+    else this.stopAmbience();
     this.stopVoice();
     for (const a of this.sounds) a.pause();
     this.sounds.clear();
@@ -917,23 +927,14 @@ export class Player {
   }
 
   private playLoopSound(path: string, fadeMs = 0): void {
-    if (this.loopSound?.dataset.path === path) return;
+    if (this.loopSound?.path === path) return;
     this.stopLoopSound(fadeMs);
-    const a = new Audio(asset(path));
-    a.dataset.path = path;
-    a.loop = true;
-    a.volume = fadeMs ? 0 : this.settings.soundVolume;
-    a.play().catch(() => { /* autoplay blocked or file missing: stay silent */ });
-    this.loopSound = a;
-    if (fadeMs) void fadeVolume(a, () => this.settings.soundVolume, fadeMs);
+    this.loopSound = this.loops.play(path, asset(path), true, this.settings.soundVolume, fadeMs);
   }
 
   private stopLoopSound(fadeMs = 0): void {
-    const old = this.loopSound;
+    this.loopSound?.stop(fadeMs);
     this.loopSound = null;
-    if (!old) return;
-    if (!fadeMs) { fadeVolume(old, () => old.volume, 0); old.pause(); return; }
-    void fadeVolume(old, () => 0, fadeMs).then(() => old.pause());
   }
 
   /** `stop sound`: the looping sound and any effects still ringing. */
@@ -996,6 +997,7 @@ export class Player {
     this.epoch++;
     this.clearTimers();
     this.stopMusic();
+    this.stopAmbience();
     this.stopSounds();
     this.stopVoice();
     this.auto = this.skip = false;
@@ -1299,8 +1301,9 @@ export class Player {
     for (const [id] of FONTS) this.stage.classList.toggle(`font-${id}`, s.font === id);
     this.stage.classList.toggle('reduced-motion', this.reducedMotion);
     this.stage.classList.toggle('full-motion', s.motion === 'full');
-    if (this.music) this.music.volume = s.musicVolume;
-    if (this.loopSound) this.loopSound.volume = s.soundVolume;
+    void this.music?.fadeTo(s.musicVolume, 0);
+    void this.loopSound?.fadeTo(s.soundVolume, 0);
+    void this.ambience?.fadeTo(s.soundVolume, 0);
     if (this.voice) this.voice.volume = s.voiceVolume;
   }
 
@@ -1641,38 +1644,6 @@ async function fadeOutAndRemove(node: HTMLElement, ms: number): Promise<void> {
   node.remove();
 }
 
-const fades = new WeakMap<HTMLAudioElement, number>();
-
-/**
- * Ramp an element's volume to `target()` over `ms`, replacing any ramp already
- * running on it. The target is re-read every tick, so moving the volume slider
- * mid-fade is respected. Timers rather than animation frames: fades must finish
- * even in a background tab.
- */
-function fadeVolume(a: HTMLAudioElement, target: () => number, ms: number): Promise<void> {
-  window.clearInterval(fades.get(a));
-  fades.delete(a);
-  if (ms <= 0) {
-    a.volume = clamp01(target());
-    return Promise.resolve();
-  }
-  const from = a.volume;
-  const start = performance.now();
-  return new Promise((resolve) => {
-    const id = window.setInterval(() => {
-      const t = Math.min(1, (performance.now() - start) / ms);
-      a.volume = clamp01(from + (target() - from) * t);
-      if (t >= 1) {
-        window.clearInterval(id);
-        fades.delete(a);
-        resolve();
-      }
-    }, 40);
-    fades.set(a, id);
-  });
-}
-
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 
 /** localStorage/sessionStorage that never throws (private mode, blocked storage). */
