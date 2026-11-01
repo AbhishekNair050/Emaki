@@ -459,6 +459,11 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   if (meta.title_music !== undefined && !audio[meta.title_music] && !/\.[A-Za-z0-9]+$/.test(meta.title_music)) {
     warn(1, 'unknown-audio', `'title_music: ${meta.title_music}' is neither an audio name nor a file path`);
   }
+  if (meta.voice !== undefined) {
+    const bad = [...meta.voice.matchAll(/\{([^}]*)\}/g)].map((m) => m[1]).find((p) => p !== 'id' && p !== 'speaker');
+    if (!meta.voice.includes('{id}')) warn(1, 'bad-voice', `'voice: ${meta.voice}' needs {id} where each line's id goes, like voice/{id}.ogg`);
+    else if (bad !== undefined) warn(1, 'bad-voice', `Unknown '{${bad}}' in 'voice:' (use {id} and {speaker})`);
+  }
   if (meta.nvl !== undefined && meta.nvl !== 'on' && meta.nvl !== 'off') {
     warn(1, 'bad-nvl', `'nvl: ${meta.nvl}' should be 'on' (start in full-screen text) or 'off' (the default)`);
   }
@@ -521,6 +526,14 @@ export function reachable(code: Instr[], start: number): Set<number> {
     }
   }
   return seen;
+}
+
+/**
+ * A line's voice file for the header's `voice:` pattern: `{id}` is the line's
+ * id and `{speaker}` its character id (`narrator` for narration).
+ */
+export function voicePath(pattern: string, id: string, who: string | null): string {
+  return pattern.replaceAll('{id}', id).replaceAll('{speaker}', who ?? 'narrator');
 }
 
 /** FNV-1a 32-bit hash, base36. Small, fast, deterministic across runtimes. */

@@ -7,7 +7,8 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { compileFiles, type CompileResult, type StoryFile } from './compiler.ts';
+import type { CompiledStory } from './compiled.ts';
+import { compileFiles, voicePath, type CompileResult, type StoryFile } from './compiler.ts';
 
 export const MAIN_FILE = 'story.vn';
 const SKIP_DIRS = new Set(['assets', 'lang', 'dist', 'export', 'node_modules', 'tools']);
@@ -45,10 +46,35 @@ export function readStory(gameDir: string): { main: string; parts: StoryFile[] }
   };
 }
 
-/** Compile the whole game in a folder. */
+/** Compile the whole game in a folder (with its voice files). */
 export function compileGame(gameDir: string): CompileResult & { parts: StoryFile[]; main: string } {
   const { main, parts } = readStory(gameDir);
-  return { ...compileFiles(main, parts), main, parts };
+  const r = compileFiles(main, parts);
+  if (r.story) addVoices(r.story, gameDir);
+  return { ...r, main, parts };
+}
+
+/**
+ * For a header `voice: voice/{id}.ogg`, the voice file of every line that has
+ * one in assets/ (lines without one stay silent). Ids are stable while a line's
+ * speaker and text stay the same.
+ */
+export function findVoices(story: CompiledStory, gameDir: string): Record<string, string> {
+  const pattern = story.meta.voice;
+  const out: Record<string, string> = {};
+  if (!pattern?.includes('{id}')) return out;
+  for (const ins of story.code) {
+    if (ins.op !== 'say') continue;
+    const path = voicePath(pattern, ins.id, ins.who);
+    if (existsSync(join(gameDir, 'assets', path))) out[ins.id] = path;
+  }
+  return out;
+}
+
+/** Fill in `story.voices` from the game folder. */
+export function addVoices(story: CompiledStory, gameDir: string): void {
+  const voices = findVoices(story, gameDir);
+  if (Object.keys(voices).length) story.voices = voices;
 }
 
 /** `file:line` for messages, with story.vn for the main file. */

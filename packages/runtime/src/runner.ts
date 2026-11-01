@@ -65,6 +65,8 @@ export type SayBlock = {
   line: number; label: string;
   /** The script file, when it isn't the main story.vn. */
   file?: string;
+  /** The line's voice (from `play voice` just before it, or the header's `voice:` pattern), for replaying it. */
+  voice?: string;
 };
 
 export interface ChoiceOption { index: number; id: string; text: string; spans?: Span[] }
@@ -533,6 +535,8 @@ export class Runner {
     const effects: Effect[] = [];
     const s = this.state;
     const code = this.story.code;
+    /** A `play voice` since the last line: it belongs to the next line. */
+    let voice: string | null = null;
 
     for (let steps = 0; ; steps++) {
       if (steps > STEP_LIMIT) {
@@ -552,6 +556,10 @@ export class Runner {
             }
           }
           const block = this.sayBlock(ins, s.vars);
+          // A voiced game (header `voice:`) plays each line's file without a `play voice` line.
+          const own = voice ? null : this.story.voices?.[ins.id];
+          if (own) effects.push({ type: 'play', channel: 'voice', path: own, loop: false, fade: null });
+          if (voice ?? own) block.voice = (voice ?? own)!;
           if (s.nvl) s.nvl = [...s.nvl, block].slice(-NVL_PAGE_MAX);
           return this.blockOn(block, effects);
         }
@@ -597,11 +605,13 @@ export class Runner {
           break;
         case 'play':
           s.pc++;
+          if (ins.channel === 'voice') voice = ins.path;
           trackAudio(s.audio, ins);
           effects.push({ type: 'play', channel: ins.channel, path: ins.path, loop: ins.loop, fade: ins.fade });
           break;
         case 'stop':
           s.pc++;
+          if (ins.channel === 'voice') voice = null;
           trackAudio(s.audio, ins);
           effects.push({ type: 'stop', channel: ins.channel, fade: ins.fade });
           break;
@@ -763,7 +773,7 @@ export class Runner {
     this.textInstrs ??= new Map(this.story.code.flatMap((i) => (i.op === 'say' || i.op === 'menu' ? [[i.id, i] as const] : [])));
     const ins = this.textInstrs.get(b.id);
     try {
-      if (b.type === 'say' && ins?.op === 'say') return this.sayBlock(ins, vars);
+      if (b.type === 'say' && ins?.op === 'say') return { ...this.sayBlock(ins, vars), ...(b.voice ? { voice: b.voice } : {}) };
       if (b.type === 'menu' && ins?.op === 'menu') {
         return {
           ...b,

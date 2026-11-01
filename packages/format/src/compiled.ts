@@ -84,6 +84,12 @@ export interface CompiledStory {
   gallery?: string[];
   /** Endings (`ending id "Name"`), reached with `end id`. */
   endings?: Record<string, { name: string }>;
+  /**
+   * Voice files by line id, for a header `voice: voice/{id}.ogg`: the lines
+   * whose file exists. Filled in from the game folder when the whole game is
+   * compiled (not part of `hash`).
+   */
+  voices?: Record<string, string>;
   /** Variables declared `global var`: the player keeps their values across playthroughs. */
   globals?: string[];
   /** Label name -> instruction index. */
