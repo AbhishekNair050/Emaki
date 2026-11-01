@@ -34,7 +34,7 @@ export const EFFECTS = new Set(['shake', 'flash', 'camera']);
 export const FLASH_COLORS = ['white', 'black', 'red'];
 const SECONDS = /^\d+(\.\d+)?$/;
 const PERCENT = /^(\d+(\.\d+)?)%$/;
-const CHANNELS: Channel[] = ['music', 'sound', 'voice'];
+const CHANNELS: Channel[] = ['music', 'ambience', 'sound', 'voice'];
 
 export interface ParseResult {
   program: Program;
@@ -328,7 +328,7 @@ export function parse(source: string): ParseResult {
       case 'play': {
         const m = /^(\w+)\s+(.+)$/.exec(args);
         if (!m || !CHANNELS.includes(m[1] as Channel)) {
-          err(ln.line, 'bad-play', `Expected 'play music|sound|voice name'`);
+          err(ln.line, 'bad-play', `Expected 'play music|ambience|sound|voice name'`);
           return null;
         }
         let rest = m[2].trim();
@@ -350,7 +350,7 @@ export function parse(source: string): ParseResult {
       case 'stop': {
         const m = /^(\w+)\s*(.*)$/.exec(args);
         if (!m || !CHANNELS.includes(m[1] as Channel)) {
-          err(ln.line, 'bad-stop', `Expected 'stop music|sound|voice'`);
+          err(ln.line, 'bad-stop', `Expected 'stop music|ambience|sound|voice'`);
           return null;
         }
         const opts = parseAudioOpts(m[2], ln.line, false);

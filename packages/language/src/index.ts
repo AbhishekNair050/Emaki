@@ -281,7 +281,7 @@ export class Analysis {
     }
     if (/^\s+achieve\s+\w*$/.test(before)) return of('achievement');
     if (/^\s+end\s+\w*$/.test(before)) return of('ending');
-    if (/^\s+(play|stop)\s+\w*$/.test(before)) return values(['music', 'sound', 'voice'], 'channel');
+    if (/^\s+(play|stop)\s+\w*$/.test(before)) return values(['music', 'ambience', 'sound', 'voice'], 'channel');
     if (/^\s+play\s+\w+\s+\w*$/.test(before)) return of('audio');
     if (/^\s+\w*$/.test(before)) {
       return [

@@ -316,7 +316,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
         if (s.asset.kind === 'path') path = s.asset.path;
         else if (audio[s.asset.name]) path = audio[s.asset.name];
         else error(s.loc, 'unknown-audio', `Unknown audio '${s.asset.name}'. Add: audio ${s.asset.name} = "audio/file.ogg"`);
-        code.push({ op: 'play', channel: s.channel, path, loop: s.loop ?? s.channel === 'music', fade: s.fade, src });
+        code.push({ op: 'play', channel: s.channel, path, loop: s.loop ?? (s.channel === 'music' || s.channel === 'ambience'), fade: s.fade, src });
         return;
       }
       case 'stop':

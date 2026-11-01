@@ -62,7 +62,8 @@ export interface Program {
   trailing?: string[];
 }
 
-export type Channel = 'music' | 'sound' | 'voice';
+/** `ambience`: a loop that plays under the music (rain, a crowd), independent of sound effects. */
+export type Channel = 'music' | 'ambience' | 'sound' | 'voice';
 export type NvlMode = 'on' | 'off' | 'clear';
 export type AssignOp = '=' | '+=' | '-=';
 

@@ -146,7 +146,7 @@ describe('completion', () => {
     expect(labels(edit('  show mira smile at '), 27)).toEqual(['left', 'center', 'right']);
     expect(labels(edit('  set '), 27)).toEqual(['trust']);
     expect(labels(edit('  "You have {'), 27)).toEqual(['trust']);
-    expect(labels(edit('  play '), 27)).toEqual(['music', 'sound', 'voice']);
+    expect(labels(edit('  play '), 27)).toEqual(['music', 'ambience', 'sound', 'voice']);
     expect(labels(edit('  play music '), 27)).toEqual(['rain']);
   });
 

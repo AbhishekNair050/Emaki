@@ -37,6 +37,8 @@ export interface AudioState {
   music: { path: string; loop: boolean } | null;
   /** The looping sound (rain, engine hum) still playing, if any. One-shot sounds and voices aren't state. */
   sound?: { path: string; loop: true } | null;
+  /** The ambience loop playing under the music. Missing in saves from before it existed. */
+  ambience?: { path: string } | null;
 }
 
 export interface RunState {
@@ -512,7 +514,7 @@ export class Runner {
       vars: { ...this.story.vars },
       stack: [],
       scene: { bg: null, sprites: [] },
-      audio: { music: null, sound: null },
+      audio: { music: null, sound: null, ambience: null },
       ended: false,
       lastSay: null,
       nvl: this.story.meta.nvl === 'on' ? [] : null,
@@ -810,6 +812,8 @@ function trackAudio(audio: AudioState, ins: Extract<Instr, { op: 'play' | 'stop'
   else if (ins.channel === 'sound') {
     if (ins.op === 'stop') audio.sound = null;
     else if (ins.loop) audio.sound = { path: ins.path, loop: true };
+  } else if (ins.channel === 'ambience') {
+    audio.ambience = ins.op === 'play' && ins.loop ? { path: ins.path } : null;
   }
 }
 
