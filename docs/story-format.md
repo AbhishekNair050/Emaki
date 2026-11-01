@@ -53,6 +53,8 @@ A runtime should guard against loops that execute many instructions without bloc
 ## Styled text
 `text` is always plain, with markup removed. When a line uses styling, `spans` is also present: an array of `{ text, b?: true, i?: true, color?: string }` runs that join to make `text`. Runtimes without styling support can ignore `spans`. `color` is a hex code or a plain colour name, validated by the compiler.
 
+A span with empty `text` and a `pause` marks a pause at that point in a `say` line: `"click"` (wait for the player, `[w]`), a number of seconds (`[w=1.5]`), or `"next"` (`[nw]`, always last: continue to the next line without waiting for the player). Lines with pauses always carry `spans`. A runtime that ignores pauses still shows the right text.
+
 ## Expressions
 JSON trees, `k` = kind:
 ```

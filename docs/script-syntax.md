@@ -193,7 +193,22 @@ Works in dialogue, narration and choices.
 | `The [color=#e8b04b]lamp[/color] dies.` | "lamp" in gold (a hex code, or a colour name like `gold`) |
 | `Room 5 \* 3` | Room 5 * 3 |
 
-A backslash shows `*`, `[`, `]` or `\` literally. Ordinary square brackets are just text; only `[color=...]` and `[/color]` are special. Inside italic narration, `*emphasis*` turns upright so it still stands out. An unclosed `*` or `[color]` is reported with its line number.
+A backslash shows `*`, `[`, `]` or `\` literally. Ordinary square brackets are just text; only `[color=...]`, `[/color]` and the pauses below are special. Inside italic narration, `*emphasis*` turns upright so it still stands out. An unclosed `*` or `[color]` is reported with its line number.
+
+## Pauses inside a line
+Dialogue and narration can stop partway, the way people pause when they talk.
+
+| You write | What happens |
+|---|---|
+| `mira: I thought...[w] never mind.` | The text stops after "I thought..." until the player clicks, then goes on in the same box. |
+| `"The door creaked.[w=1.5] Then nothing."` | A 1.5-second pause, no click needed (up to 30 seconds). |
+| `mira: If you'd just listen[nw]` | `[nw]` at the very end: the next line follows by itself, without a click. Good for interruptions. |
+| `"Silence.[w=2][nw]"` | Stays on screen for two seconds, then moves on by itself. |
+
+- A click while the text is typing shows everything up to the next `[w]` at once.
+- Auto mode treats a `[w]` like the end of a line: it waits its usual delay and goes on. Skipping ignores pauses.
+- The history log and screen readers get the line without the pause marks.
+- Pauses don't work in choices.
 
 ## Variables in text
 `mira: You've earned {trust} points of my trust.` Use `{{` and `}}` for literal braces.
