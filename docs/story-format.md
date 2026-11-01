@@ -46,6 +46,8 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `flash` | `color, duration?` | no | Flash the screen in `color` (`white`, `black`, `red` or `#rrggbb`); effect only. |
 | `camera` | `zoom, x, y, duration?` | no | Scene camera = zoom `zoom` (≥ 1) toward the point `x`%, `y`% of the screen; `zoom 1, x 50, y 50` is the whole picture. Animated over `duration` seconds without blocking. Part of the scene, so saved and rolled back with it. |
 
+**Voices.** `voices` (optional) maps line ids to voice files. When a `say` runs without a `play voice` just before it and its id is in `voices`, play that file on the voice channel as if `play voice` had come first.
+
 **Layered characters.** `layered` maps a tag to its layers, bottom first: `{ path }` is always drawn; `{ group, options: {attr: path}, default }` draws the option currently chosen for the group (`default` until one is chosen; `null` means nothing). For a layered tag, a sprite's attrs are the chosen option per group. Each attr in a `show` or `say` replaces the option of the group that contains it; `-attr` clears that group. With no attrs, a new sprite starts with every group's default.
 
 A runtime should guard against loops that execute many instructions without blocking (reference: 100,000).

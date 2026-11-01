@@ -41,6 +41,7 @@ Between `---` lines at the very top: `key: value` pairs.
 - `title`, `author`: shown on the title screen.
 - `start`: the label the story begins at (default: `start`, else the first label).
 - `title_image`, `title_music`, `title_logo`, `title_layout`, `title_buttons`: the title screen's look. A label named `title` replaces the title screen with a scene of your own. See [Theming](theming.md).
+- `voice`: where each line's voice file is, for a fully voiced game: `voice/{id}.ogg` (see [Voiced games](#voiced-games)).
 - `nvl`: `on` to start the story in full-screen text (see [NVL mode](#full-screen-text-nvl-mode)).
 - `narration`: `italic` (the default) or `plain`. Plain suits stories told mostly in narration, such as first-person novels.
 - `aspect`: the shape of the screen, as width:height (default `16:9`). Use `4:3` for art drawn for older screens; the game is letterboxed to fit.
@@ -76,7 +77,7 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `show mira at right with move` | Slide a character who's already on screen to a new position (`with move 1.2` for a slower slide). |
 | `hide mira with dissolve` | Remove a character. |
 | `play music "audio/theme.ogg"` / `play sound rain` | Audio. Music loops by default. Options: `loop`, `noloop`, `fade 1.5`. |
-| `play voice "voice/ann_001.ogg"` | A voice line, put just before the line it belongs to. It stops when the player moves on, and auto mode waits for it to finish. |
+| `play voice "voice/ann_001.ogg"` | A voice line, put just before the line it belongs to. It stops when the player moves on, and auto mode waits for it to finish. A fully voiced game doesn't need these: see [Voiced games](#voiced-games). |
 | `stop music fade 2` | Stop a channel (`music`, `sound`, `voice`). `stop sound` stops a looping sound and any effects still playing. |
 | `set trust += 1` | Change a variable. Also `=` and `-=`. |
 | `jump label_name` | Go to another label (no coming back). |
@@ -226,6 +227,28 @@ npm run emaki -- strings games/mygame/story.vn                   # progress of e
 
 Players pick a language in Settings; by default the game matches their device.
 
+## Voiced games
+Writing `play voice` before every line of a fully voiced game is a lot of typing. Instead, tell Emaki where the files are, in the header:
+
+```
+---
+title: The Keeper of Gullwing Point
+voice: voice/{speaker}/{id}.ogg
+---
+```
+
+`{id}` is each line's id and `{speaker}` the character who says it (`narrator` for narration). A line plays its file if there is one; lines without a file are silent.
+
+```sh
+npm run emaki -- voices games/mygame/story.vn
+```
+
+writes `voice-script.csv` next to the story: every line with the file name it needs, who says it, the text, and whether it's recorded yet. Hand it to your voice actors, or sort it by speaker for each recording session. Run it again whenever you like: it reports how many lines are recorded and lists files that no line uses any more.
+
+- A line's id comes from its speaker and text, so editing a line gives it a new id, and its old recording shows up in that list. Rename the file to the new name, or record the line again.
+- A `play voice` just before a line still wins, for the odd line that needs a different take.
+- In the history log, ▶ next to a line plays its voice again.
+
 ## Splitting a story across files
 A long story can live in several files. `story.vn` is the main one (only it has the header); every other `.vn` file in the game folder, in subfolders too, is part of the same story:
 
@@ -244,4 +267,4 @@ Everything is shared: a label in one file can `jump` to a label in another, and 
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Animations, layered sprites, voice-line auto-mapping, plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.
+Plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.
