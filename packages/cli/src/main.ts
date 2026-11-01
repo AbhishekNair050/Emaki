@@ -13,16 +13,18 @@
  *                                     (comments and blank lines are kept)
  *   emaki strings <story.vn> [--lang fr,de] [--csv]
  *                                     create/update translation files in lang/, or report progress
+ *   emaki voices <story.vn>           write the recording script (voice-script.csv) and report
+ *                                     which voice files are missing or left over
  *   emaki export <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]
  *                                     package the game for players (into <game>/export/)
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import {
-  buildGraph, catalogStats, compileFiles, compileTranslation, parse, parseCatalog, print, toMermaid, updateCatalog, writeCsv, writePo,
+  buildGraph, catalogStats, compileFiles, compileTranslation, parse, parseCatalog, print, toMermaid, updateCatalog, voicePath, writeCsv, writePo,
   type Diagnostic, type StoryFile,
 } from '@emaki/format';
-import { MAIN_FILE, storyParts } from '@emaki/format/files';
+import { addVoices, MAIN_FILE, storyParts } from '@emaki/format/files';
 import { uiSourceStrings } from '@emaki/player-web/ui-strings';
 import { runExport, TARGETS, type Target } from './export.ts';
 
@@ -34,6 +36,7 @@ const USAGE = `Usage:
   emaki graph <story.vn>
   emaki fmt   <story.vn> [--write | --check]
   emaki strings <story.vn> [--lang fr,de] [--csv]   translation files in lang/ (without --lang: progress)
+  emaki voices  <story.vn>                          recording script and missing voice files (header 'voice:')
   emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]`;
 
 if (!cmd || !file || cmd === 'help' || cmd === '--help') {
@@ -54,7 +57,12 @@ try {
 const parts: StoryFile[] = basename(file) === MAIN_FILE
   ? storyParts(dirname(file)).map((path) => ({ path, source: readFileSync(join(dirname(file!), path), 'utf8') }))
   : [];
-const compileStory = () => compileFiles(source, parts);
+/** The story; for a game's story.vn, with the voice files found in its assets/. */
+const compileStory = () => {
+  const r = compileFiles(source, parts);
+  if (r.story && basename(file!) === MAIN_FILE) addVoices(r.story, dirname(file!));
+  return r;
+};
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (code: string, s: string) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -135,9 +143,77 @@ switch (cmd) {
   case 'strings':
     strings();
     break;
+  case 'voices':
+    voices();
+    break;
   default:
     console.error(`Unknown command '${cmd}'\n\n${USAGE}`);
     process.exit(1);
+}
+
+/**
+ * For a voiced game (header `voice: voice/{id}.ogg`): write voice-script.csv,
+ * every line with the file it needs, for recording; then report the lines
+ * still missing a file and the files no line uses (a line whose text changed
+ * gets a new id, so its old recording shows up here).
+ */
+function voices(): void {
+  const r = compileStory();
+  if (!r.story) {
+    report(r.diagnostics);
+    process.exit(1);
+  }
+  const pattern = r.story.meta.voice;
+  if (!pattern?.includes('{id}')) {
+    console.error(`Add a voice pattern to the header first, for example:\n  voice: voice/{id}.ogg\n(paths are inside assets/; {speaker} is the character id)`);
+    process.exit(1);
+  }
+  const gameDir = dirname(file!);
+  const assets = join(gameDir, 'assets');
+  const lines = r.story.code.flatMap((i) => (i.op === 'say' ? [i] : []));
+  // Lines voiced by a `play voice` just before them don't need a file of their own.
+  const code = r.story.code;
+  const played = new Set(code.flatMap((ins, k) => {
+    const prev = code[k - 1];
+    return ins.op === 'say' && prev?.op === 'play' && prev.channel === 'voice' ? [ins.id] : [];
+  }));
+  const names = r.story.characters;
+  const quote = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const rows = [['file', 'speaker', 'text', 'recorded', 'label', 'where'].join(',')];
+  const expected = new Set<string>();
+  let spoken = 0;
+  let recorded = 0;
+  let narrationRecorded = 0;
+  for (const ins of lines) {
+    const path = voicePath(pattern, ins.id, ins.who);
+    expected.add(path);
+    const has = played.has(ins.id) || existsSync(join(assets, path));
+    if (ins.who) { spoken++; if (has) recorded++; } else if (has) narrationRecorded++;
+    const speaker = ins.who ? (names[ins.who]?.name ?? ins.who) : '';
+    rows.push([path, speaker, ins.text, played.has(ins.id) ? 'play voice' : has ? 'yes' : 'no', ins.src.label, `${ins.src.file ?? MAIN_FILE}:${ins.src.line}`].map(quote).join(','));
+  }
+  const out = join(gameDir, 'voice-script.csv');
+  writeFileSync(out, rows.join('\n') + '\n');
+  console.log(`Wrote ${out}: ${lines.length} lines, ${spoken} spoken by characters`);
+  console.log(`${recorded}/${spoken} spoken lines have a voice file${narrationRecorded ? `, and ${narrationRecorded} narration line(s)` : ''}`);
+  // Files in the voice folder that no line asks for.
+  const folder = pattern.slice(0, pattern.indexOf('{')).replace(/[^/]*$/, '');
+  const root = join(assets, folder);
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else found.push(relative(assets, p).split(sep).join('/'));
+    }
+  };
+  if (folder && existsSync(root)) walk(root);
+  const extra = found.filter((f) => !expected.has(f)).sort();
+  if (extra.length) {
+    console.log(c('33;1', `${extra.length} file(s) in assets/${folder} no line uses`) + c('2', ' (a line whose speaker or text changed gets a new id; rename its file to the new one in voice-script.csv)'));
+    for (const f of extra.slice(0, 20)) console.log(`  ${f}`);
+    if (extra.length > 20) console.log(`  ... and ${extra.length - 20} more`);
+  }
 }
 
 /**
