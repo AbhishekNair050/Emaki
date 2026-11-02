@@ -76,9 +76,10 @@ Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, 
 | `show mira smile at left with dissolve` | Show (or change) a character. Positions: `left`, `center`, `right`, or a percentage of the screen's width for the character's centre (`at 30%`). |
 | `show mira at right with move` | Slide a character who's already on screen to a new position (`with move 1.2` for a slower slide). |
 | `hide mira with dissolve` | Remove a character. |
-| `play music "audio/theme.ogg"` / `play sound rain` | Audio. Music loops by default. Options: `loop`, `noloop`, `fade 1.5`. |
+| `play music "audio/theme.ogg"` / `play sound rain` | Audio. Music loops by default, with no gap at the loop point. Options: `loop`, `noloop`, `fade 1.5`. |
+| `play ambience rain fade 2` | A background loop that plays under the music (rain, wind, a crowd), separate from sound effects, so `stop sound` leaves it alone. Loops by default; follows the sound effects volume. |
 | `play voice "voice/ann_001.ogg"` | A voice line, put just before the line it belongs to. It stops when the player moves on, and auto mode waits for it to finish. A fully voiced game doesn't need these: see [Voiced games](#voiced-games). |
-| `stop music fade 2` | Stop a channel (`music`, `sound`, `voice`). `stop sound` stops a looping sound and any effects still playing. |
+| `stop music fade 2` | Stop a channel (`music`, `ambience`, `sound`, `voice`). `stop sound` stops a looping sound and any effects still playing. |
 | `set trust += 1` | Change a variable. Also `=` and `-=`. |
 | `jump label_name` | Go to another label (no coming back). |
 | `call label_name` / `return` | Visit a label and come back when it ends. |

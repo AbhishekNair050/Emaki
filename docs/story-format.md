@@ -33,8 +33,8 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `scene` | `image (name, "black" or null), transition, duration?` | no | Background = image (`black`/null = none); remove all sprites; camera back to the whole picture. `duration` (seconds) only when the script gave one. |
 | `show` | `tag, attrs (array or null), at (null, "left"/"center"/"right" or a percentage like "30%"), transition, duration?` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. For a layered tag see below. |
 | `hide` | `tag, transition` | no | Remove sprite if present. |
-| `play` | `channel (music/sound/voice), path, loop, fade` | no | Music state = {path, loop}. |
-| `stop` | `channel, fade` | no | Music state = null for `music`. |
+| `play` | `channel (music/ambience/sound/voice), path, loop, fade` | no | `music`: music state = {path, loop}. `ambience` with `loop`: ambience state = {path}. `sound` with `loop`: looping sound state = {path, loop}. Voices and one-shot sounds aren't state. |
+| `stop` | `channel, fade` | no | That channel's state = null (`sound` also stops one-shot sounds still playing). |
 | `set` | `name, expr` | no | vars[name] = eval(expr). (`+=`/`-=` are compiled into the expr.) |
 | `jump` | `target, label?` | no | pc = target. |
 | `jumpIfNot` | `cond, target` | no | pc = truthy(cond) ? pc+1 : target. |
