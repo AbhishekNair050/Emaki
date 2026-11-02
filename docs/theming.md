@@ -47,20 +47,28 @@ Put a `theme.css` next to `story.vn`. It loads after the player's own styles, so
 .title-screen .title { color: #f3e3b5; letter-spacing: 0.08em; }
 ```
 
+Each character can have a text box of their own:
+
+```css
+.textbox[data-speaker="radio"] { font-family: 'Courier New', monospace; background: rgb(10 30 15 / 0.92); }
+.textbox[data-speaker="mira"] { border-color: #e8b04b; }
+```
+
 These class names are kept stable between versions:
 
 | Class | What it is |
 |---|---|
 | `.stage` | The whole game screen. Set variables here: `--accent`, `--story-font`, `--ui-font`, `--ui-text`, `--ui-muted`, `--ui-border`, `--choice-bg`, `--choice-hover`, `--pos-left`, `--pos-center`, `--pos-right`. |
 | `.bg`, `.sprite` | Backgrounds and characters (`.sprite[data-tag="mira"]` for one character). A `.sprite` is a box holding one `img` per layer (just one for a plain image). |
-| `.textbox`, `.textbox.narration`, `.namebox`, `.text`, `.next-indicator` | The text box. |
+| `.textbox`, `.textbox.narration`, `.namebox`, `.text`, `.next-indicator` | The text box. `.textbox[data-speaker="mira"]` while Mira speaks (the character id from `define`). |
+| `.side-image`, `.textbox.has-side` | The speaker's portrait ([side images](script-syntax.md#side-images)) and the box while it shows one. `--side-w` on `.textbox` sets the portrait's width. |
 | `.choices`, `.choice` | In-story choices. |
 | `.quickmenu` | Back / Log / Auto / Skip / Save / Load / Settings / Menu. |
 | `.overlay.title-screen`, `.title`, `.title-logo`, `.byline`, `.title-menu`, `.title-choice`, `.made-with` | The title screen (`.title-left`, `.title-right`, `.title-bottom` for the layouts). |
 | `.overlay.panel`, `.settings`, `.slots`, `.log` | Settings, save/load and history screens. |
 | `.end-screen`, `.ending-name` | "The End" and the ending reached. |
 | `.extras-panel`, `.extras-tabs`, `.gallery`, `.gallery-item`, `.gallery-item.locked`, `.extras-list`, `.gallery-view` | The Extras screen. |
-| `.nvl-page`, `.nvl-line`, `.nvl-name`, `.nvl-text` | NVL mode pages. |
+| `.nvl-page`, `.nvl-line`, `.nvl-name`, `.nvl-text` | NVL mode pages (`.nvl-line[data-speaker="mira"]` for one character's lines). |
 | `.toast` | Short notices (achievements, "Saved"). |
 
 Players' accessibility settings (text size, fonts, box opacity, reduced motion) still apply on top of your theme; please don't fight them with `!important`.

@@ -59,6 +59,7 @@ Between `---` lines at the very top: `key: value` pairs.
 | `audio rain = "audio/rain.ogg"` | A named sound. |
 | `var trust = 0` | A variable with its starting value. Numbers, `"text"`, `true`/`false`. Must be declared before use. |
 | `global var endings_seen = 0` | A variable that keeps its value across playthroughs on this device (endings seen, unlocked extras). Loading a save or going back never undoes it. |
+| `image side mira smile = "side/mira_smile.png"` | A **side image**: Mira's portrait in the text box while she's smiling. See [Side images](#side-images). |
 | `image beach_kiss = "cg/beach.png" gallery` | An image that appears in the **Extras** gallery once a player has seen it (in any playthrough). |
 | `ending light_holds "The Light Holds"` | An ending, reached with `end light_holds`. Extras lists every ending, with the ones not reached yet as ???. |
 | `achievement first_light "First Light"` | An achievement players can earn. Use the same id as on Steam. |
@@ -134,6 +135,25 @@ layered mira:
 - `-option` takes an optional group's layer off: `show mira -blush`, or `mira -blush: Anyway.`
 - Draw every layer on the same canvas size, lined up, with transparent backgrounds; the player lays them exactly on top of each other.
 - A tag is either layered or plain images: `layered mira` and `image mira smile = ...` together is an error. Option names must be unique within a character, since a name picks its group.
+
+## Side images
+A portrait of the speaker in the corner of the text box, common in stories told from one character's point of view, whose sprite is never on screen:
+
+```
+image side mira = "side/mira.png"
+image side mira smile = "side/mira_smile.png"
+image side mira sad = "side/mira_sad.png"
+
+label start:
+  mira: Her plain portrait.
+  mira smile: Now she's smiling.
+  mira: Still smiling: the portrait remembers her last expression.
+```
+
+- The portrait follows the speaker's attributes from dialogue (`mira smile:`) and from `show`, on screen or off. The most specific match wins: with `side mira smile coat` and `side mira smile` both declared, Mira smiling in her coat gets the first.
+- `side mira` alone is the fallback. A character without side images has none, and narration never does.
+- `mira smile:` is fine even when only a side image is called `smile`: if Mira is on screen, her sprite stays as it is.
+- Style the portrait with `.side-image` in [`theme.css`](theming.md).
 
 ## Camera and screen effects
 ```
