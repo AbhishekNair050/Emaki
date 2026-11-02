@@ -176,7 +176,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
       const off = attrs.find((a) => a.startsWith('-'));
       if (off) { error(loc, 'bad-attribute', `Only a layered character can take a layer off ('${off}')`); return; }
       const name = `${tag} ${attrs.join(' ')}`;
-      if (!images[name]) error(loc, 'unknown-image', `No image named '${name}'`);
+      if (!images[name] && !images[`side ${name}`]) error(loc, 'unknown-image', `No image named '${name}'`);
       return;
     }
     const used = new Set<number>();

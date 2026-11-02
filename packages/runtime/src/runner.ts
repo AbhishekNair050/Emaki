@@ -55,6 +55,12 @@ export interface RunState {
    * in ADV mode (the text box). Missing in saves from before NVL existed.
    */
   nvl?: SayBlock[] | null;
+  /**
+   * Each character's latest attributes (`mira smile: ...`, `show mira sad`),
+   * kept while they're off screen, to pick their side image. Only stories
+   * with side images keep it.
+   */
+  faces?: Record<string, string[]>;
 }
 
 /** `label` is the story label the line belongs to (for maps, analytics, debugging). */
@@ -69,6 +75,8 @@ export type SayBlock = {
   file?: string;
   /** The line's voice (from `play voice` just before it, or the header's `voice:` pattern), for replaying it. */
   voice?: string;
+  /** The speaker's portrait for the text box (`image side mira smile`), when the story has one. */
+  side?: string;
 };
 
 export interface ChoiceOption { index: number; id: string; text: string; spans?: Span[] }
@@ -223,17 +231,17 @@ export class Runner {
         scene.bg = ins.image === 'black' ? null : ins.image;
         scene.sprites = [];
       } else if (ins.op === 'show') {
-        const sp = scene.sprites.find((x) => x.tag === ins.tag);
-        if (!sp) scene.sprites.push({ tag: ins.tag, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION });
+        let sp = scene.sprites.find((x) => x.tag === ins.tag);
+        if (!sp) scene.sprites.push(sp = { tag: ins.tag, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION });
         else {
           if (ins.attrs) sp.attrs = this.nextAttrs(ins.tag, sp.attrs, ins.attrs);
           if (ins.at) sp.at = ins.at;
         }
+        this.noteFace(ins.tag, sp.attrs);
       } else if (ins.op === 'hide') {
         scene.sprites = scene.sprites.filter((x) => x.tag !== ins.tag);
       } else if (ins.op === 'say' && ins.who && ins.attrs.length) {
-        const sp = scene.sprites.find((x) => x.tag === ins.who);
-        if (sp) sp.attrs = this.nextAttrs(ins.who, sp.attrs, ins.attrs);
+        this.sayAttrs(ins.who, ins.attrs, scene.sprites);
       } else if (ins.op === 'play' || ins.op === 'stop') {
         trackAudio(this.state.audio, ins);
       } else if (ins.op === 'nvl') {
@@ -551,13 +559,12 @@ export class Runner {
         case 'say': {
           s.pc++;
           if (ins.who && ins.attrs.length) {
-            const sp = s.scene.sprites.find((x) => x.tag === ins.who);
-            if (sp) {
-              sp.attrs = this.nextAttrs(ins.who, sp.attrs, ins.attrs);
-              effects.push(this.showEffect(sp, null, false, ins));
-            }
+            const sp = this.sayAttrs(ins.who, ins.attrs, s.scene.sprites);
+            if (sp) effects.push(this.showEffect(sp, null, false, ins));
           }
           const block = this.sayBlock(ins, s.vars);
+          const side = ins.who ? this.sideImage(ins.who) : null;
+          if (side) block.side = side;
           // A voiced game (header `voice:`) plays each line's file without a `play voice` line.
           const own = voice ? null : this.story.voices?.[ins.id];
           if (own) effects.push({ type: 'play', channel: 'voice', path: own, loop: false, fade: null });
@@ -595,6 +602,7 @@ export class Runner {
             if (ins.attrs) sp.attrs = this.nextAttrs(ins.tag, sp.attrs, ins.attrs);
             if (ins.at) sp.at = ins.at;
           }
+          this.noteFace(ins.tag, sp.attrs);
           effects.push(this.showEffect(sp, ins.transition, isNew, ins));
           break;
         }
@@ -722,6 +730,57 @@ export class Runner {
     return attrs.sort((a, b) => groupOf(a) - groupOf(b));
   }
 
+  /** Side images by character: `image side mira smile` -> mira: [{ attrs: [smile], path }]. */
+  private sides: Map<string, Array<{ attrs: string[]; path: string }>> | null = null;
+
+  private sideImages(): Map<string, Array<{ attrs: string[]; path: string }>> {
+    if (this.sides) return this.sides;
+    this.sides = new Map();
+    for (const [name, path] of Object.entries(this.story.images)) {
+      const [side, who, ...attrs] = name.split(' ');
+      if (side !== 'side' || !who) continue;
+      if (!this.sides.has(who)) this.sides.set(who, []);
+      this.sides.get(who)!.push({ attrs, path });
+    }
+    return this.sides;
+  }
+
+  /**
+   * A line's attributes (`mira smile: ...`) change the speaker's sprite when
+   * they're on screen and it has that image, and always their side image.
+   * Returns the sprite if it changed.
+   */
+  private sayAttrs(who: string, attrs: string[], sprites: SpriteState[]): SpriteState | null {
+    const sp = sprites.find((x) => x.tag === who);
+    this.noteFace(who, this.nextAttrs(who, sp?.attrs ?? this.state.faces?.[who] ?? null, attrs));
+    if (!sp) return null;
+    const next = this.nextAttrs(who, sp.attrs, attrs);
+    if (!this.resolveSprite(who, next)) return null; // only a side image has these attributes
+    sp.attrs = next;
+    return sp;
+  }
+
+  /** Remember a character's latest attributes, for their side image. */
+  private noteFace(tag: string, attrs: string[]): void {
+    if (!this.sideImages().has(tag)) return;
+    (this.state.faces ??= {})[tag] = [...attrs];
+  }
+
+  /**
+   * The speaker's side image: the `side <who> ...` image whose attributes they
+   * all have now, the most specific one first; `side <who>` alone as a fallback.
+   */
+  private sideImage(who: string): string | null {
+    const options = this.sideImages().get(who);
+    if (!options) return null;
+    const have = new Set(this.state.faces?.[who] ?? []);
+    let best: { attrs: string[]; path: string } | null = null;
+    for (const o of options) {
+      if (o.attrs.every((a) => have.has(a)) && (!best || o.attrs.length > best.attrs.length)) best = o;
+    }
+    return best?.path ?? null;
+  }
+
   /** Images a line could bring in, for preloading (a layered character's named options only). */
   private previewImages(tag: string, attrs: string[]): string[] {
     const layers = this.story.layered?.[tag];
@@ -775,7 +834,9 @@ export class Runner {
     this.textInstrs ??= new Map(this.story.code.flatMap((i) => (i.op === 'say' || i.op === 'menu' ? [[i.id, i] as const] : [])));
     const ins = this.textInstrs.get(b.id);
     try {
-      if (b.type === 'say' && ins?.op === 'say') return { ...this.sayBlock(ins, vars), ...(b.voice ? { voice: b.voice } : {}) };
+      if (b.type === 'say' && ins?.op === 'say') {
+        return { ...this.sayBlock(ins, vars), ...(b.voice ? { voice: b.voice } : {}), ...(b.side ? { side: b.side } : {}) };
+      }
       if (b.type === 'menu' && ins?.op === 'menu') {
         return {
           ...b,
