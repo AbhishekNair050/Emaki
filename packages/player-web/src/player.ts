@@ -73,6 +73,8 @@ export class Player {
   private readonly flashEl: HTMLElement;
   private readonly textbox: HTMLElement;
   private readonly namebox: HTMLElement;
+  /** The speaker's side image (portrait) in the text box. */
+  private readonly sideEl: HTMLImageElement;
   private readonly textEl: HTMLElement;
   /** NVL mode: the page of text over the whole screen. */
   private readonly nvlEl: HTMLElement;
@@ -148,6 +150,9 @@ export class Player {
     this.flashEl = el('div', 'layer flash');
     this.textbox = el('div', 'textbox');
     this.namebox = el('div', 'namebox');
+    this.sideEl = el('img', 'side-image') as HTMLImageElement;
+    this.sideEl.alt = '';
+    this.sideEl.hidden = true;
     this.textEl = el('div', 'text');
     this.typeTarget = this.textEl;
     this.nvlEl = el('div', 'nvl-page');
@@ -156,7 +161,7 @@ export class Player {
     this.textEl.setAttribute('aria-hidden', 'true');
     this.liveRegion = el('div', 'sr-only');
     this.liveRegion.setAttribute('aria-live', 'polite');
-    this.textbox.append(this.namebox, this.textEl, this.liveRegion, el('div', 'next-indicator', '▾'));
+    this.textbox.append(this.sideEl, this.namebox, this.textEl, this.liveRegion, el('div', 'next-indicator', '▾'));
     this.choicesEl = el('div', 'choices');
     this.choicesEl.setAttribute('role', 'group');
     this.choicesEl.setAttribute('aria-label', UI_STRINGS['ui.choices']);
@@ -468,6 +473,12 @@ export class Player {
     this.namebox.hidden = !b.who;
     this.namebox.style.color = b.who?.color ?? '';
     this.textbox.classList.toggle('narration', !b.who);
+    // theme.css can style each character's box: .textbox[data-speaker="mira"]
+    if (b.who) this.textbox.dataset.speaker = b.who.id;
+    else delete this.textbox.dataset.speaker;
+    this.sideEl.hidden = !b.side;
+    this.textbox.classList.toggle('has-side', !!b.side);
+    if (b.side && this.sideEl.getAttribute('src') !== asset(b.side)) this.sideEl.src = asset(b.side);
     if (announce) this.liveRegion.textContent = b.who ? `${b.who.name}: ${b.text}` : b.text;
     if (instant && !announce) {
       // Static redisplay (behind a menu): no typing, no auto/skip timers.
@@ -564,6 +575,7 @@ export class Player {
     this.nvlEl.hidden = false;
     const nodes = lines.map((b) => {
       const p = el('p', b.who ? 'nvl-line' : 'nvl-line narration');
+      if (b.who) p.dataset.speaker = b.who.id;
       if (b.who) {
         const name = el('span', 'nvl-name', b.who.name);
         name.style.color = b.who.color ?? '';

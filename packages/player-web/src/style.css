@@ -118,6 +118,20 @@ html, body {
   letter-spacing: 0.02em;
 }
 .text { white-space: pre-wrap; text-wrap: pretty; }
+/* Side image: the speaker's portrait at the left of the box, standing a little above it. */
+.textbox { --side-w: 17cqw; }
+.side-image {
+  position: absolute;
+  left: 1cqw;
+  bottom: 0;
+  width: var(--side-w);
+  height: 135%;
+  object-fit: contain;
+  object-position: bottom center;
+  pointer-events: none;
+}
+.textbox.has-side { padding-left: calc(var(--side-w) + 2.5cqw); }
+.textbox.has-side .namebox { left: calc(var(--side-w) + 1.5cqw); }
 
 /* ---- NVL mode: pages of text over the whole screen ---- */
 .nvl-page {
