@@ -8,6 +8,6 @@ export {
   TRANSITIONS, POSITIONS, BUILTIN_IMAGES, isPercentPosition, type CompileResult, type SourceString, type StoryFile,
 } from './compiler.ts';
 export { print } from './printer.ts';
-export { voicePath } from './compiler.ts';
+export { voiceMap, voicePath } from './compiler.ts';
 export { buildGraph, toMermaid, type StoryGraph, type StoryNode, type StoryEdge, type EdgeKind } from './graph.ts';
 export * from './i18n.ts';

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { compile, voicePath } from '@emaki/format';
+import { compile, voiceMap, voicePath } from '@emaki/format';
 import { compileGame } from '@emaki/format/files';
 import { Runner } from '../src/index.ts';
 
@@ -65,6 +65,14 @@ describe('voice by convention', () => {
     expect(third.block).toMatchObject({ voice: 'voice/special.ogg' });
     expect(run.advance().block).not.toHaveProperty('voice');
     expect(run.log.map((b) => b.voice ?? null)).toEqual([voiceOf(first.effects)[0], null, 'voice/special.ogg', null]);
+  });
+
+  it('can be looked up from any list of files (the editor uses its asset list)', () => {
+    const story = compile(SRC).story!;
+    const id = story.code.flatMap((i) => (i.op === 'say' ? [i.id] : []))[0]!;
+    const path = voicePath(story.meta.voice!, id, 'ann');
+    expect(voiceMap(story, (p) => p === path)).toEqual({ [id]: path });
+    expect(voiceMap(compile('label start:\n  "x"\n').story!, () => true)).toEqual({});
   });
 
   it('warns about a voice pattern without {id}', () => {

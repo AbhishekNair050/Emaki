@@ -536,6 +536,22 @@ export function voicePath(pattern: string, id: string, who: string | null): stri
   return pattern.replaceAll('{id}', id).replaceAll('{speaker}', who ?? 'narrator');
 }
 
+/**
+ * For a story whose header has `voice: voice/{id}.ogg`, the voice file of every
+ * line for which `exists(path)` (a path inside assets/) is true.
+ */
+export function voiceMap(story: CompiledStory, exists: (path: string) => boolean): Record<string, string> {
+  const pattern = story.meta.voice;
+  const out: Record<string, string> = {};
+  if (!pattern?.includes('{id}')) return out;
+  for (const ins of story.code) {
+    if (ins.op !== 'say') continue;
+    const path = voicePath(pattern, ins.id, ins.who);
+    if (exists(path)) out[ins.id] = path;
+  }
+  return out;
+}
+
 /** FNV-1a 32-bit hash, base36. Small, fast, deterministic across runtimes. */
 export function fnv1a(s: string): string {
   let h = 0x811c9dc5;

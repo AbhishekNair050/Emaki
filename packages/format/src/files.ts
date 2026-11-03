@@ -8,7 +8,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import type { CompiledStory } from './compiled.ts';
-import { compileFiles, voicePath, type CompileResult, type StoryFile } from './compiler.ts';
+import { compileFiles, voiceMap, type CompileResult, type StoryFile } from './compiler.ts';
 
 export const MAIN_FILE = 'story.vn';
 const SKIP_DIRS = new Set(['assets', 'lang', 'dist', 'export', 'node_modules', 'tools']);
@@ -60,15 +60,7 @@ export function compileGame(gameDir: string): CompileResult & { parts: StoryFile
  * speaker and text stay the same.
  */
 export function findVoices(story: CompiledStory, gameDir: string): Record<string, string> {
-  const pattern = story.meta.voice;
-  const out: Record<string, string> = {};
-  if (!pattern?.includes('{id}')) return out;
-  for (const ins of story.code) {
-    if (ins.op !== 'say') continue;
-    const path = voicePath(pattern, ins.id, ins.who);
-    if (existsSync(join(gameDir, 'assets', path))) out[ins.id] = path;
-  }
-  return out;
+  return voiceMap(story, (path) => existsSync(join(gameDir, 'assets', path)));
 }
 
 /** Fill in `story.voices` from the game folder. */
