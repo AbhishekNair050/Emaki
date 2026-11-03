@@ -8,6 +8,9 @@
  *   GET  /__emaki/assets  → [{ path, kind, size }]
  *   POST /__emaki/assets?name=file.png  (raw bytes) → { path, kind, size }
  *
+ * `virtual:emaki-theme` imports the game's theme.css (if it has one), so the
+ * game pane looks like the game; Vite updates it live while it's edited.
+ *
  * When a script changes on disk (another editor, git), connected editors get
  * an `emaki:story-changed` event with its file and new version and decide what
  * to do; when .vn files appear or disappear, `emaki:files-changed`; when files
@@ -22,6 +25,8 @@ import { AssetError, AssetStore, MAX_ASSET_BYTES } from './asset-store.ts';
 import { StoryFile } from './story-file.ts';
 
 const MAX_BODY = 10 * 1024 * 1024;
+const THEME = 'virtual:emaki-theme';
+const RESOLVED_THEME = '\0' + THEME;
 
 export function emakiEditor(gameDir: string): Plugin {
   gameDir = resolve(gameDir);
@@ -33,9 +38,17 @@ export function emakiEditor(gameDir: string): Plugin {
     return files().includes(rel) ? new StoryFile(join(gameDir, rel)) : null;
   };
   const relPath = (abs: string) => relative(gameDir, resolve(abs)).split(sep).join('/');
+  const themePath = join(gameDir, 'theme.css');
 
   return {
     name: 'emaki-editor',
+    resolveId(id) {
+      return id === THEME ? RESOLVED_THEME : null;
+    },
+    load(id) {
+      if (id !== RESOLVED_THEME) return null;
+      return existsSync(themePath) ? `import ${JSON.stringify(themePath.replace(/\\/g, '/'))};` : '';
+    },
     configureServer(server) {
       server.middlewares.use('/__emaki/files', (req, res) => {
         void handleFiles(gameDir, files, req, res).catch((err: unknown) => {
@@ -59,12 +72,22 @@ export function emakiEditor(gameDir: string): Plugin {
 
       server.watcher.add([gameDir, assets.root]);
       const isScript = (file: string) => file.endsWith('.vn') && files().includes(relPath(file));
+      // Adding or removing theme.css changes what the page imports.
+      const themeToggled = (file: string) => {
+        if (resolve(file) !== themePath) return false;
+        const mod = server.moduleGraph.getModuleById(RESOLVED_THEME);
+        if (mod) server.moduleGraph.invalidateModule(mod);
+        server.ws.send({ type: 'full-reload' });
+        return true;
+      };
       const added = (file: string) => {
+        if (themeToggled(file)) return;
         if (resolve(file).startsWith(assets.root)) server.ws.send({ type: 'custom', event: 'emaki:assets-changed', data: {} });
         else if (isScript(file)) server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
       };
       server.watcher.on('add', added);
       server.watcher.on('unlink', (file) => {
+        if (themeToggled(file)) return;
         if (resolve(file).startsWith(assets.root)) server.ws.send({ type: 'custom', event: 'emaki:assets-changed', data: {} });
         else if (file.endsWith('.vn')) server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
       });

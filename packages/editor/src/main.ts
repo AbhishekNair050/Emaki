@@ -10,13 +10,15 @@
  *  - drag images and audio from the asset browser (or your computer) onto the script
  *  - a story can span several files: pick one above the script, or add one
  */
-import { buildGraph, compileFiles, type CompiledStory, type Diagnostic, type Stmt } from '@emaki/format';
+import { buildGraph, compileFiles, voiceMap, type CompiledStory, type Diagnostic, type Stmt } from '@emaki/format';
 import {
   addScene, connectScenes, declareAsset, deleteScene, dropAsset, renameScene, type EditResult, type SceneContext, type StorySymbol,
 } from '@emaki/language';
 import { Player } from '@emaki/player-web';
 import '@emaki/player-web/style.css';
 import '@emaki/player-web/fonts';
+// The game's own theme.css, after the player's styles, as in the game.
+import 'virtual:emaki-theme';
 import { AssetPanel, type AssetInfo } from './assets.ts';
 import { Flowchart } from './flowchart.ts';
 import { ScriptPane } from './script/script-pane.ts';
@@ -52,6 +54,8 @@ async function main(): Promise<void> {
 
   let player: Player | null = null;
   let story: CompiledStory | null = null;
+  /** Every file in the game's assets/ folder, for finding voice files. */
+  let assetPaths = new Set<string>();
   let lastDiagnostics: Diagnostic[] = [];
   /** Where the game is: the line it shows, and which file that's in. */
   let playing: { line: number; file?: string } | null = null;
@@ -142,6 +146,12 @@ async function main(): Promise<void> {
   }
 
   const assets = new AssetPanel($('.assets-host'), {
+    listed: (list) => {
+      const before = assetPaths;
+      assetPaths = new Set(list.map((a) => a.path));
+      // Voice files came or went: the game pane should hear them.
+      if (story?.meta.voice && (before.size !== assetPaths.size || [...assetPaths].some((p) => !before.has(p)))) recompile();
+    },
     declaredName: (a) => declaredIn(a),
     declare: (a) => apply(declareAsset(script.text, a.kind, a.path)),
     reveal: (name, a) => {
@@ -320,6 +330,9 @@ async function main(): Promise<void> {
     }
     gameNote.textContent = '';
     story = r.story;
+    // A voiced game's lines play their files here too (the files the assets folder has).
+    const voices = voiceMap(story, (path) => assetPaths.has(path));
+    if (Object.keys(voices).length) story.voices = voices;
     document.title = `${story.meta.title ?? 'Untitled'} · Emaki editor`;
     $('.story-title').textContent = story.meta.title ?? 'Untitled';
     flow.update(story, buildGraph(r.program));

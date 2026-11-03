@@ -23,6 +23,8 @@ export interface AssetPanelHooks {
   reveal(name: string, asset: AssetInfo): void;
   /** Files were dropped or picked: add them to the game (and declare them). */
   addFiles(files: File[]): Promise<void>;
+  /** The list of files was (re)loaded. */
+  listed?(assets: readonly AssetInfo[]): void;
 }
 
 export class AssetPanel {
@@ -96,6 +98,7 @@ export class AssetPanel {
       return;
     }
     this.render();
+    this.hooks.listed?.(this.assets);
   }
 
   /** The script changed: declared names may have too. */

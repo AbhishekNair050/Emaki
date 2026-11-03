@@ -14,6 +14,7 @@ export default defineConfig({
   plugins: [emakiEditor(game)],
   server: {
     port: 5174,
-    fs: { allow: [repo] },
+    // The game folder may be outside the repo; its theme.css and fonts load from there.
+    fs: { allow: [repo, game] },
   },
 });
