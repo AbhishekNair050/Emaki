@@ -37,7 +37,7 @@ label title:
 - `title` is never where a new game starts by itself; set `start:` in the header or have a label named `start` or a first label after `title`.
 
 ## 3. Your own styles (`theme.css`)
-Put a `theme.css` next to `story.vn`. It loads after the player's own styles, so anything in it wins. Paths inside it are relative to the file, so fonts and images from your game folder work:
+Put a `theme.css` next to `story.vn`. It loads after the player's own styles, so anything in it wins. The editor's game pane uses it too, and restyles as you save it. Paths inside it are relative to the file, so fonts and images from your game folder work:
 
 ```css
 @font-face { font-family: 'Lantern Serif'; src: url(assets/fonts/lantern.woff2); }

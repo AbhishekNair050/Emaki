@@ -42,15 +42,15 @@ What is done and what comes next.
 - [x] Extras screen: CG gallery (`image ... gallery`), endings (`ending` + `end id`), achievements (D-037)
 - [x] Transition lengths: `scene beach with dissolve 1.5`
 
-## ▶ Milestone 4 — Expressive scenes (next)
-What a finished commercial VN does on screen and in the ear that Emaki can't yet.
-- [ ] Movement and effects: slide characters between positions (`show mira at right with move 0.6`), screen shake and flash, zoom and pan on backgrounds and CGs
-- [ ] Layered sprites: a character built from body, outfit and face layers, so 3 outfits × 12 expressions don't need 36 images
-- [ ] Pauses and pacing inside a line: wait for a click mid-line, timed pauses, a line that advances by itself
-- [ ] Voice by convention: voice files found by line id or speaker, so a voiced game doesn't need a `play voice` line before every line; voice replay from the history log
-- [ ] Audio polish: gapless music loops (Web Audio) and an ambience channel that plays under music
-- [ ] Characters' side images (a portrait in the text box) and per-character text box styling
-- [ ] The editor shows the game as players see it: the game's `theme.css`, NVL pages and the scripted title in the preview pane
+## ✅ Milestone 4 — Expressive scenes (done, 2026-11-14)
+What a finished commercial VN does on screen and in the ear that Emaki couldn't yet.
+- [x] Movement and effects: `show mira at right with move`, `shake`, `flash red`, and a `camera` that zooms and pans (D-038)
+- [x] Layered characters: `layered mira:` with `always` layers and `group`s of options, so outfits and expressions combine (D-039)
+- [x] Pauses inside a line: `[w]` waits for a click, `[w=1.5]` for seconds, `[nw]` moves on by itself
+- [x] Voice by convention: header `voice: voice/{speaker}/{id}.ogg`, `emaki voices` for the recording script, replay from the history log (D-040)
+- [x] Gapless music loops through Web Audio, and an `ambience` channel under the music (D-041)
+- [x] Side images (`image side mira smile`) and per-character text boxes through `theme.css` (D-042)
+- [x] The editor's game pane uses the game's `theme.css` (updated live) and its voice files; NVL pages and the scripted title already showed there
 
 ## ⏸ On hold
 - Ren'Py importer (common subset)
