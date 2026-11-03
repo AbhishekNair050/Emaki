@@ -58,6 +58,9 @@ To edit another game: `EMAKI_GAME=path/to/game npm run edit`.
 ### Translate it
 `npm run emaki -- strings games/mygame/story.vn --lang fr,ja` writes `lang/fr.po` and `lang/ja.po` (or `.csv` with `--csv`) with every line, choice, name and button. Translators fill them in with any PO tool or a spreadsheet; the game picks them up, and players switch language in Settings. Run it again after editing the story: translations are kept, and changed lines come back marked for review.
 
+### Voice it
+Add `voice: voice/{speaker}/{id}.ogg` to the header and every line plays its own file, with no `play voice` lines. `npm run emaki -- voices games/mygame/story.vn` writes `voice-script.csv`, the recording script with each line's file name, and lists what's still missing. See [Voiced games](docs/script-syntax.md#voiced-games).
+
 ### Story map
 While `npm run dev` is running, a **story map** sits beside the game: every scene as a flowchart, with where you are highlighted. Click any scene to play from it, and edit your story's variables live to test other routes (set `trust` to 2, jump to the last scene, see which ending you get). Press `M` to show or hide it. It is a development tool only and is never included in a published build.
 
