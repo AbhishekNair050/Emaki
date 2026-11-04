@@ -230,6 +230,7 @@ export class Runner {
       if (ins.op === 'scene') {
         scene.bg = ins.image === 'black' ? null : ins.image;
         scene.sprites = [];
+        delete scene.camera; // a new scene shows the whole picture, as it does in play
       } else if (ins.op === 'show') {
         let sp = scene.sprites.find((x) => x.tag === ins.tag);
         if (!sp) scene.sprites.push(sp = { tag: ins.tag, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION });

@@ -76,4 +76,10 @@ describe('movement and screen effects', () => {
     run.startAtLine(13);
     expect(run.save().state.scene.camera).toEqual({ zoom: 1.5, x: 70, y: 30 });
   });
+
+  it('a new scene resets the camera when starting from a later line', () => {
+    const run = new Runner(compile(SRC).story!);
+    run.startAtLine(19);
+    expect(run.save().state.scene.camera ?? null).toBeNull();
+  });
 });
