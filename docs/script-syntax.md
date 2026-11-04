@@ -248,6 +248,10 @@ npm run emaki -- strings games/mygame/story.vn                   # progress of e
 
 Players pick a language in Settings; by default the game matches their device.
 
+Pictures with text drawn in them (a sign, a letter, sound-effect lettering) can have a version per language: put it next to the original with the language code before the extension. With `image letter = "cg/letter.png"`, the file `cg/letter.fr.png` is shown to French players and `cg/letter.zh-Hant.png` to players reading Traditional Chinese. This works for backgrounds, characters (and each layer), side images and the gallery; pictures without a version are shared by every language.
+
+A device set to Chinese gets the right script: `zh-TW` and `zh-HK` choose a `zh-Hant` translation, `zh-CN` a `zh-Hans` one.
+
 ## Voiced games
 Writing `play voice` before every line of a fully voiced game is a lot of typing. Instead, tell Emaki where the files are, in the header:
 
