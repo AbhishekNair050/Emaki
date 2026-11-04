@@ -114,19 +114,40 @@ export function languageName(code: string): string {
   }
 }
 
+/** `zh-TW` → `zh-hant-tw`: the likely script and region filled in, so tags written differently can be compared. */
+function maximized(tag: string): string {
+  try {
+    return new Intl.Locale(tag).maximize().toString().toLowerCase();
+  } catch {
+    return tag.toLowerCase();
+  }
+}
+/** Base language and script: `zh-TW` → `zh-hant`, `zh-Hans` → `zh-hans`, `fr-CA` → `fr-latn`. */
+const baseScript = (tag: string) => maximized(tag).split('-').slice(0, 2).join('-');
+
 /**
  * The best of `available` for someone whose preferred languages are `wanted`
- * (navigator.languages): exact match first, then same base language ("pt-BR" → "pt").
+ * (navigator.languages): the same language first (exactly, or the same once the
+ * likely script and region are filled in: `zh-TW` is `zh-Hant`, `zh-CN` is
+ * `zh-Hans`), then the same language and script (`zh-HK` → `zh-Hant`), then
+ * the same base language ("pt-BR" → "pt").
  */
 export function matchLanguage(wanted: readonly string[], available: readonly string[]): string | null {
   const lower = available.map((a) => a.toLowerCase());
+  const max = available.map(maximized);
   for (const w of wanted) {
-    const i = lower.indexOf(w.toLowerCase());
+    let i = lower.indexOf(w.toLowerCase());
+    if (i < 0) i = max.indexOf(maximized(w));
+    if (i >= 0) return available[i]!;
+  }
+  const scripts = available.map(baseScript);
+  for (const w of wanted) {
+    const i = scripts.indexOf(baseScript(w));
     if (i >= 0) return available[i]!;
   }
   for (const w of wanted) {
     const base = w.split('-')[0]!.toLowerCase();
-    const i = lower.findIndex((a) => a.split('-')[0] === base);
+    const i = available.findIndex((a) => a.split('-')[0]!.toLowerCase() === base);
     if (i >= 0) return available[i]!;
   }
   return null;

@@ -30,6 +30,15 @@ describe('languages', () => {
     expect(matchLanguage(['ja'], ['en', 'fr'])).toBeNull();
   });
 
+  it('match Chinese by script, not just by base language', () => {
+    const zh = ['en', 'zh-Hans', 'zh-Hant'];
+    expect(matchLanguage(['zh-TW', 'en'], zh)).toBe('zh-Hant');
+    expect(matchLanguage(['zh-HK'], zh)).toBe('zh-Hant');
+    expect(matchLanguage(['zh-CN', 'en'], zh)).toBe('zh-Hans');
+    expect(matchLanguage(['zh'], zh)).toBe('zh-Hans');
+    expect(matchLanguage(['zh-Hant'], ['zh-TW', 'zh-CN'])).toBe('zh-TW');
+  });
+
   it('are named in their own language, and right-to-left ones are recognised', () => {
     expect(languageName('fr')).toBe('Français');
     expect(languageName('de')).toBe('Deutsch');
