@@ -60,6 +60,8 @@ export class Player {
   private readonly opts: PlayerOptions;
   private readonly storeKey: string;
   private translation: CompiledTranslation | null = null;
+  /** Whether the previous language swapped any pictures (switching away has to redraw them). */
+  private translationHadImages = false;
   private readonly host: EmakiHost;
   /** The language changed behind an open panel: redraw the line when it closes. */
   private redrawOnClose = false;
@@ -388,7 +390,7 @@ export class Player {
     this.busy = true;
     try {
       // Hold the step (briefly) until its pictures are ready, so nothing fades in half-loaded.
-      const needed = step.effects.flatMap((fx) => fx.type === 'show' ? fx.layers.map(asset) : fx.type === 'scene' && fx.path ? [asset(fx.path)] : []);
+      const needed = step.effects.flatMap((fx) => fx.type === 'show' ? fx.layers.map(this.imageUrl) : fx.type === 'scene' && fx.path ? [this.imageUrl(fx.path)] : []);
       this.images.want(needed);
       this.preloadAhead();
       const wait = instant || this.skip ? 0 : IMAGE_WAIT_MS;
@@ -406,7 +408,7 @@ export class Player {
 
   /** Start loading the images the next few lines might show, down every branch. */
   private preloadAhead(): void {
-    this.images.want(this.runner.upcomingImages().map(asset));
+    this.images.want(this.runner.upcomingImages().map(this.imageUrl));
   }
 
   private renderBlock(b: Block, instant: boolean): void {
@@ -478,7 +480,7 @@ export class Player {
     else delete this.textbox.dataset.speaker;
     this.sideEl.hidden = !b.side;
     this.textbox.classList.toggle('has-side', !!b.side);
-    if (b.side && this.sideEl.getAttribute('src') !== asset(b.side)) this.sideEl.src = asset(b.side);
+    if (b.side && this.sideEl.getAttribute('src') !== this.imageUrl(b.side)) this.sideEl.src = this.imageUrl(b.side);
     if (announce) this.liveRegion.textContent = b.who ? `${b.who.name}: ${b.text}` : b.text;
     if (instant && !announce) {
       // Static redisplay (behind a menu): no typing, no auto/skip timers.
@@ -713,13 +715,13 @@ export class Player {
         const ms = this.duration(fx, instant);
         let sprite = this.spriteEl(fx.tag);
         if (!sprite) {
-          sprite = makeSprite(fx.tag, fx.layers, fx.at);
+          sprite = makeSprite(fx.tag, fx.layers.map(this.imageUrl), fx.at);
           sprite.style.opacity = ms ? '0' : '1';
           this.spriteLayer.append(sprite);
           if (ms) await animateOpacity(sprite, 1, ms);
         } else {
           const left = positionLeft(fx.at) ?? sprite.style.left;
-          setLayers(sprite, fx.layers);
+          setLayers(sprite, fx.layers.map(this.imageUrl));
           if (fx.transition === 'move' && ms && left !== sprite.style.left) {
             sprite.style.transition = `left ${ms}ms ease-in-out`;
             sprite.style.left = left;
@@ -842,7 +844,7 @@ export class Player {
 
   private async setBackground(path: string | null, ms: number): Promise<void> {
     const next = el('div', 'bg');
-    if (path) next.style.backgroundImage = `url("${asset(path)}")`;
+    if (path) next.style.backgroundImage = `url("${this.imageUrl(path)}")`;
     next.style.opacity = ms ? '0' : '1';
     const old = [...this.bgLayer.children] as HTMLElement[];
     this.bgLayer.append(next);
@@ -867,7 +869,7 @@ export class Player {
     this.spriteLayer.replaceChildren();
     for (const sp of scene.sprites) {
       const layers = this.runner.spriteLayers(sp);
-      if (layers?.length) this.spriteLayer.append(makeSprite(sp.tag, layers, sp.at));
+      if (layers?.length) this.spriteLayer.append(makeSprite(sp.tag, layers.map(this.imageUrl), sp.at));
     }
   }
 
@@ -1062,7 +1064,7 @@ export class Player {
     let heading: HTMLElement;
     if (meta.title_logo) {
       const img = el('img', 'title-logo') as HTMLImageElement;
-      img.src = asset(this.imageAsset(meta.title_logo));
+      img.src = this.imageUrl(this.imageAsset(meta.title_logo));
       img.alt = this.title;
       heading = img;
     } else heading = el('h1', 'title', this.title);
@@ -1118,7 +1120,7 @@ export class Player {
         const b = button('', () => this.viewImage(seen, seen.indexOf(image)));
         b.className = 'gallery-item';
         const img = el('img') as HTMLImageElement;
-        img.src = asset(this.story.images[image]!);
+        img.src = this.imageUrl(this.story.images[image]!);
         img.alt = '';
         img.loading = 'lazy';
         b.append(img);
@@ -1144,7 +1146,7 @@ export class Player {
     const show = (i: number) => {
       const n = (i + images.length) % images.length;
       const img = el('img', 'gallery-full') as HTMLImageElement;
-      img.src = asset(this.story.images[images[n]!]!);
+      img.src = this.imageUrl(this.story.images[images[n]!]!);
       img.alt = '';
       const close = button(this.t('ui.close'), () => this.showExtras('gallery'));
       close.className = 'gallery-close';
@@ -1257,6 +1259,9 @@ export class Player {
     return this.story.meta.language ?? 'en';
   }
 
+  /** URL of an image, in the chosen language's version when the game has one (`cg/sign.fr.png`). */
+  private readonly imageUrl = (path: string): string => asset(this.translation?.images?.[path] ?? path);
+
   /** The language the player chose, or the best match for their device. */
   private chooseTranslation(): CompiledTranslation | null {
     const list = this.opts.translations ?? [];
@@ -1296,6 +1301,9 @@ export class Player {
     }
     if (!changed) return;
     const block = this.runner.setTranslation(next);
+    // Pictures with text in them may have a version for the new language.
+    if (this.mode === 'playing' && (this.translation?.images || this.translationHadImages)) this.syncScene(this.runner.save().state.scene);
+    this.translationHadImages = !!this.translation?.images;
     if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitleMenu();
     else if (this.mode === 'playing' && block) {
       if (this.overlayOpen) this.redrawOnClose = true;
@@ -1626,27 +1634,27 @@ function animateOpacity(node: HTMLElement, to: number, ms: number): Promise<void
  * A character on screen: a box holding one image per layer, bottom first (a
  * plain sprite has one). The first image sizes the box; the others lie on top.
  */
-function makeSprite(tag: string, layers: string[], at: string): HTMLElement {
+function makeSprite(tag: string, urls: string[], at: string): HTMLElement {
   const sprite = el('div', 'sprite');
   sprite.dataset.tag = tag;
   sprite.style.left = positionLeft(at) ?? POSITIONS.center!;
-  setLayers(sprite, layers);
+  setLayers(sprite, urls);
   return sprite;
 }
 
 /** Point a sprite's images at `layers`, keeping the ones that don't change (no reload, no flicker). */
-function setLayers(sprite: HTMLElement, layers: string[]): void {
+function setLayers(sprite: HTMLElement, urls: string[]): void {
   const imgs = [...sprite.children] as HTMLImageElement[];
-  layers.forEach((path, i) => {
+  urls.forEach((url, i) => {
     let img = imgs[i];
     if (!img) {
       img = el('img') as HTMLImageElement;
       img.alt = '';
       sprite.append(img);
     }
-    if (img.getAttribute('src') !== asset(path)) img.src = asset(path);
+    if (img.getAttribute('src') !== url) img.src = url;
   });
-  for (const extra of imgs.slice(layers.length)) extra.remove();
+  for (const extra of imgs.slice(urls.length)) extra.remove();
 }
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

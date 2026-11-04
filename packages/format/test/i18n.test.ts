@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  catalogStats, compile, compileTranslation, parseCatalog, parseCsv, parsePo, updateCatalog, writeCsv, writePo,
+  catalogStats, compile, compileTranslation, localizedImages, localizedPath, parseCatalog, parseCsv, parsePo,
+  storyImagePaths, updateCatalog, writeCsv, writePo,
   type Catalog,
 } from '../src/index.ts';
 
@@ -178,5 +179,32 @@ describe('compiled translations', () => {
     expect(s.filter((x) => x.kind === 'line').length).toBe(64);
     const po = writePo(updateCatalog(s, null, 'fr'));
     expect(parsePo(po).catalog.entries).toHaveLength(s.length);
+  });
+});
+
+describe('translated pictures', () => {
+  it('sit next to the original with the language before the extension', () => {
+    expect(localizedPath('cg/sign.png', 'fr')).toBe('cg/sign.fr.png');
+    expect(localizedPath('cg/v1.2/sign.webp', 'zh-Hant')).toBe('cg/v1.2/sign.zh-Hant.webp');
+    expect(localizedPath('cg/sign', 'ja')).toBe('cg/sign.ja');
+  });
+
+  it('are found for every image the story can show, layers included', () => {
+    const story = compile(`image room = "bg/room.png"
+image side mira = "side/mira.png"
+layered mira:
+  always "m/body.png"
+  group face:
+    smile "m/smile.png"
+
+label start:
+  scene room
+  show mira
+  "Hi."
+`).story!;
+    const paths = storyImagePaths(story);
+    expect(paths.sort()).toEqual(['bg/room.png', 'm/body.png', 'm/smile.png', 'side/mira.png']);
+    const have = new Set(['bg/room.ja.png', 'm/smile.ja.png', 'bg/room.fr.png']);
+    expect(localizedImages(paths, 'ja', (p) => have.has(p))).toEqual({ 'bg/room.png': 'bg/room.ja.png', 'm/smile.png': 'm/smile.ja.png' });
   });
 });
