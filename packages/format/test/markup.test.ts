@@ -121,3 +121,26 @@ describe('pauses inside a line', () => {
     expect(r.diagnostics.map((d) => d.code)).toEqual(['bad-markup']);
   });
 });
+
+describe('ruby (furigana)', () => {
+  it('puts a reading over its text, in its own span', () => {
+    const r = parseMarkup('風に舞う[ruby=うすくれない]薄紅[/ruby]は美しい');
+    expect(r.error).toBeNull();
+    expect(r.plain).toBe('風に舞う薄紅は美しい');
+    expect(r.styled).toBe(true);
+    expect(r.spans).toEqual([{ text: '風に舞う' }, { text: '薄紅', ruby: 'うすくれない' }, { text: 'は美しい' }]);
+  });
+
+  it('keeps two readings apart and combines with other styling', () => {
+    const r = parseMarkup('**[ruby=さくら]桜[/ruby][ruby=もり]森[/ruby]**');
+    expect(r.spans).toEqual([{ text: '桜', ruby: 'さくら', b: true }, { text: '森', ruby: 'もり', b: true }]);
+  });
+
+  it('reports mistakes', () => {
+    expect(parseMarkup('[ruby=さくら]桜').error).toMatch(/Unclosed '\[ruby=さくら\]'/);
+    expect(parseMarkup('桜[/ruby]').error).toMatch(/no matching/);
+    expect(parseMarkup('[ruby=]桜[/ruby]').error).toMatch(/needs the reading/);
+    expect(parseMarkup('[ruby=さくら][/ruby]').error).toMatch(/no text/);
+    expect(parseMarkup('[ruby=a][ruby=b]x[/ruby][/ruby]').error).toMatch(/inside another/);
+  });
+});
