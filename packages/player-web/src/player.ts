@@ -60,8 +60,10 @@ export class Player {
   private readonly opts: PlayerOptions;
   private readonly storeKey: string;
   private translation: CompiledTranslation | null = null;
+  /** Ends the movie that's playing, if any (see playMovie). */
+  private endMovie: (() => void) | null = null;
   /** Whether the previous language swapped any pictures (switching away has to redraw them). */
-  private translationHadImages = false;
+  private translationHadAssets = false;
   private readonly host: EmakiHost;
   /** The language changed behind an open panel: redraw the line when it closes. */
   private redrawOnClose = false;
@@ -215,7 +217,7 @@ export class Player {
 
   /** Stop everything (timers, music, listeners) and empty the host. The player can't be used afterwards. */
   destroy(): void {
-    this.epoch++;
+    this.nextEpoch();
     this.clearTimers();
     this.stopMusic();
     this.stopAmbience();
@@ -246,7 +248,7 @@ export class Player {
     try { step = this.runner.resume(save); } catch (err) { console.warn('Could not resume after an edit', err); }
     if (!step) { this.showTitle(); return false; }
     this.enterPlaying();
-    this.epoch++;
+    this.nextEpoch();
     this.busy = false;
     this.syncScene(this.runner.scene());
     this.syncAudio();
@@ -298,7 +300,7 @@ export class Player {
     this.enterPlaying();
     this.auto = this.skip = false;
     this.updateToggles();
-    this.epoch++;
+    this.nextEpoch();
     this.busy = false;
     this.syncScene(scene ?? { bg: null, sprites: [] });
     this.guard(() => this.present(this.runner.startAt(label, { vars, scene })));
@@ -313,7 +315,7 @@ export class Player {
     this.enterPlaying();
     this.auto = this.skip = false;
     this.updateToggles();
-    this.epoch++;
+    this.nextEpoch();
     this.busy = false;
     this.guard(() => {
       const step = this.runner.startAtLine(line, { vars: keep, ...(file ? { file } : {}) });
@@ -375,7 +377,7 @@ export class Player {
     if (!r) return;
     this.auto = this.skip = false;
     this.updateToggles();
-    this.epoch++;
+    this.nextEpoch();
     this.syncScene(r.scene);
     this.syncAudio();
     this.renderBlock(r.block, true);
@@ -390,7 +392,7 @@ export class Player {
     this.busy = true;
     try {
       // Hold the step (briefly) until its pictures are ready, so nothing fades in half-loaded.
-      const needed = step.effects.flatMap((fx) => fx.type === 'show' ? fx.layers.map(this.imageUrl) : fx.type === 'scene' && fx.path ? [this.imageUrl(fx.path)] : []);
+      const needed = step.effects.flatMap((fx) => fx.type === 'show' ? fx.layers.map(this.assetUrl) : fx.type === 'scene' && fx.path ? [this.assetUrl(fx.path)] : []);
       this.images.want(needed);
       this.preloadAhead();
       const wait = instant || this.skip ? 0 : IMAGE_WAIT_MS;
@@ -408,7 +410,7 @@ export class Player {
 
   /** Start loading the images the next few lines might show, down every branch. */
   private preloadAhead(): void {
-    this.images.want(this.runner.upcomingImages().map(this.imageUrl));
+    this.images.want(this.runner.upcomingImages().map(this.assetUrl));
   }
 
   private renderBlock(b: Block, instant: boolean): void {
@@ -480,7 +482,7 @@ export class Player {
     else delete this.textbox.dataset.speaker;
     this.sideEl.hidden = !b.side;
     this.textbox.classList.toggle('has-side', !!b.side);
-    if (b.side && this.sideEl.getAttribute('src') !== this.imageUrl(b.side)) this.sideEl.src = this.imageUrl(b.side);
+    if (b.side && this.sideEl.getAttribute('src') !== this.assetUrl(b.side)) this.sideEl.src = this.assetUrl(b.side);
     if (announce) this.liveRegion.textContent = b.who ? `${b.who.name}: ${b.text}` : b.text;
     if (instant && !announce) {
       // Static redisplay (behind a menu): no typing, no auto/skip timers.
@@ -715,13 +717,13 @@ export class Player {
         const ms = this.duration(fx, instant);
         let sprite = this.spriteEl(fx.tag);
         if (!sprite) {
-          sprite = makeSprite(fx.tag, fx.layers.map(this.imageUrl), fx.at);
+          sprite = makeSprite(fx.tag, fx.layers.map(this.assetUrl), fx.at);
           sprite.style.opacity = ms ? '0' : '1';
           this.spriteLayer.append(sprite);
           if (ms) await animateOpacity(sprite, 1, ms);
         } else {
           const left = positionLeft(fx.at) ?? sprite.style.left;
-          setLayers(sprite, fx.layers.map(this.imageUrl));
+          setLayers(sprite, fx.layers.map(this.assetUrl));
           if (fx.transition === 'move' && ms && left !== sprite.style.left) {
             sprite.style.transition = `left ${ms}ms ease-in-out`;
             sprite.style.left = left;
@@ -775,7 +777,81 @@ export class Player {
       case 'camera':
         this.moveCamera(fx.camera, instant || this.reducedMotion ? 0 : (fx.duration ?? 0) * 1000);
         return;
+      case 'motion':
+        if (!instant && !this.reducedMotion) this.motion(fx.motion, fx.target, fx.times);
+        return;
+      case 'movie':
+        if (!instant) await this.playMovie(fx.path);
+        return;
     }
+  }
+
+  /** Whatever is under way belongs to an earlier moment now: stop waiting for it. */
+  private nextEpoch(): void {
+    this.epoch++;
+    this.endMovie?.();
+  }
+
+  /**
+   * A character (or the text box) hops, nods, bows or shakes its head. Distances
+   * are in hundredths of the screen's height, so moves look the same at any size.
+   * Runs in the background, through `translate`, which leaves the sprite's own
+   * positioning (`left`, `transform`) alone.
+   */
+  private motion(kind: 'hop' | 'nod' | 'bow' | 'shake', target: string, times: number): void {
+    const node = target === 'textbox' ? this.textbox : this.spriteEl(target);
+    if (!node) return;
+    const u = this.stage.clientHeight / 100;
+    const y = (...v: number[]) => v.map((n) => ({ translate: `0 ${n * u}px` }));
+    const moves: Record<typeof kind, { frames: Keyframe[]; ms: number; easing: string }> = {
+      hop: { frames: y(0, -1.6, 0), ms: 280, easing: 'ease-out' },
+      nod: { frames: [{ translate: '0 0' }, { translate: `0 ${u}px`, offset: 0.5 }, { translate: `0 ${0.45 * u}px`, offset: 0.75 }, { translate: '0 0' }], ms: 260, easing: 'ease-out' },
+      bow: { frames: [{ translate: '0 0' }, { translate: `0 ${1.9 * u}px`, offset: 0.4 }, { translate: `0 ${1.8 * u}px`, offset: 0.7 }, { translate: '0 0' }], ms: 1500, easing: 'ease-in-out' },
+      shake: { frames: [-1.1, 1.1, -1.1, 0].reduce<Keyframe[]>((f, n) => [...f, { translate: `${n * u}px 0` }], [{ translate: '0 0' }]), ms: 480, easing: 'ease-out' },
+    };
+    const m = moves[kind];
+    node.animate(m.frames, { duration: m.ms, easing: m.easing, iterations: times });
+  }
+
+  /**
+   * Play a movie over the whole stage and wait for it to end. A click, Enter,
+   * Space or Escape skips it; leaving the scene (loading, the title) stops it.
+   * It plays at the music volume, and silently if the browser won't allow sound.
+   */
+  private playMovie(path: string): Promise<void> {
+    this.endMovie?.();
+    return new Promise((resolve) => {
+      const video = el('video', 'movie') as HTMLVideoElement;
+      video.src = this.assetUrl(path);
+      video.playsInline = true;
+      video.volume = Math.min(1, Math.max(0, this.settings.musicVolume));
+      video.setAttribute('aria-label', this.t('ui.skip'));
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Escape') return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finish();
+      };
+      const finish = () => {
+        if (this.endMovie !== finish) return;
+        this.endMovie = null;
+        window.removeEventListener('keydown', onKey, true);
+        video.pause();
+        video.removeAttribute('src');
+        video.remove();
+        resolve();
+      };
+      this.endMovie = finish;
+      video.addEventListener('ended', finish);
+      video.addEventListener('error', finish);
+      video.addEventListener('click', (e) => { e.stopPropagation(); finish(); });
+      window.addEventListener('keydown', onKey, true);
+      this.stage.append(video);
+      video.play().catch(() => {
+        video.muted = true;
+        video.play().catch(finish);
+      });
+    });
   }
 
   // ---------------------------------------------------------- screen effects
@@ -844,7 +920,7 @@ export class Player {
 
   private async setBackground(path: string | null, ms: number): Promise<void> {
     const next = el('div', 'bg');
-    if (path) next.style.backgroundImage = `url("${this.imageUrl(path)}")`;
+    if (path) next.style.backgroundImage = `url("${this.assetUrl(path)}")`;
     next.style.opacity = ms ? '0' : '1';
     const old = [...this.bgLayer.children] as HTMLElement[];
     this.bgLayer.append(next);
@@ -869,7 +945,7 @@ export class Player {
     this.spriteLayer.replaceChildren();
     for (const sp of scene.sprites) {
       const layers = this.runner.spriteLayers(sp);
-      if (layers?.length) this.spriteLayer.append(makeSprite(sp.tag, layers.map(this.imageUrl), sp.at));
+      if (layers?.length) this.spriteLayer.append(makeSprite(sp.tag, layers.map(this.assetUrl), sp.at));
     }
   }
 
@@ -1008,7 +1084,7 @@ export class Player {
   private showTitle(): void {
     this.opts.onUpdate?.(null);
     this.mode = 'title';
-    this.epoch++;
+    this.nextEpoch();
     this.clearTimers();
     this.stopMusic();
     this.stopAmbience();
@@ -1064,7 +1140,7 @@ export class Player {
     let heading: HTMLElement;
     if (meta.title_logo) {
       const img = el('img', 'title-logo') as HTMLImageElement;
-      img.src = this.imageUrl(this.imageAsset(meta.title_logo));
+      img.src = this.assetUrl(this.imageAsset(meta.title_logo));
       img.alt = this.title;
       heading = img;
     } else heading = el('h1', 'title', this.title);
@@ -1120,7 +1196,7 @@ export class Player {
         const b = button('', () => this.viewImage(seen, seen.indexOf(image)));
         b.className = 'gallery-item';
         const img = el('img') as HTMLImageElement;
-        img.src = this.imageUrl(this.story.images[image]!);
+        img.src = this.assetUrl(this.story.images[image]!);
         img.alt = '';
         img.loading = 'lazy';
         b.append(img);
@@ -1146,7 +1222,7 @@ export class Player {
     const show = (i: number) => {
       const n = (i + images.length) % images.length;
       const img = el('img', 'gallery-full') as HTMLImageElement;
-      img.src = this.imageUrl(this.story.images[images[n]!]!);
+      img.src = this.assetUrl(this.story.images[images[n]!]!);
       img.alt = '';
       const close = button(this.t('ui.close'), () => this.showExtras('gallery'));
       close.className = 'gallery-close';
@@ -1259,8 +1335,8 @@ export class Player {
     return this.story.meta.language ?? 'en';
   }
 
-  /** URL of an image, in the chosen language's version when the game has one (`cg/sign.fr.png`). */
-  private readonly imageUrl = (path: string): string => asset(this.translation?.images?.[path] ?? path);
+  /** URL of a picture or movie, in the chosen language's version when the game has one (`cg/sign.fr.png`). */
+  private readonly assetUrl = (path: string): string => asset(this.translation?.assets?.[path] ?? path);
 
   /** The language the player chose, or the best match for their device. */
   private chooseTranslation(): CompiledTranslation | null {
@@ -1302,8 +1378,8 @@ export class Player {
     if (!changed) return;
     const block = this.runner.setTranslation(next);
     // Pictures with text in them may have a version for the new language.
-    if (this.mode === 'playing' && (this.translation?.images || this.translationHadImages)) this.syncScene(this.runner.save().state.scene);
-    this.translationHadImages = !!this.translation?.images;
+    if (this.mode === 'playing' && (this.translation?.assets || this.translationHadAssets)) this.syncScene(this.runner.save().state.scene);
+    this.translationHadAssets = !!this.translation?.assets;
     if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitleMenu();
     else if (this.mode === 'playing' && block) {
       if (this.overlayOpen) this.redrawOnClose = true;
@@ -1461,7 +1537,7 @@ export class Player {
     const r = this.runner.load(data);
     if (!r.ok) { this.toast(this.t('ui.could_not_load')); return; }
     this.enterPlaying();
-    this.epoch++;
+    this.nextEpoch();
     this.syncScene(this.runner.scene());
     this.syncAudio();
     this.renderBlock(this.runner.block!, true);

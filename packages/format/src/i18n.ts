@@ -54,11 +54,12 @@ export interface CompiledTranslation {
   /** Translated header values (title). */
   meta: Record<string, string>;
   /**
-   * Pictures with text in them, drawn again for this language: asset path →
-   * the translated picture's path (`cg/sign.png` → `cg/sign.fr.png`). Filled in
-   * from the game folder (see `localizedPath`); absent when there are none.
+   * Pictures and movies made again for this language (text drawn into a CG,
+   * subtitles in an opening): asset path → the translated file's path
+   * (`cg/sign.png` → `cg/sign.fr.png`). Filled in from the game folder (see
+   * `localizedPath`); absent when there are none.
    */
-  images?: Record<string, string>;
+  assets?: Record<string, string>;
 }
 
 /** Where the `lang` version of an asset lives: `cg/sign.png` → `cg/sign.fr.png`. */
@@ -68,9 +69,14 @@ export function localizedPath(path: string, lang: string): string {
   return dot > slash ? `${path.slice(0, dot)}.${lang}${path.slice(dot)}` : `${path}.${lang}`;
 }
 
-/** Every image path a story can show: declared images, side images and layers. */
-export function storyImagePaths(story: { images: Record<string, string>; layered?: Record<string, ({ path: string } | { options: Record<string, string> })[]> }): string[] {
+/** Every file a language may replace: declared images, side images, layers and movies. */
+export function localizablePaths(story: {
+  images: Record<string, string>;
+  layered?: Record<string, ({ path: string } | { options: Record<string, string> })[]>;
+  code: { op: string; path?: string }[];
+}): string[] {
   const out = new Set(Object.values(story.images));
+  for (const ins of story.code) if (ins.op === 'movie' && ins.path) out.add(ins.path);
   for (const layers of Object.values(story.layered ?? {})) {
     for (const l of layers) {
       if ('path' in l) out.add(l.path);
@@ -80,8 +86,8 @@ export function storyImagePaths(story: { images: Record<string, string>; layered
   return [...out];
 }
 
-/** The translated pictures of `lang` that exist (see `CompiledTranslation.images`). */
-export function localizedImages(paths: readonly string[], lang: string, exists: (path: string) => boolean): Record<string, string> {
+/** The translated files of `lang` that exist (see `CompiledTranslation.assets`). */
+export function localizedAssets(paths: readonly string[], lang: string, exists: (path: string) => boolean): Record<string, string> {
   const out: Record<string, string> = {};
   for (const p of paths) {
     const l = localizedPath(p, lang);

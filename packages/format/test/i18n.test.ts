@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  catalogStats, compile, compileTranslation, localizedImages, localizedPath, parseCatalog, parseCsv, parsePo,
-  storyImagePaths, updateCatalog, writeCsv, writePo,
+  catalogStats, compile, compileTranslation, localizedAssets, localizedPath, localizablePaths, parseCatalog, parseCsv, parsePo,
+  updateCatalog, writeCsv, writePo,
   type Catalog,
 } from '../src/index.ts';
 
@@ -189,7 +189,7 @@ describe('translated pictures', () => {
     expect(localizedPath('cg/sign', 'ja')).toBe('cg/sign.ja');
   });
 
-  it('are found for every image the story can show, layers included', () => {
+  it('are found for every image and movie the story can show, layers included', () => {
     const story = compile(`image room = "bg/room.png"
 image side mira = "side/mira.png"
 layered mira:
@@ -200,11 +200,14 @@ layered mira:
 label start:
   scene room
   show mira
+  movie "movie/op.mp4"
   "Hi."
 `).story!;
-    const paths = storyImagePaths(story);
-    expect(paths.sort()).toEqual(['bg/room.png', 'm/body.png', 'm/smile.png', 'side/mira.png']);
-    const have = new Set(['bg/room.ja.png', 'm/smile.ja.png', 'bg/room.fr.png']);
-    expect(localizedImages(paths, 'ja', (p) => have.has(p))).toEqual({ 'bg/room.png': 'bg/room.ja.png', 'm/smile.png': 'm/smile.ja.png' });
+    const paths = localizablePaths(story);
+    expect(paths.sort()).toEqual(['bg/room.png', 'm/body.png', 'm/smile.png', 'movie/op.mp4', 'side/mira.png']);
+    const have = new Set(['bg/room.ja.png', 'm/smile.ja.png', 'bg/room.fr.png', 'movie/op.ja.mp4']);
+    expect(localizedAssets(paths, 'ja', (p) => have.has(p))).toEqual({
+      'bg/room.png': 'bg/room.ja.png', 'm/smile.png': 'm/smile.ja.png', 'movie/op.mp4': 'movie/op.ja.mp4',
+    });
   });
 });

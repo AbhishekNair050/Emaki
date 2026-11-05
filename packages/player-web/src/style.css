@@ -56,6 +56,8 @@ html, body {
 .bg { position: absolute; inset: 0; background: #000 center / cover no-repeat; }
 .fader { background: #000; opacity: 0; pointer-events: none; }
 .flash { opacity: 0; pointer-events: none; }
+/* `movie`: over everything, letterboxed; a click skips it. */
+.movie { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; cursor: pointer; z-index: 50; }
 /* A sprite is a box of stacked layers: the first image sets the size, the rest lie on top of it. */
 .sprite img { display: block; height: 100%; width: auto; }
 .sprite img + img { position: absolute; left: 0; top: 0; }
