@@ -98,6 +98,10 @@ export type Effect =
   /** Screen effects (`shake`, `flash red`); `duration` in seconds when the script set one. */
   | { type: 'shake'; duration?: number }
   | { type: 'flash'; color: string; duration?: number }
+  /** A character on screen (by tag) or `textbox` hops, nods, bows or shakes its head, `times` times. */
+  | { type: 'motion'; motion: 'hop' | 'nod' | 'bow' | 'shake'; target: string; times: number }
+  /** Play a full-screen video; the host waits for it to end (or be skipped) before showing the next line. */
+  | { type: 'movie'; path: string }
   /** Move the camera to `camera` (null: the whole picture) over `duration` seconds (instant when absent). */
   | { type: 'camera'; camera: CameraState | null; duration?: number };
 
@@ -637,6 +641,14 @@ export class Runner {
         case 'flash':
           s.pc++;
           effects.push({ type: 'flash', color: ins.color, ...durationOf(ins) });
+          break;
+        case 'motion':
+          s.pc++;
+          effects.push({ type: 'motion', motion: ins.motion, target: ins.target, times: ins.times ?? 1 });
+          break;
+        case 'movie':
+          s.pc++;
+          effects.push({ type: 'movie', path: ins.path });
           break;
         case 'camera':
           s.pc++;

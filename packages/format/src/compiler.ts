@@ -367,6 +367,16 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
       case 'shake':
         code.push({ op: 'shake', ...dur(s), src });
         return;
+      case 'motion':
+        if (s.target !== 'textbox' && !imageTags.has(s.target)) {
+          error(s.loc, 'unknown-image', didYouMean(s.target, [...imageTags, 'textbox'])
+            ?? `Nothing called '${s.target}' can be on screen to ${s.motion} (use a character's image name, or textbox)`);
+        }
+        code.push({ op: 'motion', motion: s.motion, target: s.target, ...(s.times ? { times: s.times } : {}), src });
+        return;
+      case 'movie':
+        code.push({ op: 'movie', path: s.path, src });
+        return;
       case 'flash':
         code.push({ op: 'flash', color: s.color ?? 'white', ...dur(s), src });
         return;

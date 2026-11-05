@@ -376,6 +376,31 @@
           }
         },
         {
+          "match": "^\\s+(hop|nod|bow|shake)\\s+([A-Za-z_]\\w*)(?:\\s+(\\d+))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.motion.emaki"
+            },
+            "2": {
+              "name": "entity.name.tag.emaki"
+            },
+            "3": {
+              "name": "constant.numeric.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(movie)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.movie.emaki"
+            },
+            "2": {
+              "name": "string.quoted.double.emaki"
+            }
+          }
+        },
+        {
           "match": "^\\s+(flash)(?:\\s+(white|black|red|#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}))?(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
           "captures": {
             "1": {

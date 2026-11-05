@@ -38,7 +38,7 @@ describe('movement and screen effects', () => {
 
   it('reject malformed effects', () => {
     const at = (line: string) => codes(`label start:\n  ${line}\n  "x"\n`);
-    expect(at('shake hard')).toEqual(['bad-shake']);
+    expect(at('shake hard')).toEqual(['unknown-image']); // a character called hard
     expect(at('shake 30')).toEqual(['bad-shake']);
     expect(at('flash purple')).toEqual(['bad-flash']);
     expect(at('flash #fff 0.2')).toEqual([]);
@@ -81,5 +81,59 @@ describe('movement and screen effects', () => {
     const run = new Runner(compile(SRC).story!);
     run.startAtLine(19);
     expect(run.save().state.scene.camera ?? null).toBeNull();
+  });
+});
+
+const MOVES = `define bow "Bow"
+image room = "room.png"
+image mira = "mira.png"
+
+label start:
+  scene room
+  show mira
+  movie "movie/opening.mp4"
+  hop mira
+  nod mira 2
+  bow mira
+  shake mira
+  shake textbox 3
+  bow: I'm a character called Bow.
+`;
+
+describe('character moves and movies', () => {
+  it('parse and print back', () => {
+    const p = parse(MOVES);
+    expect(p.diagnostics).toEqual([]);
+    const out = print(p.program);
+    for (const line of ['movie "movie/opening.mp4"', 'hop mira', 'nod mira 2', 'bow mira', 'shake mira', 'shake textbox 3', 'bow: I\'m a character']) {
+      expect(out).toContain(`  ${line}`);
+    }
+    expect(print(parse(out).program)).toBe(out);
+  });
+
+  it('reject malformed moves and movies', () => {
+    const at = (line: string) => codes(`image mira = "m.png"\nlabel start:\n  ${line}\n  "x"\n`);
+    expect(at('hop')).toEqual(['bad-hop']);
+    expect(at('nod mira twice')).toEqual(['bad-nod']);
+    expect(at('nod mira 0')).toEqual(['bad-nod']);
+    expect(at('bow mira 2 3')).toEqual(['bad-bow']);
+    expect(at('hop mria')).toEqual(['unknown-image']);
+    expect(at('shake 0.4')).toEqual([]);
+    expect(at('movie opening.mp4')).toEqual(['bad-movie']);
+    expect(at('movie "a.mp4" now')).toEqual(['bad-movie']);
+  });
+
+  it('emit them as effects', () => {
+    const run = new Runner(compile(MOVES).story!);
+    const step = run.start();
+    expect(step.effects.slice(2)).toEqual([
+      { type: 'movie', path: 'movie/opening.mp4' },
+      { type: 'motion', motion: 'hop', target: 'mira', times: 1 },
+      { type: 'motion', motion: 'nod', target: 'mira', times: 2 },
+      { type: 'motion', motion: 'bow', target: 'mira', times: 1 },
+      { type: 'motion', motion: 'shake', target: 'mira', times: 1 },
+      { type: 'motion', motion: 'shake', target: 'textbox', times: 3 },
+    ]);
+    expect(step.block).toMatchObject({ who: { name: 'Bow' } });
   });
 });

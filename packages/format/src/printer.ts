@@ -146,6 +146,12 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
       case 'shake':
         out.push(pad + ['shake', s.duration].filter((x) => x !== undefined).join(' '));
         break;
+      case 'motion':
+        out.push(pad + [s.motion, s.target, s.times].filter((x) => x !== undefined).join(' '));
+        break;
+      case 'movie':
+        out.push(`${pad}movie ${q(s.path)}`);
+        break;
       case 'flash':
         out.push(pad + ['flash', s.color, s.duration].filter((x) => x !== undefined && x !== null).join(' '));
         break;

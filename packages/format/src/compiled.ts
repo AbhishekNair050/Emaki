@@ -43,6 +43,10 @@ export type Instr =
   | { op: 'nvl'; mode: 'on' | 'off' | 'clear'; src: SrcRef }
   /** Screen effects; `duration` (seconds) only when the script gives one. Non-blocking. */
   | { op: 'shake'; duration?: number; src: SrcRef }
+  /** A character (by tag) or `textbox` hops, nods, bows or shakes, `times` times (once when absent). Non-blocking. */
+  | { op: 'motion'; motion: 'hop' | 'nod' | 'bow' | 'shake'; target: string; times?: number; src: SrcRef }
+  /** A full-screen video; blocks until it ends or the player skips it. */
+  | { op: 'movie'; path: string; src: SrcRef }
   | { op: 'flash'; color: string; duration?: number; src: SrcRef }
   /**
    * Zoom the picture (backgrounds and characters, not the text) by `zoom` (1 =

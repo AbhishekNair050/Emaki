@@ -102,6 +102,10 @@ export type Stmt = Trivia & (
   | { type: 'nvl'; mode: NvlMode; loc: Loc }
   /** `shake` or `shake 0.8` (seconds): the picture shakes. */
   | { type: 'shake'; duration?: number; loc: Loc }
+  /** `hop mira`, `nod mira 2`, `bow mira`, `shake mira`, `shake textbox`: one character (or the text box) moves. */
+  | { type: 'motion'; motion: Motion; target: string; times?: number; loc: Loc }
+  /** `movie "movie/op.mp4"`: a full-screen video; the story waits until it ends or the player skips it. */
+  | { type: 'movie'; path: string; loc: Loc }
   /** `flash`, `flash red`, `flash #fff 0.3`: the screen flashes a colour (white by default). */
   | { type: 'flash'; color: string | null; duration?: number; loc: Loc }
   /**
@@ -127,3 +131,7 @@ export interface Diagnostic {
   /** Short machine-readable code, e.g. "unknown-label". */
   code: string;
 }
+
+/** Moves a character (or the text box) can make: a hop, a nod, a bow, a shake of the head. */
+export const MOTIONS = ['hop', 'nod', 'bow', 'shake'] as const;
+export type Motion = (typeof MOTIONS)[number];

@@ -8,7 +8,7 @@
 import type {
   AchievementDef, EndingDef,
   AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, Stmt,
-  Trivia, VarDef,
+  Motion, Trivia, VarDef,
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
 
@@ -29,7 +29,7 @@ export const KEYWORDS = new Set([
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Statements that aren't keywords: `flash: Hi!` is still a character named flash speaking. */
-export const EFFECTS = new Set(['shake', 'flash', 'camera']);
+export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie']);
 /** Colours `flash` accepts besides #rgb / #rrggbb. */
 export const FLASH_COLORS = ['white', 'black', 'red'];
 const SECONDS = /^\d+(\.\d+)?$/;
@@ -443,6 +443,24 @@ export function parse(source: string): ParseResult {
       if (n > max) { err(ln.line, `bad-${word}`, `${w} seconds is too long for '${word}' (${max} at most)`); return null; }
       return n;
     };
+    // A character's move: `hop mira`, `nod mira 2`, `shake textbox`.
+    if ((word === 'shake' && words[0] && /^[A-Za-z_]/.test(words[0])) || word === 'hop' || word === 'nod' || word === 'bow') {
+      const usage = `Expected '${word} name' or '${word} name 2' (a character on screen, or textbox)`;
+      const target = words[0];
+      if (!target || !/^[A-Za-z_]\w*$/.test(target) || words.length > 2) { err(ln.line, `bad-${word}`, usage); return null; }
+      if (words.length === 1) return { type: 'motion', motion: word as Motion, target, loc };
+      const n = Number(words[1]);
+      if (!/^\d+$/.test(words[1]!) || n < 1 || n > 10) { err(ln.line, `bad-${word}`, `'${words[1]}' isn't a number of times (1 to 10). ${usage}`); return null; }
+      return { type: 'motion', motion: word as Motion, target, times: n, loc };
+    }
+    if (word === 'movie') {
+      if (!args.startsWith('"')) { err(ln.line, 'bad-movie', `Expected 'movie "movie/opening.mp4"' (a video file in assets/)`); return null; }
+      const qv = safeQuoted(args, ln.line);
+      if (!qv) return null;
+      if (qv.rest) { err(ln.line, 'bad-movie', `Unexpected '${qv.rest}' after the file name`); return null; }
+      if (!qv.value) { err(ln.line, 'bad-movie', `The movie needs a file name`); return null; }
+      return { type: 'movie', path: qv.value, loc };
+    }
     if (word === 'shake') {
       if (words.length > 1) { err(ln.line, 'bad-shake', `Expected 'shake' or 'shake seconds'`); return null; }
       if (!words.length) return { type: 'shake', loc };
