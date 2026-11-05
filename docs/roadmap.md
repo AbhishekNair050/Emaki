@@ -52,6 +52,15 @@ What a finished commercial VN does on screen and in the ear that Emaki couldn't 
 - [x] Side images (`image side mira smile`) and per-character text boxes through `theme.css` (D-042)
 - [x] The editor's game pane uses the game's `theme.css` (updated live) and its voice files; NVL pages and the scripted title already showed there
 
+## 🚧 Milestone 5 — Lessons from a multilingual commercial port (in progress)
+Porting a commercial VN demo released in Japanese, English and both Chinese scripts.
+- [x] Pictures and movies with a version per language (`cg/sign.fr.png`, D-043); Chinese devices matched by script (`zh-TW` → `zh-Hant`)
+- [x] Character and text box moves: `hop`, `nod`, `bow`, `shake mira` (D-044)
+- [x] Movies: `movie "movie/opening.mp4"`, skippable (D-045)
+- [ ] Endless loops (a floating icon, a trembling cut-in)
+- [ ] Colour tones on the picture (sepia, monochrome)
+- [ ] Ruby text (furigana) for Japanese
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 - Plugin API v1

@@ -44,6 +44,8 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `nvl` | `mode (on/off/clear)` | no | `on`/`clear`: start an empty page of full-screen text; `off`: back to the text box. Lines shown while a page is open are added to it. |
 | `shake` | `duration?` | no | Shake the picture (effect only, no state). |
 | `flash` | `color, duration?` | no | Flash the screen in `color` (`white`, `black`, `red` or `#rrggbb`); effect only. |
+| `motion` | `motion, target, times?` | no | The sprite with tag `target` (or the text box, for `textbox`) makes a move: `hop`, `nod`, `bow` or `shake` (side to side), `times` times (1 when absent). Effect only; nothing happens if the sprite isn't on screen. |
+| `movie` | `path` | yes | Play the video at `path` full screen; the host continues when it ends or the player skips it. Effect only (skipped when skipping or going back). |
 | `camera` | `zoom, x, y, duration?` | no | Scene camera = zoom `zoom` (≥ 1) toward the point `x`%, `y`% of the screen; `zoom 1, x 50, y 50` is the whole picture. Animated over `duration` seconds without blocking. Part of the scene, so saved and rolled back with it. |
 
 **Voices.** `voices` (optional) maps line ids to voice files. When a `say` runs without a `play voice` just before it and its id is in `voices`, play that file on the voice channel as if `play voice` had come first.

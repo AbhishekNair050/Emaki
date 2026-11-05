@@ -182,6 +182,43 @@ label storm:
 - With the player's **Animations: reduced** setting, the camera jumps straight to its place and shakes and flashes are left out.
 - `shake`, `flash` and `camera` aren't reserved words: a character can still be called `flash` (`flash: Hi!` is dialogue).
 
+## Character moves
+Small moves bring a still sprite to life: a startled hop, a nod, a bow.
+
+```
+label greeting:
+  show mira at left
+  mira: Oh! You scared me.
+  hop mira
+  nod mira 2
+  mira: Yes, yes, I'm fine.
+  bow mira
+  shake textbox
+```
+
+| Line | Meaning |
+|---|---|
+| `hop mira` | A quick hop up and down (surprise, excitement). |
+| `nod mira` | A nod. `nod mira 2` nods twice. |
+| `bow mira` | A slow bow. |
+| `shake mira` | Shakes her head (side to side). Plain `shake` still shakes the whole picture. |
+| `shake textbox` | Moves the text box instead of a character; works with every move. |
+
+- A number after the name repeats the move (1 to 10 times).
+- Moves don't hold up the story: the line after one appears while it plays.
+- A move on a character who isn't on screen does nothing. Skipping, going back and **Animations: reduced** leave moves out.
+- `hop`, `nod` and `bow` aren't reserved words either: `bow: Hello.` is a character called bow speaking.
+
+## Movies
+```
+label opening:
+  stop music fade 1
+  movie "movie/opening.mp4"
+  scene title_card with fade
+```
+
+`movie` plays a video over the whole screen; the story goes on when it ends. Players skip it with a click, Enter, Space or Escape, and skipping mode leaves it out. It plays at the music volume. MP4 (H.264 video, AAC sound) works in every browser and on phones; WebM works everywhere except older iPhones. A movie can have a version per language, like pictures (see [Translations](#translations)): `movie/opening.ja.mp4`.
+
 ## Choices
 ```
 menu:
@@ -248,7 +285,7 @@ npm run emaki -- strings games/mygame/story.vn                   # progress of e
 
 Players pick a language in Settings; by default the game matches their device.
 
-Pictures with text drawn in them (a sign, a letter, sound-effect lettering) can have a version per language: put it next to the original with the language code before the extension. With `image letter = "cg/letter.png"`, the file `cg/letter.fr.png` is shown to French players and `cg/letter.zh-Hant.png` to players reading Traditional Chinese. This works for backgrounds, characters (and each layer), side images and the gallery; pictures without a version are shared by every language.
+Pictures with text drawn in them (a sign, a letter, sound-effect lettering) can have a version per language: put it next to the original with the language code before the extension. With `image letter = "cg/letter.png"`, the file `cg/letter.fr.png` is shown to French players and `cg/letter.zh-Hant.png` to players reading Traditional Chinese. This works for backgrounds, characters (and each layer), side images, the gallery and movies (`movie/opening.ja.mp4`); files without a version are shared by every language.
 
 A device set to Chinese gets the right script: `zh-TW` and `zh-HK` choose a `zh-Hant` translation, `zh-CN` a `zh-Hans` one.
 
