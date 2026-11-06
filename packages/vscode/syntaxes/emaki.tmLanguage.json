@@ -376,7 +376,7 @@
           }
         },
         {
-          "match": "^\\s+(hop|nod|bow|shake)\\s+([A-Za-z_]\\w*)(?:\\s+(\\d+))?\\s*$",
+          "match": "^\\s+(hop|nod|bow|shake|float|still)\\s+([A-Za-z_]\\w*)(?:\\s+(\\d+|forever))?\\s*$",
           "captures": {
             "1": {
               "name": "keyword.other.motion.emaki"
@@ -397,6 +397,23 @@
             },
             "2": {
               "name": "string.quoted.double.emaki"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(tone)\\s+(sepia|mono|none)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.other.tone.emaki"
+            },
+            "2": {
+              "name": "constant.language.emaki"
+            },
+            "3": {
+              "name": "keyword.other.over.emaki"
+            },
+            "4": {
+              "name": "constant.numeric.emaki"
             }
           }
         },

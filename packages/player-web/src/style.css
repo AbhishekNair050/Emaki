@@ -56,6 +56,9 @@ html, body {
 .bg { position: absolute; inset: 0; background: #000 center / cover no-repeat; }
 .fader { background: #000; opacity: 0; pointer-events: none; }
 .flash { opacity: 0; pointer-events: none; }
+/* [ruby=...]: the reading (furigana) above the text it goes with. */
+ruby { ruby-align: center; }
+ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 /* `movie`: over everything, letterboxed; a click skips it. */
 .movie { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; cursor: pointer; z-index: 50; }
 /* A sprite is a box of stacked layers: the first image sets the size, the rest lie on top of it. */

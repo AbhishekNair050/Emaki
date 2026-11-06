@@ -16,7 +16,12 @@ export interface SpriteState {
   /** The image's attributes; for a layered character, the option shown in each group, bottom first. */
   attrs: string[];
   at: string;
+  /** An endless move (`float mira`, `shake mira forever`) until `still mira`; absent when she's still. */
+  loop?: Motion;
 }
+
+export type Motion = 'hop' | 'nod' | 'bow' | 'shake' | 'float';
+export type Tone = 'sepia' | 'mono';
 
 /** `camera zoom 1.5 at 70% 30%`: zoom toward a point given in percent of the screen. */
 export interface CameraState {
@@ -31,6 +36,8 @@ export interface SceneState {
   sprites: SpriteState[];
   /** Absent (or null) when the camera shows the whole picture. */
   camera?: CameraState | null;
+  /** The picture's colour tone (`tone sepia`); absent for normal colours. Kept when the scene changes. */
+  tone?: Tone;
 }
 
 export interface AudioState {
@@ -99,7 +106,11 @@ export type Effect =
   | { type: 'shake'; duration?: number }
   | { type: 'flash'; color: string; duration?: number }
   /** A character on screen (by tag) or `textbox` hops, nods, bows or shakes its head, `times` times. */
-  | { type: 'motion'; motion: 'hop' | 'nod' | 'bow' | 'shake'; target: string; times: number }
+  | { type: 'motion'; motion: Motion; target: string; times: number; forever?: true }
+  /** A character's endless move stops. */
+  | { type: 'still'; target: string }
+  /** Tint the picture (null: normal colours) over `duration` seconds. */
+  | { type: 'tone'; tone: Tone | null; duration?: number }
   /** Play a full-screen video; the host waits for it to end (or be skipped) before showing the next line. */
   | { type: 'movie'; path: string }
   /** Move the camera to `camera` (null: the whole picture) over `duration` seconds (instant when absent). */
@@ -253,6 +264,14 @@ export class Runner {
         this.state.nvl = ins.mode === 'off' ? null : [];
       } else if (ins.op === 'camera') {
         scene.camera = cameraOf(ins);
+      } else if (ins.op === 'motion' && ins.forever) {
+        const sp = scene.sprites.find((x) => x.tag === ins.target);
+        if (sp) sp.loop = ins.motion;
+      } else if (ins.op === 'still') {
+        const sp = scene.sprites.find((x) => x.tag === ins.target);
+        if (sp) delete sp.loop;
+      } else if (ins.op === 'tone') {
+        if (ins.tone === 'none') delete scene.tone; else scene.tone = ins.tone;
       }
     }
     this.state.pc = pc;
@@ -592,7 +611,7 @@ export class Runner {
           return this.blockOn({ type: 'wait', seconds: ins.seconds, line: ins.src.line, label: ins.src.label, ...fileOf(ins) }, effects);
         case 'scene':
           s.pc++;
-          s.scene = { bg: ins.image === 'black' ? null : ins.image, sprites: [] };
+          s.scene = { bg: ins.image === 'black' ? null : ins.image, sprites: [], ...(s.scene.tone ? { tone: s.scene.tone } : {}) };
           if (s.nvl) s.nvl = []; // a new scene starts a new page
           effects.push({ type: 'scene', bg: s.scene.bg, path: this.imagePath(ins.image), transition: ins.transition, ...durationOf(ins) });
           break;
@@ -642,9 +661,26 @@ export class Runner {
           s.pc++;
           effects.push({ type: 'flash', color: ins.color, ...durationOf(ins) });
           break;
-        case 'motion':
+        case 'motion': {
           s.pc++;
-          effects.push({ type: 'motion', motion: ins.motion, target: ins.target, times: ins.times ?? 1 });
+          if (ins.forever) {
+            const sp = s.scene.sprites.find((x) => x.tag === ins.target);
+            if (sp) sp.loop = ins.motion;
+          }
+          effects.push({ type: 'motion', motion: ins.motion, target: ins.target, times: ins.times ?? 1, ...(ins.forever ? { forever: true as const } : {}) });
+          break;
+        }
+        case 'still': {
+          s.pc++;
+          const sp = s.scene.sprites.find((x) => x.tag === ins.target);
+          if (sp) delete sp.loop;
+          effects.push({ type: 'still', target: ins.target });
+          break;
+        }
+        case 'tone':
+          s.pc++;
+          if (ins.tone === 'none') delete s.scene.tone; else s.scene.tone = ins.tone;
+          effects.push({ type: 'tone', tone: s.scene.tone ?? null, ...durationOf(ins) });
           break;
         case 'movie':
           s.pc++;

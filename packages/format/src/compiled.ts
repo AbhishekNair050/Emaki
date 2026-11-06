@@ -43,8 +43,16 @@ export type Instr =
   | { op: 'nvl'; mode: 'on' | 'off' | 'clear'; src: SrcRef }
   /** Screen effects; `duration` (seconds) only when the script gives one. Non-blocking. */
   | { op: 'shake'; duration?: number; src: SrcRef }
-  /** A character (by tag) or `textbox` hops, nods, bows or shakes, `times` times (once when absent). Non-blocking. */
-  | { op: 'motion'; motion: 'hop' | 'nod' | 'bow' | 'shake'; target: string; times?: number; src: SrcRef }
+  /**
+   * A character (by tag) or `textbox` hops, nods, bows, shakes or floats, `times`
+   * times (once when absent), or over and over with `forever` (characters only;
+   * part of the sprite's state until `still` or `hide`). Non-blocking.
+   */
+  | { op: 'motion'; motion: 'hop' | 'nod' | 'bow' | 'shake' | 'float'; target: string; times?: number; forever?: true; src: SrcRef }
+  /** Stop a character's endless move. */
+  | { op: 'still'; target: string; src: SrcRef }
+  /** Tint the picture (`sepia`, `mono`; `none` for normal colours) over `duration` seconds. Lasts across scenes. */
+  | { op: 'tone'; tone: 'sepia' | 'mono' | 'none'; duration?: number; src: SrcRef }
   /** A full-screen video; blocks until it ends or the player skips it. */
   | { op: 'movie'; path: string; src: SrcRef }
   | { op: 'flash'; color: string; duration?: number; src: SrcRef }

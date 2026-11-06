@@ -372,7 +372,18 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
           error(s.loc, 'unknown-image', didYouMean(s.target, [...imageTags, 'textbox'])
             ?? `Nothing called '${s.target}' can be on screen to ${s.motion} (use a character's image name, or textbox)`);
         }
-        code.push({ op: 'motion', motion: s.motion, target: s.target, ...(s.times ? { times: s.times } : {}), src });
+        if (s.forever && s.target === 'textbox') error(s.loc, `bad-${s.motion}`, `Only characters can keep moving; the text box moves once at a time`);
+        code.push({
+          op: 'motion', motion: s.motion, target: s.target,
+          ...(s.times ? { times: s.times } : {}), ...(s.forever ? { forever: true as const } : {}), src,
+        });
+        return;
+      case 'still':
+        if (!imageTags.has(s.target)) error(s.loc, 'unknown-image', didYouMean(s.target, [...imageTags]) ?? `No character named '${s.target}' to keep still`);
+        code.push({ op: 'still', target: s.target, src });
+        return;
+      case 'tone':
+        code.push({ op: 'tone', tone: s.tone, ...(s.over !== null ? { duration: s.over } : {}), src });
         return;
       case 'movie':
         code.push({ op: 'movie', path: s.path, src });

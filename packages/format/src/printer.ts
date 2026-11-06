@@ -147,7 +147,13 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         out.push(pad + ['shake', s.duration].filter((x) => x !== undefined).join(' '));
         break;
       case 'motion':
-        out.push(pad + [s.motion, s.target, s.times].filter((x) => x !== undefined).join(' '));
+        out.push(pad + [s.motion, s.target, s.times, s.forever && s.motion !== 'float' ? 'forever' : undefined].filter((x) => x !== undefined).join(' '));
+        break;
+      case 'still':
+        out.push(`${pad}still ${s.target}`);
+        break;
+      case 'tone':
+        out.push(pad + ['tone', s.tone, s.over !== null ? `over ${s.over}` : ''].filter(Boolean).join(' '));
         break;
       case 'movie':
         out.push(`${pad}movie ${q(s.path)}`);

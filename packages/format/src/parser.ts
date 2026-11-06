@@ -8,9 +8,10 @@
 import type {
   AchievementDef, EndingDef,
   AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, Stmt,
-  Motion, Trivia, VarDef,
+  Motion, Tone, Trivia, VarDef,
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
+import { TONES } from './ast.ts';
 
 interface Line {
   indent: number;
@@ -29,7 +30,7 @@ export const KEYWORDS = new Set([
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Statements that aren't keywords: `flash: Hi!` is still a character named flash speaking. */
-export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie']);
+export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone']);
 /** Colours `flash` accepts besides #rgb / #rrggbb. */
 export const FLASH_COLORS = ['white', 'black', 'red'];
 const SECONDS = /^\d+(\.\d+)?$/;
@@ -443,15 +444,36 @@ export function parse(source: string): ParseResult {
       if (n > max) { err(ln.line, `bad-${word}`, `${w} seconds is too long for '${word}' (${max} at most)`); return null; }
       return n;
     };
-    // A character's move: `hop mira`, `nod mira 2`, `shake textbox`.
-    if ((word === 'shake' && words[0] && /^[A-Za-z_]/.test(words[0])) || word === 'hop' || word === 'nod' || word === 'bow') {
-      const usage = `Expected '${word} name' or '${word} name 2' (a character on screen, or textbox)`;
+    // A character's move: `hop mira`, `nod mira 2`, `shake textbox`, `shake mira forever`, `float mira`.
+    if ((word === 'shake' && words[0] && /^[A-Za-z_]/.test(words[0])) || word === 'hop' || word === 'nod' || word === 'bow' || word === 'float') {
+      const usage = word === 'float'
+        ? `Expected 'float name' (a character on screen; 'still name' stops it)`
+        : `Expected '${word} name', '${word} name 2' or '${word} name forever' (a character on screen, or textbox)`;
       const target = words[0];
-      if (!target || !/^[A-Za-z_]\w*$/.test(target) || words.length > 2) { err(ln.line, `bad-${word}`, usage); return null; }
+      if (!target || !/^[A-Za-z_]\w*$/.test(target) || words.length > 2 || (word === 'float' && words.length > 1)) { err(ln.line, `bad-${word}`, usage); return null; }
+      if (word === 'float') return { type: 'motion', motion: 'float', target, forever: true, loc };
       if (words.length === 1) return { type: 'motion', motion: word as Motion, target, loc };
+      if (words[1] === 'forever') return { type: 'motion', motion: word as Motion, target, forever: true, loc };
       const n = Number(words[1]);
       if (!/^\d+$/.test(words[1]!) || n < 1 || n > 10) { err(ln.line, `bad-${word}`, `'${words[1]}' isn't a number of times (1 to 10). ${usage}`); return null; }
       return { type: 'motion', motion: word as Motion, target, times: n, loc };
+    }
+    if (word === 'still') {
+      if (words.length !== 1 || !/^[A-Za-z_]\w*$/.test(words[0]!)) { err(ln.line, 'bad-still', `Expected 'still name' (stops a character's endless move)`); return null; }
+      return { type: 'still', target: words[0]!, loc };
+    }
+    if (word === 'tone') {
+      const usage = `Expected 'tone sepia', 'tone mono' or 'tone none', optionally with 'over 1.5'`;
+      const tone = words.shift();
+      if (!tone || !(TONES as readonly string[]).includes(tone)) { err(ln.line, 'bad-tone', tone ? `Unknown tone '${tone}'. ${usage}` : usage); return null; }
+      let over: number | null = null;
+      if (words[0] === 'over') {
+        words.shift();
+        over = seconds(words.shift(), 60, 'over');
+        if (over === null) return null;
+      }
+      if (words.length) { err(ln.line, 'bad-tone', `Unexpected '${words.join(' ')}'. ${usage}`); return null; }
+      return { type: 'tone', tone: tone as Tone, over, loc };
     }
     if (word === 'movie') {
       if (!args.startsWith('"')) { err(ln.line, 'bad-movie', `Expected 'movie "movie/opening.mp4"' (a video file in assets/)`); return null; }

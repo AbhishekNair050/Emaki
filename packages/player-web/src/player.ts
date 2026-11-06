@@ -778,7 +778,18 @@ export class Player {
         this.moveCamera(fx.camera, instant || this.reducedMotion ? 0 : (fx.duration ?? 0) * 1000);
         return;
       case 'motion':
-        if (!instant && !this.reducedMotion) this.motion(fx.motion, fx.target, fx.times);
+        // An endless move is part of the scene, so it starts even while skipping.
+        if (this.reducedMotion) return;
+        if (fx.forever) { const s = this.spriteEl(fx.target); if (s) startLoop(s, fx.motion, this.stage.clientHeight / 100); }
+        else if (!instant) this.motion(fx.motion, fx.target, fx.times);
+        return;
+      case 'still': {
+        const s = this.spriteEl(fx.target);
+        if (s) stopLoop(s);
+        return;
+      }
+      case 'tone':
+        this.setTone(fx.tone, instant || this.reducedMotion ? 0 : (fx.duration ?? 0) * 1000);
         return;
       case 'movie':
         if (!instant) await this.playMovie(fx.path);
@@ -798,19 +809,25 @@ export class Player {
    * Runs in the background, through `translate`, which leaves the sprite's own
    * positioning (`left`, `transform`) alone.
    */
-  private motion(kind: 'hop' | 'nod' | 'bow' | 'shake', target: string, times: number): void {
+  private motion(kind: MotionKind, target: string, times: number): void {
     const node = target === 'textbox' ? this.textbox : this.spriteEl(target);
     if (!node) return;
-    const u = this.stage.clientHeight / 100;
-    const y = (...v: number[]) => v.map((n) => ({ translate: `0 ${n * u}px` }));
-    const moves: Record<typeof kind, { frames: Keyframe[]; ms: number; easing: string }> = {
-      hop: { frames: y(0, -1.6, 0), ms: 280, easing: 'ease-out' },
-      nod: { frames: [{ translate: '0 0' }, { translate: `0 ${u}px`, offset: 0.5 }, { translate: `0 ${0.45 * u}px`, offset: 0.75 }, { translate: '0 0' }], ms: 260, easing: 'ease-out' },
-      bow: { frames: [{ translate: '0 0' }, { translate: `0 ${1.9 * u}px`, offset: 0.4 }, { translate: `0 ${1.8 * u}px`, offset: 0.7 }, { translate: '0 0' }], ms: 1500, easing: 'ease-in-out' },
-      shake: { frames: [-1.1, 1.1, -1.1, 0].reduce<Keyframe[]>((f, n) => [...f, { translate: `${n * u}px 0` }], [{ translate: '0 0' }]), ms: 480, easing: 'ease-out' },
-    };
-    const m = moves[kind];
+    const m = motionFrames(kind, this.stage.clientHeight / 100);
     node.animate(m.frames, { duration: m.ms, easing: m.easing, iterations: times });
+  }
+
+  /**
+   * Tint the picture (backgrounds and characters, not the text). Animated with
+   * Web Animations rather than a CSS transition, because the camera owns the
+   * layers' `transition` for its transform.
+   */
+  private setTone(tone: 'sepia' | 'mono' | null, ms: number): void {
+    const filter = tone === 'sepia' ? 'sepia(0.85) saturate(0.9)' : tone === 'mono' ? 'grayscale(1)' : '';
+    for (const layer of [this.bgLayer, this.spriteLayer]) {
+      const from = getComputedStyle(layer).filter;
+      layer.style.filter = filter;
+      if (ms && from !== (filter || 'none')) layer.animate([{ filter: from }, { filter: filter || 'none' }], { duration: ms, easing: 'ease-in-out' });
+    }
   }
 
   /**
@@ -942,10 +959,15 @@ export class Player {
     this.fader.style.opacity = '0';
     void this.setBackground(this.runner.imagePath(scene.bg), 0);
     this.moveCamera(scene.camera ?? null, 0);
+    this.setTone(scene.tone ?? null, 0);
     this.spriteLayer.replaceChildren();
+    const u = this.stage.clientHeight / 100;
     for (const sp of scene.sprites) {
       const layers = this.runner.spriteLayers(sp);
-      if (layers?.length) this.spriteLayer.append(makeSprite(sp.tag, layers.map(this.assetUrl), sp.at));
+      if (!layers?.length) continue;
+      const node = makeSprite(sp.tag, layers.map(this.assetUrl), sp.at);
+      this.spriteLayer.append(node);
+      if (sp.loop && !this.reducedMotion) startLoop(node, sp.loop, u);
     }
   }
 
@@ -1681,15 +1703,49 @@ function spanNodes(spans: Span[], limit = Infinity): Node[] {
     if (left <= 0) break;
     const text = sp.text.length > left ? sp.text.slice(0, left) : sp.text;
     left -= text.length;
-    if (!sp.b && !sp.i && !sp.color) {
-      nodes.push(document.createTextNode(text));
-      continue;
+    let node: Node;
+    if (!sp.b && !sp.i && !sp.color) node = document.createTextNode(text);
+    else {
+      const e = el('span', [sp.b && 'rt-b', sp.i && 'rt-i'].filter(Boolean).join(' '), text);
+      if (sp.color) e.style.color = sp.color;
+      node = e;
     }
-    const e = el('span', [sp.b && 'rt-b', sp.i && 'rt-i'].filter(Boolean).join(' '), text);
-    if (sp.color) e.style.color = sp.color;
-    nodes.push(e);
+    if (sp.ruby !== undefined) {
+      // The reading appears with the first character of the text it goes over.
+      const ruby = document.createElement('ruby');
+      ruby.append(node, el('rt', '', sp.ruby));
+      node = ruby;
+    }
+    nodes.push(node);
   }
   return nodes;
+}
+
+type MotionKind = 'hop' | 'nod' | 'bow' | 'shake' | 'float';
+
+/** Keyframes of a move; `u` is a hundredth of the screen's height, in pixels. */
+function motionFrames(kind: MotionKind, u: number): { frames: Keyframe[]; ms: number; easing: string } {
+  const at = (x: number, y: number, offset?: number): Keyframe => ({ translate: `${x * u}px ${y * u}px`, ...(offset !== undefined ? { offset } : {}) });
+  switch (kind) {
+    case 'hop': return { frames: [at(0, 0), at(0, -1.6), at(0, 0)], ms: 280, easing: 'ease-out' };
+    case 'nod': return { frames: [at(0, 0), at(0, 1, 0.5), at(0, 0.45, 0.75), at(0, 0)], ms: 260, easing: 'ease-out' };
+    case 'bow': return { frames: [at(0, 0), at(0, 1.9, 0.4), at(0, 1.8, 0.7), at(0, 0)], ms: 1500, easing: 'ease-in-out' };
+    case 'shake': return { frames: [at(0, 0), at(-1.1, 0), at(1.1, 0), at(-1.1, 0), at(0, 0)], ms: 480, easing: 'ease-out' };
+    case 'float': return { frames: [at(0, 0), at(0, -0.9), at(0, 0), at(0, 0.9), at(0, 0)], ms: 8000, easing: 'ease-in-out' };
+  }
+}
+
+const LOOP_ID = 'emaki-loop';
+
+/** Start a sprite's endless move (replacing any it had). */
+function startLoop(sprite: HTMLElement, kind: MotionKind, u: number): void {
+  stopLoop(sprite);
+  const m = motionFrames(kind, u);
+  sprite.animate(m.frames, { duration: m.ms, easing: m.easing, iterations: Infinity, id: LOOP_ID });
+}
+
+function stopLoop(sprite: HTMLElement): void {
+  for (const a of sprite.getAnimations()) if (a.id === LOOP_ID) a.cancel();
 }
 
 function truncate(s: string, n: number): string {

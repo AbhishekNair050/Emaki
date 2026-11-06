@@ -305,7 +305,7 @@ export class Analysis {
 }
 
 const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'var', 'global var', 'achievement', 'ending', 'label'];
-const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl', 'shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie'];
+const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl', 'shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone'];
 
 /**
  * The dev-server address that opens the game at a line (0-based `line` in,

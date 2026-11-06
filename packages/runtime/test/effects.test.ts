@@ -137,3 +137,79 @@ describe('character moves and movies', () => {
     expect(step.block).toMatchObject({ who: { name: 'Bow' } });
   });
 });
+
+const LOOPS = `image room = "room.png"
+image hall = "hall.png"
+image mira = "mira.png"
+image icon = "icon.png"
+
+label start:
+  scene room
+  show mira
+  show icon
+  float icon
+  shake mira forever
+  tone sepia over 2
+  "Floating."
+  still mira
+  "Still."
+  scene hall
+  show mira
+  "A new scene keeps the tone."
+  tone none
+  "Normal colours."
+`;
+
+describe('endless moves and colour tones', () => {
+  it('parse and print back', () => {
+    const p = parse(LOOPS);
+    expect(p.diagnostics).toEqual([]);
+    const out = print(p.program);
+    for (const line of ['float icon', 'shake mira forever', 'tone sepia over 2', 'still mira', 'tone none']) expect(out).toContain(`  ${line}`);
+    expect(print(parse(out).program)).toBe(out);
+  });
+
+  it('reject malformed ones', () => {
+    const at = (line: string) => codes(`image mira = "m.png"\nlabel start:\n  ${line}\n  "x"\n`);
+    expect(at('float mira 2')).toEqual(['bad-float']);
+    expect(at('shake textbox forever')).toEqual(['bad-shake']);
+    expect(at('still')).toEqual(['bad-still']);
+    expect(at('still nobody')).toEqual(['unknown-image']);
+    expect(at('tone pink')).toEqual(['bad-tone']);
+    expect(at('tone mono over')).toEqual(['bad-tone']);
+    expect(at('tone mono over 1 now')).toEqual(['bad-tone']);
+  });
+
+  it('keep loops on the sprite and the tone across scenes', () => {
+    const run = new Runner(compile(LOOPS).story!);
+    const first = run.start();
+    expect(first.effects.slice(3)).toEqual([
+      { type: 'motion', motion: 'float', target: 'icon', times: 1, forever: true },
+      { type: 'motion', motion: 'shake', target: 'mira', times: 1, forever: true },
+      { type: 'tone', tone: 'sepia', duration: 2 },
+    ]);
+    const scene = () => run.save().state.scene;
+    expect(scene().sprites.map((s) => [s.tag, s.loop])).toEqual([['mira', 'shake'], ['icon', 'float']]);
+    expect(scene().tone).toBe('sepia');
+
+    expect(run.advance().effects).toEqual([{ type: 'still', target: 'mira' }]);
+    expect(scene().sprites.find((s) => s.tag === 'mira')!.loop).toBeUndefined();
+
+    run.advance();
+    expect(scene().tone).toBe('sepia');
+    expect(scene().sprites).toEqual([{ tag: 'mira', attrs: [], at: 'center' }]);
+    expect(run.advance().effects).toEqual([{ type: 'tone', tone: null }]);
+    expect(scene().tone).toBeUndefined();
+    expect(run.back()!.scene.tone).toBe('sepia');
+  });
+
+  it('come back when starting from a line', () => {
+    const run = new Runner(compile(LOOPS).story!);
+    run.startAtLine(13);
+    expect(run.save().state.scene.sprites.map((s) => s.loop)).toEqual(['shake', 'float']);
+    expect(run.save().state.scene.tone).toBe('sepia');
+    const later = new Runner(compile(LOOPS).story!);
+    later.startAtLine(17);
+    expect(later.save().state.scene.tone).toBe('sepia');
+  });
+});
