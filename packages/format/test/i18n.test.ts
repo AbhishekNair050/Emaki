@@ -202,9 +202,13 @@ label start:
   show mira
   movie "movie/op.mp4"
   "Hi."
+
+screen title:
+  column:
+    button "Start" image "ui/start.png" hover "ui/start_on.png" -> start
 `).story!;
     const paths = localizablePaths(story);
-    expect(paths.sort()).toEqual(['bg/room.png', 'm/body.png', 'm/smile.png', 'movie/op.mp4', 'side/mira.png']);
+    expect(paths.sort()).toEqual(['bg/room.png', 'm/body.png', 'm/smile.png', 'movie/op.mp4', 'side/mira.png', 'ui/start.png', 'ui/start_on.png']);
     const have = new Set(['bg/room.ja.png', 'm/smile.ja.png', 'bg/room.fr.png', 'movie/op.ja.mp4']);
     expect(localizedAssets(paths, 'ja', (p) => have.has(p))).toEqual({
       'bg/room.png': 'bg/room.ja.png', 'm/smile.png': 'm/smile.ja.png', 'movie/op.mp4': 'movie/op.ja.mp4',

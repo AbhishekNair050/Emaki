@@ -69,14 +69,26 @@ export function localizedPath(path: string, lang: string): string {
   return dot > slash ? `${path.slice(0, dot)}.${lang}${path.slice(dot)}` : `${path}.${lang}`;
 }
 
-/** Every file a language may replace: declared images, side images, layers and movies. */
+/** The pictures of a screen element (see screens.ts). */
+interface ScreenPictures { image?: string; hover?: string; children?: ScreenPictures[] }
+
+/** Every file a language may replace: declared images, side images, layers, movies and the pictures on screens. */
 export function localizablePaths(story: {
   images: Record<string, string>;
   layered?: Record<string, ({ path: string } | { options: Record<string, string> })[]>;
   code: { op: string; path?: string }[];
+  screens?: Record<string, { items: ScreenPictures[] }>;
 }): string[] {
   const out = new Set(Object.values(story.images));
   for (const ins of story.code) if (ins.op === 'movie' && ins.path) out.add(ins.path);
+  const walk = (items: ScreenPictures[]): void => {
+    for (const it of items) {
+      if (it.image) out.add(it.image);
+      if (it.hover) out.add(it.hover);
+      if (it.children) walk(it.children);
+    }
+  };
+  for (const sc of Object.values(story.screens ?? {})) walk(sc.items);
   for (const layers of Object.values(story.layered ?? {})) {
     for (const l of layers) {
       if ('path' in l) out.add(l.path);

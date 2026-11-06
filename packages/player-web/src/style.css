@@ -260,6 +260,27 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .overlay button:disabled { opacity: 0.4; cursor: default; }
 .overlay .row { display: flex; gap: 1.5cqw; flex-wrap: wrap; justify-content: center; }
 
+/* ---- The game's own screens (`screen name:`); see docs/theming.md ---- */
+.overlay.open.screen { display: block; background: none; padding: 0; backdrop-filter: none; }
+.screen-root, .screen-box {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(2 * var(--u));
+}
+.screen-root { position: absolute; inset: 0; }
+.screen-box { position: relative; }
+.screen-column { display: flex; flex-direction: column; align-items: center; gap: calc(1.4 * var(--u)); }
+.screen-row { display: flex; flex-direction: row; align-items: center; gap: 1.5cqw; }
+.screen-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.screen-text { color: var(--ui-text); font-size: max(13px, calc(3 * var(--u))); text-align: center; }
+.screen-image { display: block; }
+.overlay .screen-button.picture {
+  position: relative; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; line-height: 0;
+}
+.screen-button.picture img { display: block; }
+.screen-button.picture .hover { position: absolute; left: 0; top: 0; opacity: 0; }
+.screen-button.picture:hover:not(:disabled) .hover, .screen-button.picture:focus-visible .hover { opacity: 1; }
+.overlay .screen-button.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .title-screen { background: linear-gradient(180deg, rgba(4, 6, 10, 0.15), rgba(4, 6, 10, 0.75)); backdrop-filter: none; }
 .title-screen .title { font-size: max(26px, calc(9 * var(--u))); text-shadow: 0 calc(0.4 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.7); letter-spacing: 0.01em; max-width: 80%; line-height: 1.1; }
 .title-screen .byline { color: #d8d2c4; }

@@ -5,7 +5,10 @@
  * crisp text at any size, tiny download. A WebGL renderer can implement the
  * same Effect/Block contract later for shaders and particle effects.
  */
-import { isPercentPosition, parseAspect, type CompiledStory, type CompiledTranslation, type Span, type Value } from '@emaki/format';
+import {
+  evaluate, isPercentPosition, parseAspect, parseCanvas,
+  type CompiledStory, type CompiledTranslation, type ScreenAction, type Span, type Value,
+} from '@emaki/format';
 import {
   Runner, StoryError,
   type Block, type CameraState, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -14,6 +17,7 @@ import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
+import { renderScreen } from './screens.ts';
 import { fadeVolume, LoopAudio, type Track } from './loop-audio.ts';
 import { Progress } from './progress.ts';
 import { ReadLines } from './read-lines.ts';
@@ -60,6 +64,8 @@ export class Player {
   private readonly opts: PlayerOptions;
   private readonly storeKey: string;
   private translation: CompiledTranslation | null = null;
+  /** The game's own screens open now, the top one showing (`open about` from the title pushes `about`). */
+  private screenStack: string[] = [];
   /** Ends the movie that's playing, if any (see playMovie). */
   private endMovie: (() => void) | null = null;
   /** Whether the previous language swapped any pictures (switching away has to redraw them). */
@@ -191,7 +197,7 @@ export class Player {
       label(button('', () => this.showSlots('save')), 'ui.save'),
       label(button('', () => this.showSlots('load')), 'ui.load'),
       label(button('', () => this.showSettings()), 'ui.settings', 'ui.settings_hint'),
-      label(button('', () => this.confirmTitle()), 'ui.menu'),
+      label(button('', () => (this.story.screens?.menu ? this.openScreen('menu', true) : this.confirmTitle())), 'ui.menu'),
     );
 
     this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.nvlEl, this.textbox, this.flashEl, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
@@ -1139,6 +1145,7 @@ export class Player {
     this.mode = 'title';
     this.textbox.hidden = true;
     this.choicesEl.replaceChildren();
+    if (this.story.screens?.title) { this.openScreen('title', true); return; }
     const meta = this.story.meta;
     const block = this.story.labels.title !== undefined ? this.runner.block : null;
     const own = block?.type === 'menu' ? block.choices : null;
@@ -1173,6 +1180,133 @@ export class Player {
       menu,
       el('p', 'made-with', this.t('ui.made_with')),
     );
+  }
+
+  // ---------------------------------------------------------- the game's own screens
+
+  /**
+   * Show one of the game's own screens (`screen name:` in the script) in the
+   * overlay. `fresh` starts a new stack (the title, the game menu); otherwise
+   * the screen goes on top of the one showing, and `close` comes back to it.
+   */
+  private openScreen(name: string, fresh = false): void {
+    const screen = this.story.screens?.[name];
+    if (!screen) return;
+    if (fresh) this.screenStack = [];
+    if (this.screenStack[this.screenStack.length - 1] !== name) this.screenStack.push(name);
+    const focused = this.overlay.querySelector(':focus') ? [...this.overlay.querySelectorAll('button')].indexOf(document.activeElement as HTMLButtonElement) : -1;
+    const node = renderScreen(name, screen, {
+      vars: () => this.screenVars(),
+      translated: (id) => this.translation?.strings[id] ?? null,
+      nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
+      url: this.assetUrl,
+      canvas: parseCanvas(this.story.meta.canvas),
+      enabled: (actions) => actions.every((a) => this.canRun(a)),
+      run: (actions) => this.runActions(actions),
+    });
+    this.openOverlay(`screen screen-${name}`, node);
+    // Esc closes a screen opened over the story or over another screen.
+    this.overlay.onkeydown = (e) => {
+      if (e.key !== 'Escape' || (this.screenStack.length <= 1 && this.mode !== 'playing')) return;
+      e.preventDefault();
+      this.runActions([{ do: 'close' }]);
+    };
+    if (focused >= 0) this.overlay.querySelectorAll('button')[focused]?.focus({ preventScroll: true });
+  }
+
+  /** Variables a screen sees: the story's, or on the title (between games) their starting values and the globals. */
+  private screenVars(): Readonly<Record<string, Value>> {
+    return this.mode === 'title' ? { ...this.story.vars, ...this.runner.globals } : this.runner.vars;
+  }
+
+  private latestSave(): SaveData | null {
+    let best: SaveData | null = null;
+    for (const s of this.slots()) if (s && (!best || s.savedAt > best.savedAt)) best = s;
+    return best;
+  }
+
+  /** Whether an action can do anything now: there must be a save to continue or load, a way to quit, something to save. */
+  private canRun(a: ScreenAction): boolean {
+    switch (a.do) {
+      case 'continue': return this.latestSave() !== null;
+      case 'open':
+        if (a.screen === 'load') return this.slots().some(Boolean);
+        if (a.screen === 'save') return this.mode === 'playing' && this.runner.block !== null;
+        if (a.screen === 'extras') return this.extrasTabs().length > 0;
+        return true;
+      case 'quit': return !!this.host.quit && !!this.opts.ownsDocument;
+      default: return true;
+    }
+  }
+
+  private runActions(actions: readonly ScreenAction[]): void {
+    let redraw = false;
+    for (const a of actions) {
+      switch (a.do) {
+        case 'set': {
+          const vars = this.screenVars();
+          try {
+            const v = evaluate(a.value, vars);
+            const old = vars[a.name];
+            const next = a.op === '=' ? v : typeof old === 'number' && typeof v === 'number' ? (a.op === '+=' ? old + v : old - v) : a.op === '+=' ? String(old) + String(v) : v;
+            this.runner.setVar(a.name, next);
+          } catch (err) {
+            this.fail(err);
+            return;
+          }
+          if (this.story.globals?.includes(a.name)) storage.set(`${this.storeKey}:globals`, JSON.stringify(this.runner.globals));
+          redraw = true;
+          break;
+        }
+        case 'start':
+          this.screenStack = [];
+          if (a.label) this.startAtLabel(a.label); else this.start();
+          return;
+        case 'continue': {
+          const save = this.latestSave();
+          this.screenStack = [];
+          if (save) this.loadFrom(save);
+          return;
+        }
+        case 'jump':
+          this.screenStack = [];
+          if (this.mode === 'title') this.startAtLabel(a.label); else this.jumpTo(a.label);
+          return;
+        case 'open':
+          if (this.story.screens?.[a.screen]) { this.openScreen(a.screen); return; }
+          if (a.screen === 'load' || a.screen === 'save') this.showSlots(a.screen);
+          else if (a.screen === 'settings') this.showSettings();
+          else if (a.screen === 'extras') this.showExtras();
+          else if (a.screen === 'history') this.showLog();
+          return;
+        case 'close':
+          this.screenStack.pop();
+          if (this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
+          else if (this.mode === 'title') this.showTitleMenu();
+          else this.closeOverlay();
+          return;
+        case 'title':
+          this.screenStack = [];
+          if (this.mode === 'playing') this.confirmTitle(); else this.showTitle();
+          return;
+        case 'quit':
+          this.host.quit?.();
+          return;
+      }
+    }
+    if (redraw && this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
+  }
+
+  /** A new game from a label (a title screen's "Epilogue" button). Variables start fresh, globals kept. */
+  private startAtLabel(label: string): void {
+    this.endingName = null;
+    this.enterPlaying();
+    this.syncScene({ bg: null, sprites: [] });
+    this.stopMusic();
+    this.stopAmbience();
+    this.stopSounds();
+    this.stopVoice();
+    this.guard(() => this.present(this.runner.startAt(label)));
   }
 
   // ---------------------------------------------------------- extras
@@ -1402,7 +1536,8 @@ export class Player {
     // Pictures with text in them may have a version for the new language.
     if (this.mode === 'playing' && (this.translation?.assets || this.translationHadAssets)) this.syncScene(this.runner.save().state.scene);
     this.translationHadAssets = !!this.translation?.assets;
-    if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitleMenu();
+    if (this.overlay.classList.contains('screen') && this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
+    else if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitleMenu();
     else if (this.mode === 'playing' && block) {
       if (this.overlayOpen) this.redrawOnClose = true;
       else this.renderBlock(block, true);
