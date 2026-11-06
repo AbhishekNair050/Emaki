@@ -285,6 +285,7 @@ function describe(e: CatalogEntry): string {
     case 'achievement': return 'Name of an achievement';
     case 'ending': return 'Name of an ending';
     case 'ui': return 'Game interface';
+    case 'screen': return 'Text on a screen of the game (title, menus)';
   }
 }
 
@@ -375,6 +376,7 @@ function kindOf(id: string): CatalogEntry['kind'] {
   if (id.startsWith('ui.')) return 'ui';
   if (id.startsWith('achievement.')) return 'achievement';
   if (id.startsWith('ending.')) return 'ending';
+  if (id.startsWith('screen.')) return 'screen';
   return 'line'; // lines and choices are told apart by the script on the next update
 }
 

@@ -61,6 +61,15 @@ Porting a commercial VN demo released in Japanese, English and both Chinese scri
 - [x] Colour tones on the picture: `tone sepia`, `tone mono`, `tone none` (D-047)
 - [x] Ruby text (furigana): `[ruby=うすくれない]薄紅[/ruby]` (D-048)
 
+## 🚧 Milestone 6 — Screens (in progress)
+A game can replace any built-in screen with its own, written in the script and styled with `theme.css`, so it looks like itself. Proof: the commercial demo port gets its original title, menu, save/load, settings and text box back.
+- [ ] Screen language: `screen name:` with images, text, buttons, rows, columns and boxes; placed by percentages, or by pixels on a declared `canvas: 1920x1080`; `if` on any element; actions `start`, `continue`, `open`, `close`, `title`, `quit`, `jump`, `set`. Replaces the title screen and the game menu
+- [ ] Data screens: save/load slots with thumbnails and pages, settings sliders and toggles, the Extras gallery and endings
+- [ ] Screens during the story: `show screen`, `hide screen`, `call screen pick_place` with the choice in a variable (maps, phones, calendars)
+- [ ] The text box as a screen: name plate, dialogue, side image, quick menu buttons, box art
+- [ ] Polish: hover and pressed images, click and hover sounds, transitions between screens, gamepad navigation, live preview in the editor
+- [ ] Proof: the port's own UI
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 - Plugin API v1

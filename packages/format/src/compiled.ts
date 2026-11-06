@@ -10,6 +10,8 @@ import type { Expr, Value } from './expr.ts';
 import type { Span } from './markup.ts';
 
 export const FORMAT_ID = 'emaki-story';
+import type { CompiledScreen } from './screens.ts';
+
 export const FORMAT_VERSION = 1;
 
 export interface SrcRef {
@@ -88,6 +90,8 @@ export interface CompiledStory {
   audio: Record<string, string>;
   /** Characters drawn from layers (`layered mira:`): tag -> layers, bottom first. Absent when none. */
   layered?: Record<string, CompiledLayer[]>;
+  /** The game's own screens (`screen title:`), by name. Absent when it has none. */
+  screens?: Record<string, CompiledScreen>;
   /** Achievement id -> display name. Absent when the story has none. */
   achievements?: Record<string, { name: string }>;
   /** Initial variable values. */

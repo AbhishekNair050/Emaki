@@ -11,3 +11,4 @@ export { print } from './printer.ts';
 export { voiceMap, voicePath } from './compiler.ts';
 export { buildGraph, toMermaid, type StoryGraph, type StoryNode, type StoryEdge, type EdgeKind } from './graph.ts';
 export * from './i18n.ts';
+export * from './screens.ts';

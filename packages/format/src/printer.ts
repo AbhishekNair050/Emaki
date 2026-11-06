@@ -15,6 +15,7 @@
  */
 import type { AssetRef, Program, Stmt, Trivia } from './ast.ts';
 import { printExpr } from './expr.ts';
+import { printScreenLine, type ScreenItem } from './screens.ts';
 
 const INDENT = '  ';
 
@@ -60,6 +61,20 @@ export function print(program: Program): string {
         out.push(`${INDENT}${INDENT}${o.attr} ${q(o.path)}`);
       }
     }
+  }
+
+  for (const sc of program.screens) {
+    blank();
+    trivia(sc.leading, '', out);
+    out.push(`screen ${sc.name}:`);
+    const items = (list: ScreenItem[], depth: number) => {
+      for (const it of list) {
+        trivia(it.leading, INDENT.repeat(depth), out);
+        out.push(INDENT.repeat(depth) + printScreenLine(it));
+        if (it.children) items(it.children, depth + 1);
+      }
+    };
+    items(sc.items, 1);
   }
 
   for (const l of program.labels) {

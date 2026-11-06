@@ -1,3 +1,4 @@
+import type { ScreenDef } from './screens.ts';
 import type { Expr } from './expr.ts';
 
 /** 1-based source line. Every node carries one so tools can jump to source. */
@@ -54,6 +55,8 @@ export interface Program {
   images: ImageDef[];
   audio: AudioDef[];
   layered: LayeredDef[];
+  /** `screen title:` and friends: the game's own screens (see screens.ts). */
+  screens: ScreenDef[];
   vars: VarDef[];
   achievements: AchievementDef[];
   endings: EndingDef[];

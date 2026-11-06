@@ -13,6 +13,7 @@ import {
   type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
+import { compileScreens, parseCanvas } from './screens.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse } from './parser.ts';
 
@@ -41,7 +42,7 @@ export interface CompileResult {
  */
 export interface SourceString {
   id: string;
-  kind: 'line' | 'choice' | 'name' | 'meta' | 'achievement' | 'ending' | 'ui';
+  kind: 'line' | 'choice' | 'name' | 'meta' | 'achievement' | 'ending' | 'ui' | 'screen';
   /** Character id for dialogue, null for narration and everything else. */
   speaker: string | null;
   /** Source text, with its markup and {variables}. */
@@ -85,6 +86,7 @@ export function compileFiles(main: string, parts: StoryFile[] = []): CompileResu
     program.images.push(...r.program.images);
     program.audio.push(...r.program.audio);
     program.layered.push(...r.program.layered);
+    program.screens.push(...r.program.screens);
     program.vars.push(...r.program.vars);
     program.achievements.push(...r.program.achievements);
     program.endings.push(...r.program.endings);
@@ -495,6 +497,23 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     warn(1, 'bad-aspect', `'aspect: ${meta.aspect}' isn't a shape the player understands; use width:height, like 16:9 or 4:3`);
   }
 
+  // --- Screens ----------------------------------------------------------
+  const canvas = parseCanvas(meta.canvas);
+  if (meta.canvas !== undefined && !canvas) warn(1, 'bad-canvas', `'canvas: ${meta.canvas}' should be the size your UI art is drawn at, like 1920x1080`);
+  const screenStrings: SourceString[] = [];
+  const screens = compileScreens(program.screens, {
+    images, labels: new Set(Object.keys(labels)), vars, canvas,
+    error: (loc, code, message) => error(loc, code, message),
+    warn: (loc, code, message) => warn(loc, code, message),
+    textId: (screen, text) => `screen.${screen}.${fnv1a(text)}`,
+    addString: (id, text, loc) => {
+      if (!screenStrings.some((s) => s.id === id)) screenStrings.push({ id, kind: 'screen', speaker: null, text, label: null, ...lineOf(loc) });
+    },
+  });
+  if (screens.title && labels.title !== undefined && program.labels.find((l) => l.name === 'title')?.body.some((s) => s.type === 'menu')) {
+    warn(program.screens.find((s) => s.name === 'title')!.loc, 'title-menu', `Both 'screen title' and a menu in 'label title': the screen replaces the menu, so its choices won't show`);
+  }
+
   // --- Reachability -----------------------------------------------------
   if (code.length && !diagnostics.some((d) => d.severity === 'error')) {
     const seen = reachable(code, start);
@@ -509,6 +528,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     version: FORMAT_VERSION,
     meta, start, characters, images, audio,
     ...(Object.keys(layered).length ? { layered } : {}),
+    ...(Object.keys(screens).length ? { screens } : {}),
     ...(Object.keys(achievements).length ? { achievements } : {}),
     ...(Object.keys(endings).length ? { endings } : {}),
     ...(program.images.some((i) => i.gallery) ? { gallery: program.images.filter((i) => i.gallery).map((i) => i.name) } : {}),
@@ -525,7 +545,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
     ...program.achievements.map((a): SourceString => ({ id: `achievement.${a.id}`, kind: 'achievement', speaker: null, text: a.name, label: null, ...lineOf(a.loc) })),
     ...program.endings.map((e): SourceString => ({ id: `ending.${e.id}`, kind: 'ending', speaker: null, text: e.name, label: null, ...lineOf(e.loc) })),
   ];
-  return { story, diagnostics, strings: [...header, ...strings] };
+  return { story, diagnostics, strings: [...header, ...strings, ...screenStrings] };
 }
 
 /** Instruction indices reachable from `start`. */

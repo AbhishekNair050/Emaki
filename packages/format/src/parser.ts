@@ -12,6 +12,7 @@ import type {
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
 import { TONES } from './ast.ts';
+import { parseScreenLine, type ScreenDef, type ScreenItem } from './screens.ts';
 
 interface Line {
   indent: number;
@@ -47,7 +48,7 @@ export function parse(source: string): ParseResult {
   const err = (line: number, code: string, message: string) =>
     diagnostics.push({ severity: 'error', line, code, message });
 
-  const program: Program = { meta: [], characters: [], images: [], audio: [], layered: [], vars: [], achievements: [], endings: [], labels: [] };
+  const program: Program = { meta: [], characters: [], images: [], audio: [], layered: [], screens: [], vars: [], achievements: [], endings: [], labels: [] };
   const rawLines = source.replace(/\r\n?/g, '\n').split('\n');
 
   // --- Frontmatter -------------------------------------------------------
@@ -117,6 +118,11 @@ export function parse(source: string): ParseResult {
 
     if (word === 'layered') {
       parseLayered(ln);
+      return;
+    }
+
+    if (word === 'screen' && /^screen\s+[A-Za-z_]\w*\s*:$/.test(t)) {
+      parseScreen(ln);
       return;
     }
 
@@ -432,6 +438,32 @@ export function parse(source: string): ParseResult {
       def.layers.push(attach<LayerDef>({ kind: 'group', name: g[1], optional: !!g[2], options, loc: { line: c.line } }, c, i === 0));
     });
     program.layered.push(attach(def, ln, program.layered.length === 0));
+  }
+
+  /**
+   * screen title:
+   *   image "ui/title.png"
+   *   column at 80% 60%:
+   *     button "New Game" -> start
+   */
+  function parseScreen(ln: Line): void {
+    const name = /^screen\s+([A-Za-z_]\w*)/.exec(ln.text)![1]!;
+    if (!ln.children.length) err(ln.line, 'empty-block', `'screen ${name}' has nothing in it`);
+    const items = (lines: Line[]): ScreenItem[] => {
+      const out: ScreenItem[] = [];
+      lines.forEach((c, i) => {
+        const r = parseScreenLine(c.text, { line: c.line });
+        if ('error' in r) { err(c.line, 'bad-screen', r.error); return; }
+        if (r.container) {
+          if (!c.children.length) err(c.line, 'empty-block', `This ${r.item.kind} has nothing in it`);
+          r.item.children = items(c.children);
+        } else noChildren(c);
+        out.push(attach(r.item, c, i === 0));
+      });
+      return out;
+    };
+    const def: ScreenDef = { name, items: items(ln.children), loc: { line: ln.line } };
+    program.screens.push(attach(def, ln, program.screens.length === 0));
   }
 
   /** `shake [s]`, `flash [colour] [s]`, `camera zoom Z [at X% Y%] [over s]`, `camera reset [over s]`. */
