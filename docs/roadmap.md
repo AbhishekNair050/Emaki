@@ -57,9 +57,9 @@ Porting a commercial VN demo released in Japanese, English and both Chinese scri
 - [x] Pictures and movies with a version per language (`cg/sign.fr.png`, D-043); Chinese devices matched by script (`zh-TW` → `zh-Hant`)
 - [x] Character and text box moves: `hop`, `nod`, `bow`, `shake mira` (D-044)
 - [x] Movies: `movie "movie/opening.mp4"`, skippable (D-045)
-- [ ] Endless loops (a floating icon, a trembling cut-in)
-- [ ] Colour tones on the picture (sepia, monochrome)
-- [ ] Ruby text (furigana) for Japanese
+- [x] Endless moves: `float icon`, `shake mira forever`, `still mira` (D-046)
+- [x] Colour tones on the picture: `tone sepia`, `tone mono`, `tone none` (D-047)
+- [x] Ruby text (furigana): `[ruby=うすくれない]薄紅[/ruby]` (D-048)
 
 ## ⏸ On hold
 - Ren'Py importer (common subset)

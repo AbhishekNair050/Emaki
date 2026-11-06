@@ -203,11 +203,27 @@ label greeting:
 | `bow mira` | A slow bow. |
 | `shake mira` | Shakes her head (side to side). Plain `shake` still shakes the whole picture. |
 | `shake textbox` | Moves the text box instead of a character; works with every move. |
+| `float icon` | Drifts gently up and down, without end: a dream, a ghost, a floating icon. |
+| `shake mira forever` | Any move with `forever` repeats until stopped: a trembling cut-in, a hopping mascot. |
+| `still mira` | Stops her endless move. |
 
 - A number after the name repeats the move (1 to 10 times).
+- An endless move belongs to the character: it carries on through the lines that follow, saves and going back keep it, and it ends with `still`, `hide` or a new `scene`. The text box can't move endlessly.
 - Moves don't hold up the story: the line after one appears while it plays.
 - A move on a character who isn't on screen does nothing. Skipping, going back and **Animations: reduced** leave moves out.
-- `hop`, `nod` and `bow` aren't reserved words either: `bow: Hello.` is a character called bow speaking.
+- `hop`, `nod`, `bow`, `float`, `still` and `tone` aren't reserved words either: `bow: Hello.` is a character called bow speaking.
+
+## Colour tones
+```
+label flashback:
+  tone sepia over 1.5
+  scene old_school with dissolve
+  "Ten years earlier."
+  scene old_station
+  tone none over 1.5
+```
+
+`tone sepia` (old photographs, the past) and `tone mono` (black and white) tint the picture, characters included, but never the text. `tone none` brings normal colours back; `over` fades between tones. A tone lasts across scene changes until you change it, so a whole flashback needs just two lines. Saves and going back keep it.
 
 ## Movies
 ```
@@ -250,9 +266,10 @@ Works in dialogue, narration and choices.
 | `This is **important**.` | This is **important**. |
 | `***Run!***` | bold and italic |
 | `The [color=#e8b04b]lamp[/color] dies.` | "lamp" in gold (a hex code, or a colour name like `gold`) |
+| `[ruby=うすくれない]薄紅[/ruby]` | 薄紅 with its reading (furigana) in small type above it |
 | `Room 5 \* 3` | Room 5 * 3 |
 
-A backslash shows `*`, `[`, `]` or `\` literally. Ordinary square brackets are just text; only `[color=...]`, `[/color]` and the pauses below are special. Inside italic narration, `*emphasis*` turns upright so it still stands out. An unclosed `*` or `[color]` is reported with its line number.
+A backslash shows `*`, `[`, `]` or `\` literally. Ordinary square brackets are just text; only `[color=...]`, `[ruby=...]`, their closing tags and the pauses below are special. Inside italic narration, `*emphasis*` turns upright so it still stands out. An unclosed `*` or `[color]` is reported with its line number.
 
 ## Pauses inside a line
 Dialogue and narration can stop partway, the way people pause when they talk.

@@ -44,7 +44,9 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `nvl` | `mode (on/off/clear)` | no | `on`/`clear`: start an empty page of full-screen text; `off`: back to the text box. Lines shown while a page is open are added to it. |
 | `shake` | `duration?` | no | Shake the picture (effect only, no state). |
 | `flash` | `color, duration?` | no | Flash the screen in `color` (`white`, `black`, `red` or `#rrggbb`); effect only. |
-| `motion` | `motion, target, times?` | no | The sprite with tag `target` (or the text box, for `textbox`) makes a move: `hop`, `nod`, `bow` or `shake` (side to side), `times` times (1 when absent). Effect only; nothing happens if the sprite isn't on screen. |
+| `motion` | `motion, target, times?, forever?` | no | The sprite with tag `target` (or the text box, for `textbox`) makes a move: `hop`, `nod`, `bow`, `shake` (side to side) or `float` (slow drift), `times` times (1 when absent). Nothing happens if the sprite isn't on screen. With `forever: true` (sprites only) the move repeats endlessly: the sprite's state gains `loop` = the move, kept until `still`, `hide` or `scene`. |
+| `still` | `target` | no | Remove the sprite's `loop` (its endless move stops). |
+| `tone` | `tone, duration?` | no | Scene tone = `sepia` or `mono` (`none` removes it): a tint over the picture (not the text), faded over `duration` seconds. Kept by `scene`; saved and rolled back with the scene. |
 | `movie` | `path` | yes | Play the video at `path` full screen; the host continues when it ends or the player skips it. Effect only (skipped when skipping or going back). |
 | `camera` | `zoom, x, y, duration?` | no | Scene camera = zoom `zoom` (≥ 1) toward the point `x`%, `y`% of the screen; `zoom 1, x 50, y 50` is the whole picture. Animated over `duration` seconds without blocking. Part of the scene, so saved and rolled back with it. |
 
@@ -55,7 +57,7 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 A runtime should guard against loops that execute many instructions without blocking (reference: 100,000).
 
 ## Styled text
-`text` is always plain, with markup removed. When a line uses styling, `spans` is also present: an array of `{ text, b?: true, i?: true, color?: string }` runs that join to make `text`. Runtimes without styling support can ignore `spans`. `color` is a hex code or a plain colour name, validated by the compiler.
+`text` is always plain, with markup removed. When a line uses styling, `spans` is also present: an array of `{ text, b?: true, i?: true, color?: string, ruby?: string }` runs that join to make `text`. `ruby` is a reading shown in small type above that run (furigana); runtimes without ruby support show the text alone. Runtimes without styling support can ignore `spans`. `color` is a hex code or a plain colour name, validated by the compiler.
 
 A span with empty `text` and a `pause` marks a pause at that point in a `say` line: `"click"` (wait for the player, `[w]`), a number of seconds (`[w=1.5]`), or `"next"` (`[nw]`, always last: continue to the next line without waiting for the player). Lines with pauses always carry `spans`. A runtime that ignores pauses still shows the right text.
 

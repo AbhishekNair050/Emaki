@@ -149,3 +149,12 @@ A CG with a sign, a letter or sound-effect lettering needs a version per languag
 
 ### D-045 — Movies block the story and are skippable (accepted)
 `movie "path"` plays a video over the stage and the story waits for it, the way openings and endings work in commercial VNs. A click, Enter, Space or Escape skips it, without also advancing the line underneath; skipping mode and rollback never play it. It plays at the music volume, and falls back to muted when the browser blocks sound. Movies are an effect rather than state, so loading a save never restarts one. Versions per language use the same file naming as pictures (D-043): the compiled translation's `images` map became `assets` and covers movies too, before any game depended on the old name.
+
+### D-046 — Endless moves are sprite state (accepted)
+`float mira` and `shake mira forever` repeat until `still mira`. Unlike one-off moves (D-044), an endless move is something the player should still see after loading a save or going back, so it is stored on the sprite (`loop`) and the player restarts it whenever it redraws the scene. Tying it to the sprite means `hide` and a new `scene` end it with no extra bookkeeping. The text box can't loop: a permanently shaking box would be hard to read. Reduced motion leaves loops out.
+
+### D-047 — Colour tones are scene state that outlives the scene (accepted)
+`tone sepia` / `tone mono` / `tone none` tint backgrounds and characters but not the text, which stays readable. A flashback usually spans several backgrounds, so a tone survives `scene` (unlike the camera) and lasts until changed. Two named tones cover what VNs commonly use this for (the past, memories); arbitrary colour matrices stay out of the core until a game needs one. The player animates the tone with Web Animations, separately from the camera's transform transition on the same layers.
+
+### D-048 — Furigana is markup: `[ruby=reading]text[/ruby]` (accepted)
+Japanese VNs annotate unusual readings, and translations into Chinese sometimes keep them. Ruby follows the colour tag's form, so writers learn one bracket syntax, and it compiles to a `ruby` field on a span, which never merges with its neighbours. Plain `text`, the history log and screen readers get the base text alone; the player renders a real `<ruby>` element and centres the base under a longer reading rather than spreading its characters apart.
