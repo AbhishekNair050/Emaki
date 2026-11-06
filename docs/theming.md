@@ -36,7 +36,58 @@ label title:
 - Coming back to the title (after an ending, or from the menu) plays the label again.
 - `title` is never where a new game starts by itself; set `start:` in the header or have a label named `start` or a first label after `title`.
 
-## 3. Your own styles (`theme.css`)
+## 3. Your own screens (`screen title:`)
+When the header and a scripted title aren't enough, draw the screen yourself: your art, your buttons, exactly where your designer put them.
+
+```
+---
+title: The Keeper of Gullwing Point
+canvas: 1920x1080
+---
+
+screen title:
+  image "ui/title_bg.png"
+  image "ui/logo.png" at 50% 30% anchor center alt "The Keeper of Gullwing Point"
+  column at 1500px 640px anchor center gap 2%:
+    button "New Game" image "ui/new.png" hover "ui/new_on.png" -> start
+    button "Continue" -> continue
+    button "Epilogue" -> start epilogue if endings_seen >= 3
+    button "Settings" -> open settings
+    button "Quit" -> quit
+```
+
+Each line is one element: `kind ["text"] [options] [-> actions] [if condition]`.
+
+| Element | What it is |
+|---|---|
+| `image "ui/bg.png"` (or a declared image's name) | A picture. With no `at` or `size` it covers the whole screen (a background); placed with `at`, it keeps the size it was drawn at on your canvas. `alt "..."` describes it for screen readers. |
+| `text "Version 1.0"` | Text, with the same `*styling*` and `{variables}` as dialogue. |
+| `button "New Game" -> start` | A button. With `image "..."` (and `hover "..."` for when it's pointed at or focused) it's a picture; the label is still required: it's what screen readers say, and what translators translate. |
+| `row:` / `column:` | Lines elements up across or down, `gap 2%` apart. The lines indented under it are its elements. |
+| `box:` | A group with its own place and size (a panel), its elements stacked inside. |
+
+**Placing things.** `at X Y` puts the element's top-left corner (or the point `anchor` names: `center`, `top`, `bottom-right`, ...) at a place across then down. Use percentages of the screen (`at 50% 30%`), or pixels when your art was drawn at a fixed size: put `canvas: 1920x1080` in the header and write `at 1500px 640px`. Pixels are measured on that canvas and scale with the window, so a screen drawn pixel-perfect in an image editor stays right on any screen. `size W H` sets a size (`auto` for either). Elements without `at` flow in the middle of the screen (or of their box), one under another.
+
+**Actions** (after `->`, separated by commas):
+
+| Action | What it does |
+|---|---|
+| `start` / `start epilogue` | A new game, from the beginning or from a label. |
+| `continue` | Loads the most recent save (the button is greyed out when there are none). |
+| `open settings` | Opens a screen: one of yours, or the built-in `load`, `save`, `settings`, `extras` and `history`. |
+| `close` | Goes back to the screen underneath (Esc does the same). |
+| `title` | Back to the title screen (asks first during a game). |
+| `quit` | Quits (only in desktop and phone apps; greyed out in a browser). |
+| `jump label` | Continues the story at a label, keeping the variables. |
+| `set visits += 1` | Changes a variable; the screen redraws. A `global var` changed this way is remembered. |
+
+`if condition` at the end of a line shows the element only while the condition holds, which is how unlockable extras work.
+
+**Which screens you can replace.** `screen title` replaces the title menu (the header's `title_music` still plays, and a `label title` still plays behind it). `screen menu` is what the quick menu's **Menu** button opens during the story; without it, Menu goes back to the title. Any other name is a screen of your own, opened with `open name`. Load, save, settings and extras can't be replaced yet.
+
+Screen text goes into translation files like every other line, and pictures can have a version per language (`ui/new.zh-Hant.png`).
+
+## 4. Your own styles (`theme.css`)
 Put a `theme.css` next to `story.vn`. It loads after the player's own styles, so anything in it wins. The editor's game pane uses it too, and restyles as you save it. Paths inside it are relative to the file, so fonts and images from your game folder work:
 
 ```css
@@ -70,5 +121,7 @@ These class names are kept stable between versions:
 | `.extras-panel`, `.extras-tabs`, `.gallery`, `.gallery-item`, `.gallery-item.locked`, `.extras-list`, `.gallery-view` | The Extras screen. |
 | `.nvl-page`, `.nvl-line`, `.nvl-name`, `.nvl-text` | NVL mode pages (`.nvl-line[data-speaker="mira"]` for one character's lines). |
 | `.toast` | Short notices (achievements, "Saved"). |
+| `.overlay.screen`, `.screen-root`, `.screen-<name>` | One of your own screens (`.screen-title`, `.screen-menu`). |
+| `.screen-text`, `.screen-image`, `.screen-button`, `.screen-button.picture`, `.screen-row`, `.screen-column`, `.screen-box` | Their elements; add your own class with `class=name`. |
 
 Players' accessibility settings (text size, fonts, box opacity, reduced motion) still apply on top of your theme; please don't fight them with `!important`.

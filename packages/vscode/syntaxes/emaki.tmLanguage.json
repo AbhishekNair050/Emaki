@@ -36,6 +36,39 @@
       }
     },
     {
+      "match": "^(screen)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.screen.emaki"
+        },
+        "2": {
+          "name": "entity.name.type.emaki"
+        },
+        "3": {
+          "name": "punctuation.separator.emaki"
+        }
+      }
+    },
+    {
+      "match": "^\\s+(image|text|button|row|column|box)\\b(?=[^:]*(?:\"|->|\\bat\\b|\\bsize\\b|\\bgap\\b|:\\s*$|$))",
+      "captures": {
+        "1": {
+          "name": "keyword.other.screen-element.emaki"
+        }
+      }
+    },
+    {
+      "match": "\\s(->)\\s*(start|continue|open|close|title|quit|jump|set)\\b",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.arrow.emaki"
+        },
+        "2": {
+          "name": "keyword.control.action.emaki"
+        }
+      }
+    },
+    {
       "match": "^\\s+(always)\\s+(\\\"(?:[^\\\"\\\\]|\\\\.)*\\\")\\s*$",
       "captures": {
         "1": {

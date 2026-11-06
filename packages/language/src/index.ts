@@ -304,7 +304,7 @@ export class Analysis {
   }
 }
 
-const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'var', 'global var', 'achievement', 'ending', 'label'];
+const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'label'];
 const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl', 'shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone'];
 
 /**
