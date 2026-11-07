@@ -65,7 +65,8 @@ A span with empty `text` and a `pause` marks a pause at that point in a `say` li
 `screens` (absent when the game has none) maps a screen name to `{ items: Item[] }`. Names `title` and `menu` replace the built-in title menu and the in-game menu; other names are opened by `open`. An item:
 
 ```
-{ "kind": "image" | "text" | "button" | "row" | "column" | "box",
+{ "kind": "image" | "text" | "button" | "row" | "column" | "box"
+         | "slots" | "thumbnail" | "gallery" | "endings" | "achievements" | "slider" | "toggle" | "choice",
   "id"?: "screen.title.1f3a",           // translation id of text (and "<id>.alt" of alt)
   "text"?: "New Game", "spans"?: [...],  // text / button label, as in say
   "image"?: "ui/new.png", "hover"?: "ui/new_on.png", "alt"?: "...",
@@ -74,12 +75,16 @@ A span with empty `text` and a `pause` marks a pause at that point in a `say` li
   "anchor"?: [ax, ay],                   // the point of the element at x, y, as fractions of its size; default [0, 0]
   "gap"?: number,                        // percent of the screen's height
   "className"?: "heading",
+  "count"?: 6, "columns"?: 3,            // slots, gallery: cells per page and across
+  "setting"?: "music_volume",            // slider, toggle, choice
   "cond"?: Expr,                         // shown only while truthy
   "actions"?: Action[],                  // buttons
   "children"?: Item[] }                  // row, column, box
 ```
 
-Actions: `{do:"start", label?}`, `{do:"continue"}`, `{do:"open", screen}`, `{do:"close"}`, `{do:"title"}`, `{do:"quit"}`, `{do:"jump", label}`, `{do:"set", name, op:"="|"+="|"-=", value: Expr}`. An `image` with no `x`, `w` or `h` covers the screen; a placed image without a size is drawn at its natural size relative to `meta.canvas` (default 1920 wide). Pixel values in the script are converted to percentages at compile time.
+Actions: `{do:"start", label?}`, `{do:"continue"}`, `{do:"open", screen}`, `{do:"close"}`, `{do:"title"}`, `{do:"quit"}`, `{do:"jump", label}`, `{do:"set", name, op:"="|"+="|"-=", value: Expr}`, `{do:"page", to:"next"|"previous"|number}`; on `slots` only, `{do:"load"}` or `{do:"save"}` (what clicking a slot does).
+
+`slots` shows `count` save slots of the current page (`meta.save_slots` in all, default 3); its `children`, if any, are drawn in each slot with the variables `slot_number`, `slot_empty`, `slot_date` and `slot_text` added, and `thumbnail` (only inside `slots`) is the slot's saved scene redrawn. `gallery` shows `count` of `gallery` images per page. Every screen also sees `page` and `pages` for the first `slots` or `gallery` it has. Names `save`, `load`, `settings` and `extras` replace those built-in screens. An `image` with no `x`, `w` or `h` covers the screen; a placed image without a size is drawn at its natural size relative to `meta.canvas` (default 1920 wide). Pixel values in the script are converted to percentages at compile time.
 
 ## Expressions
 JSON trees, `k` = kind:

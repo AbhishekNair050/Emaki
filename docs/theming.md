@@ -83,7 +83,57 @@ Each line is one element: `kind ["text"] [options] [-> actions] [if condition]`.
 
 `if condition` at the end of a line shows the element only while the condition holds, which is how unlockable extras work.
 
-**Which screens you can replace.** `screen title` replaces the title menu (the header's `title_music` still plays, and a `label title` still plays behind it). `screen menu` is what the quick menu's **Menu** button opens during the story; without it, Menu goes back to the title. Any other name is a screen of your own, opened with `open name`. Load, save, settings and extras can't be replaced yet.
+**Which screens you can replace.** `screen title` replaces the title menu (the header's `title_music` still plays, and a `label title` still plays behind it). `screen menu` is what the quick menu's **Menu** button opens during the story; without it, Menu goes back to the title. `screen save`, `screen load`, `screen settings` and `screen extras` replace those built-in screens everywhere they open (the quick menu, the title, `open load`). Any other name is a screen of your own, opened with `open name`.
+
+### Save and load screens
+```
+---
+save_slots: 60
+---
+
+screen load:
+  image "ui/load_bg.png"
+  slots 6 columns 3 at 50% 52% anchor center gap 2% -> load:
+    thumbnail
+    text "{slot_number}. {slot_date}" if not slot_empty
+    text "{slot_number}. Empty" if slot_empty
+  row at 50% 90% anchor center:
+    button "Previous" -> page previous
+    text "{page} / {pages}"
+    button "Next" -> page next
+  button "Back" at 95% 95% anchor bottom-right -> close
+
+screen save:
+  slots 6 columns 3 -> save
+  button "Back" -> close
+```
+
+- `slots 6 -> load` (or `-> save`) is a grid of six save slots; each is a button that loads or saves that slot. `columns 3` sets how many across.
+- The lines indented under `slots` are what each slot shows; leave them out for a picture, the date and the line it was saved at. Inside, `{slot_number}`, `{slot_date}`, `{slot_text}` (the line it was saved at) and `slot_empty` describe that slot, and `thumbnail` is the saved scene, drawn small (background, characters and tone, restyled by your theme.css like the real stage). Slots can't hold buttons, since each slot is one.
+- `save_slots: 60` in the header sets how many save slots the game has (3 by default); the built-in save screen shows them all. `-> page next`, `-> page previous` and `-> page 2` turn the page, and `{page}` and `{pages}` show where you are. The page is remembered while the game is open.
+
+### Settings screen
+```
+screen settings:
+  image "ui/config_bg.png"
+  column at 50% 50% anchor center gap 2%:
+    slider "Music" music_volume
+    slider "Text speed" text_speed
+    toggle "Skip unread text" skip_unread
+    choice "Language" language
+  button "Done" -> close
+```
+
+| Control | Settings it can show |
+|---|---|
+| `slider "Label" name` | `text_speed`, `auto_wait`, `music_volume`, `sound_volume`, `voice_volume`, `text_size`, `box_opacity` |
+| `toggle "Label" name` | `skip_unread`, `animations`, `fullscreen` (desktop apps) |
+| `choice "Label" name` | `font`, `language`, `animations` (as the device says, full, reduced), `skip` (read text, all text) |
+
+Changes apply at once and are remembered, exactly as in the built-in screen. The label is what the control is called on screen and for screen readers.
+
+### Extras screen
+`gallery 12 columns 4` is a page of gallery images (pictures seen so far, ??? for the rest; click one to see it full size, with the same `page` actions as slots). `endings` and `achievements` list the endings reached and achievements earned. Style them with `.screen-gallery-item`, `.screen-endings li.done` / `.locked` and so on.
 
 Screen text goes into translation files like every other line, and pictures can have a version per language (`ui/new.zh-Hant.png`).
 
@@ -123,5 +173,8 @@ These class names are kept stable between versions:
 | `.toast` | Short notices (achievements, "Saved"). |
 | `.overlay.screen`, `.screen-root`, `.screen-<name>` | One of your own screens (`.screen-title`, `.screen-menu`). |
 | `.screen-text`, `.screen-image`, `.screen-button`, `.screen-button.picture`, `.screen-row`, `.screen-column`, `.screen-box` | Their elements; add your own class with `class=name`. |
+| `.screen-slots`, `.screen-slot`, `.screen-slot.empty`, `.screen-slot-caption`, `.screen-slot-text`, `.thumb` | Save slots and their pictures. |
+| `.screen-gallery`, `.screen-gallery-item`, `.screen-gallery-item.locked`, `.screen-endings`, `.screen-achievements` (`li.done`, `li.locked`) | Extras. |
+| `.screen-slider`, `.screen-toggle`, `.screen-choice`, `.screen-label`, `.screen-field` | Setting controls (a label holding the name and the control). |
 
 Players' accessibility settings (text size, fonts, box opacity, reduced motion) still apply on top of your theme; please don't fight them with `!important`.
