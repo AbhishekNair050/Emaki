@@ -65,6 +65,8 @@ export class Player {
   private translation: CompiledTranslation | null = null;
   /** The game's own screens open now, the top one showing (`open about` from the title pushes `about`). */
   private screenStack: string[] = [];
+  /** The game's screens shown over the story (`show screen`, `call screen`). */
+  private readonly screenLayer: HTMLElement;
   /** The page each screen's slots or gallery is on, from 0. */
   private screenPages: Record<string, number> = {};
   /** Last known full-screen state, for a `toggle ... fullscreen` (the host answers asynchronously). */
@@ -175,6 +177,7 @@ export class Player {
     this.liveRegion = el('div', 'sr-only');
     this.liveRegion.setAttribute('aria-live', 'polite');
     this.textbox.append(this.sideEl, this.namebox, this.textEl, this.liveRegion, el('div', 'next-indicator', '▾'));
+    this.screenLayer = el('div', 'layer screen-layer');
     this.choicesEl = el('div', 'choices');
     this.choicesEl.setAttribute('role', 'group');
     this.choicesEl.setAttribute('aria-label', UI_STRINGS['ui.choices']);
@@ -203,14 +206,14 @@ export class Player {
       label(button('', () => (this.story.screens?.menu ? this.openScreen('menu', true) : this.confirmTitle())), 'ui.menu'),
     );
 
-    this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.nvlEl, this.textbox, this.flashEl, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
+    this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.nvlEl, this.textbox, this.flashEl, this.screenLayer, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
     root.classList.add('stage-host');
     root.replaceChildren(this.stage);
     this.applySettings();
     this.applyLanguage();
 
     this.stage.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('button, .overlay.open')) return;
+      if ((e.target as HTMLElement).closest('button, .overlay.open, .screen-layer label, .screen-layer .called')) return;
       this.onAdvance();
     });
     this.stage.addEventListener('wheel', (e) => {
@@ -312,7 +315,8 @@ export class Player {
     this.nextEpoch();
     this.busy = false;
     this.syncScene(scene ?? { bg: null, sprites: [] });
-    this.guard(() => this.present(this.runner.startAt(label, { vars, scene })));
+    const screens = this.mode === 'title' ? [] : this.runner.screens;
+    this.guard(() => this.present(this.runner.startAt(label, { vars, scene, screens })));
   }
 
   /**
@@ -425,6 +429,7 @@ export class Player {
   private renderBlock(b: Block, instant: boolean): void {
     this.clearTimers();
     this.choicesEl.replaceChildren();
+    this.drawStoryScreens(b);
     this.backBtn.disabled = !this.runner.canGoBack;
     this.textbox.classList.toggle('waiting', false);
     this.nvlEl.classList.remove('waiting');
@@ -464,6 +469,18 @@ export class Player {
           this.choicesEl.append(btn);
         });
         this.claimFocus(this.choicesEl.firstElementChild as HTMLElement | null);
+        break;
+      }
+      case 'screen': {
+        // Like a menu: the story waits for the player, with the last line still showing.
+        this.auto = this.skip = false;
+        this.updateToggles();
+        const prompt = this.runner.lastSay;
+        if (page) this.showPage(page, null, true);
+        else if (prompt) this.showLine(prompt, true, false);
+        else this.textbox.hidden = true;
+        this.textbox.classList.remove('waiting');
+        this.claimFocus(this.screenLayer.querySelector<HTMLElement>('.called button:not(:disabled), .called input, .called select'));
         break;
       }
       case 'wait':
@@ -792,6 +809,9 @@ export class Player {
         if (fx.forever) { const s = this.spriteEl(fx.target); if (s) startLoop(s, fx.motion, this.stage.clientHeight / 100); }
         else if (!instant) this.motion(fx.motion, fx.target, fx.times);
         return;
+      case 'screens':
+        this.drawStoryScreens(null);
+        break;
       case 'still': {
         const s = this.spriteEl(fx.target);
         if (s) stopLoop(s);
@@ -1124,6 +1144,7 @@ export class Player {
     this.auto = this.skip = false;
     this.updateToggles();
     this.stage.classList.remove('playing');
+    this.screenLayer.replaceChildren();
     this.textbox.hidden = true;
     this.choicesEl.replaceChildren();
     this.spriteLayer.replaceChildren();
@@ -1244,7 +1265,7 @@ export class Player {
   }
 
   /** What a screen needs from the player: text, pictures, saves, extras and settings. */
-  private screenHost(name: string): ScreenHost {
+  private screenHost(name: string, onStory = false): ScreenHost {
     const saved = this.slots();
     const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
     const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -1261,7 +1282,7 @@ export class Player {
       url: this.assetUrl,
       canvas: parseCanvas(this.story.meta.canvas),
       enabled: (actions) => actions.every((a) => this.canRun(a, name)),
-      run: (actions) => this.runActions(actions, name),
+      run: (actions) => this.runActions(actions, name, onStory),
       page: this.screenPages[name] ?? 0,
       slots: {
         count: saved.length,
@@ -1387,8 +1408,9 @@ export class Player {
     }
   }
 
-  private runActions(actions: readonly ScreenAction[], screen?: string): void {
+  private runActions(actions: readonly ScreenAction[], screen?: string, onStory = false): void {
     let redraw = false;
+    const called = onStory && this.runner.block?.type === 'screen' && this.runner.block.name === screen;
     for (const a of actions) {
       switch (a.do) {
         case 'page': {
@@ -1432,13 +1454,33 @@ export class Player {
           if (this.mode === 'title') this.startAtLabel(a.label); else this.jumpTo(a.label);
           return;
         case 'open':
-          if (this.story.screens?.[a.screen]) { this.openScreen(a.screen); return; }
+          if (this.story.screens?.[a.screen]) { this.openScreen(a.screen, onStory); return; }
           if (a.screen === 'load' || a.screen === 'save') this.showSlots(a.screen);
           else if (a.screen === 'settings') this.showSettings();
           else if (a.screen === 'extras') this.showExtras();
           else if (a.screen === 'history') this.showLog();
           return;
+        case 'return': {
+          if (!called) { this.runActions([{ do: 'close' }], screen, onStory); return; }
+          let value: Value | undefined;
+          try {
+            value = a.value ? evaluate(a.value, this.screenVars(screen)) : undefined;
+          } catch (err) {
+            this.fail(err);
+            return;
+          }
+          if (this.busy) return;
+          this.guard(() => this.present(this.runner.returnFromScreen(value)));
+          return;
+        }
         case 'close':
+          if (onStory) {
+            // A called screen goes on with the story; a shown one goes away (`hide screen`).
+            if (called) { this.runActions([{ do: 'return' }], screen, onStory); return; }
+            this.runner.hideScreen(screen!);
+            this.drawStoryScreens();
+            return;
+          }
           this.screenStack.pop();
           if (this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
           else if (this.mode === 'title') this.showTitleMenu();
@@ -1453,7 +1495,28 @@ export class Player {
           return;
       }
     }
-    if (redraw && this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
+    if (redraw && onStory) this.drawStoryScreens();
+    else if (redraw && this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
+  }
+
+  /**
+   * Draw the game's screens over the story: the ones shown with `show screen`,
+   * and on top the one a `call screen` is waiting on. Shown screens let clicks
+   * through to the story except on their own controls; a called one doesn't.
+   */
+  private drawStoryScreens(b: Block | null = this.runner.block): void {
+    const names = this.mode === 'playing' ? this.runner.screens : [];
+    const call = this.mode === 'playing' && b?.type === 'screen' ? b.name : null;
+    const focused = this.screenLayer.contains(document.activeElement) ? (document.activeElement as HTMLElement).textContent : null;
+    const nodes = [...names.map((n) => [n, 'shown'] as const), ...(call ? [[call, 'called'] as const] : [])].flatMap(([n, how]) => {
+      const screen = this.story.screens?.[n];
+      if (!screen) return [];
+      const node = renderScreen(n, screen, this.screenHost(n, true));
+      node.classList.add(how);
+      return [node];
+    });
+    this.screenLayer.replaceChildren(...nodes);
+    if (focused !== null) [...this.screenLayer.querySelectorAll<HTMLElement>('button')].find((x) => x.textContent === focused)?.focus({ preventScroll: true });
   }
 
   /** A new game from a label (a title screen's "Epilogue" button). Variables start fresh, globals kept. */
@@ -1696,6 +1759,7 @@ export class Player {
     // Pictures with text in them may have a version for the new language.
     if (this.mode === 'playing' && (this.translation?.assets || this.translationHadAssets)) this.syncScene(this.runner.save().state.scene);
     this.translationHadAssets = !!this.translation?.assets;
+    if (this.mode === 'playing') this.drawStoryScreens();
     if (this.overlay.classList.contains('screen') && this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
     else if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitleMenu();
     else if (this.mode === 'playing' && block) {

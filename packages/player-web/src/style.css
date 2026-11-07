@@ -227,7 +227,7 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .quickmenu button[aria-pressed='true'] { color: var(--accent); }
 .quickmenu button:disabled { opacity: 0.35; cursor: default; }
 
-.stage.hide-ui .textbox, .stage.hide-ui .quickmenu, .stage.hide-ui .nvl-page { display: none; }
+.stage.hide-ui .textbox, .stage.hide-ui .quickmenu, .stage.hide-ui .nvl-page, .stage.hide-ui .screen-layer .shown { display: none; }
 
 /* ---- Overlays (title, panels) ---- */
 .overlay { position: absolute; inset: 0; display: none; }
@@ -246,7 +246,7 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .overlay h1, .overlay h2 { margin: 0; font-family: var(--story-font); font-weight: 500; text-align: center; }
 .overlay h2 { font-size: max(18px, calc(5 * var(--u))); }
 .overlay p { margin: 0; color: var(--ui-muted); font-size: max(13px, calc(2.8 * var(--u))); text-align: center; }
-.overlay button {
+:is(.overlay, .screen-layer) button {
   min-width: 18cqw;
   padding: calc(1.4 * var(--u)) 2.4cqw;
   background: var(--choice-bg);
@@ -256,8 +256,8 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
   font: 500 max(13px, calc(2.8 * var(--u))) / 1.2 var(--ui-font);
   cursor: pointer;
 }
-.overlay button:hover:not(:disabled), .overlay button:focus-visible { border-color: var(--accent); background: var(--choice-hover); outline: none; }
-.overlay button:disabled { opacity: 0.4; cursor: default; }
+:is(.overlay, .screen-layer) button:hover:not(:disabled), :is(.overlay, .screen-layer) button:focus-visible { border-color: var(--accent); background: var(--choice-hover); outline: none; }
+:is(.overlay, .screen-layer) button:disabled { opacity: 0.4; cursor: default; }
 .overlay .row { display: flex; gap: 1.5cqw; flex-wrap: wrap; justify-content: center; }
 
 /* ---- The game's own screens (`screen name:`); see docs/theming.md ---- */
@@ -267,21 +267,25 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
   gap: calc(2 * var(--u));
 }
 .screen-root { position: absolute; inset: 0; }
+/* Screens over the story: a shown one (a status bar, a phone) lets clicks through to the story except on
+   its controls; a called one (a map to pick from) takes them all until it returns. */
+.screen-layer { pointer-events: none; }
+.screen-layer .screen-root.shown button, .screen-layer .screen-root.shown label, .screen-layer .screen-root.called { pointer-events: auto; }
 .screen-box { position: relative; }
 .screen-column { display: flex; flex-direction: column; align-items: center; gap: calc(1.4 * var(--u)); }
 .screen-row { display: flex; flex-direction: row; align-items: center; gap: 1.5cqw; }
 .screen-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .screen-text { color: var(--ui-text); font-size: max(13px, calc(3 * var(--u))); text-align: center; }
 .screen-image { display: block; }
-.overlay .screen-button.picture {
+:is(.overlay, .screen-layer) .screen-button.picture {
   position: relative; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; line-height: 0;
 }
 .screen-button.picture img { display: block; }
 .screen-button.picture .hover { position: absolute; left: 0; top: 0; opacity: 0; }
 .screen-button.picture:hover:not(:disabled) .hover, .screen-button.picture:focus-visible .hover { opacity: 1; }
-.overlay .screen-button.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.overlay, .screen-layer) .screen-button.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .screen-slots, .screen-gallery { display: grid; gap: calc(1.6 * var(--u)); justify-content: center; }
-.overlay .screen-slot {
+:is(.overlay, .screen-layer) .screen-slot {
   display: flex; flex-direction: column; align-items: stretch; gap: calc(0.6 * var(--u));
   min-width: 0; width: 22cqw; padding: calc(0.8 * var(--u)); text-align: left;
 }
@@ -292,7 +296,7 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .thumb .bg { position: absolute; inset: 0; background: #000 center / cover no-repeat; }
 .thumb .sprite { filter: none; transition: none; }
 .screen-thumbnail.empty { background: rgb(255 255 255 / 0.06); }
-.overlay .screen-gallery-item { min-width: 0; width: 16cqw; aspect-ratio: var(--aspect, 16 / 9); padding: 0; overflow: hidden; }
+:is(.overlay, .screen-layer) .screen-gallery-item { min-width: 0; width: 16cqw; aspect-ratio: var(--aspect, 16 / 9); padding: 0; overflow: hidden; }
 .screen-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .screen-endings, .screen-achievements { list-style: none; margin: 0; padding: 0; color: var(--ui-text); font-size: max(13px, calc(2.8 * var(--u))); }
 .screen-endings .locked, .screen-achievements .locked { color: var(--ui-muted); }
