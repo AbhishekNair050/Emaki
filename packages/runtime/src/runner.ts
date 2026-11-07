@@ -68,6 +68,8 @@ export interface RunState {
    * with side images keep it.
    */
   faces?: Record<string, string[]>;
+  /** The game's screens shown over the story (`show screen hud`), bottom first. Absent when none. */
+  screens?: string[];
 }
 
 /** `label` is the story label the line belongs to (for maps, analytics, debugging). */
@@ -113,6 +115,8 @@ export type Effect =
   | { type: 'tone'; tone: Tone | null; duration?: number }
   /** Play a full-screen video; the host waits for it to end (or be skipped) before showing the next line. */
   | { type: 'movie'; path: string }
+  /** The screens shown over the story changed (`show screen`, `hide screen`): all of them now, bottom first. */
+  | { type: 'screens'; screens: string[] }
   /** Move the camera to `camera` (null: the whole picture) over `duration` seconds (instant when absent). */
   | { type: 'camera'; camera: CameraState | null; duration?: number };
 
@@ -126,6 +130,8 @@ export type Block =
   | SayBlock
   | { type: 'menu'; id: string; choices: ChoiceOption[]; line: number; label: string; file?: string }
   | { type: 'wait'; seconds: number; line: number; label: string; file?: string }
+  /** `call screen map`: the story waits for one of the screen's buttons to return (see Runner.returnFromScreen). */
+  | { type: 'screen'; name: string; line: number; label: string; file?: string }
   | { type: 'end' };
 
 export interface Step {
@@ -195,7 +201,7 @@ export class Runner {
    * Pass `scene` to keep what's currently on screen, since a label that
    * doesn't open with `scene` would otherwise start on black.
    */
-  startAt(label: string, opts: { vars?: Record<string, Value>; scene?: SceneState } = {}): Step {
+  startAt(label: string, opts: { vars?: Record<string, Value>; scene?: SceneState; screens?: string[] } = {}): Step {
     const pc = this.story.labels[label];
     if (pc === undefined) throw new StoryError(`No label named '${label}'`, null);
     this.state = this.initialState();
@@ -204,6 +210,7 @@ export class Runner {
       if (Object.prototype.hasOwnProperty.call(this.story.vars, name)) this.state.vars[name] = v;
     }
     if (opts.scene) this.state.scene = clone(opts.scene);
+    if (opts.screens?.length) this.state.screens = [...opts.screens];
     this.applyGlobals();
     this.history = [];
     return this.run();
@@ -272,6 +279,8 @@ export class Runner {
         if (sp) delete sp.loop;
       } else if (ins.op === 'tone') {
         if (ins.tone === 'none') delete scene.tone; else scene.tone = ins.tone;
+      } else if (ins.op === 'screen' && ins.mode !== 'call') {
+        showScreen(this.state, ins.name, ins.mode === 'show');
       }
     }
     this.state.pc = pc;
@@ -317,6 +326,7 @@ export class Runner {
     const b = this.current;
     if (!b) throw new StoryError('Story has not started', null);
     if (b.type === 'menu') throw new StoryError('A choice must be made before continuing', b.line);
+    if (b.type === 'screen') throw new StoryError(`The screen '${b.name}' must return before the story goes on`, b.line);
     if (b.type === 'end') return { effects: [], block: b };
     return this.run();
   }
@@ -330,6 +340,39 @@ export class Runner {
     if (ins.op !== 'menu') throw new StoryError('Internal error: menu state out of sync', b.line);
     this.state.pc = ins.choices[index].target;
     return this.run();
+  }
+
+  /**
+   * A button on the screen the story is waiting on (`call screen map -> place`)
+   * returned: put `value` in the call's variable (when it has one and a value
+   * was given) and go on.
+   */
+  returnFromScreen(value?: Value): Step {
+    const b = this.current;
+    if (!b || b.type !== 'screen') throw new StoryError('No screen is waiting to return', null);
+    const ins = this.story.code[this.state.pc];
+    if (ins?.op !== 'screen' || ins.mode !== 'call') throw new StoryError('Internal error: screen state out of sync', b.line);
+    const effects: Effect[] = [];
+    if (ins.into && value !== undefined) {
+      this.state.vars[ins.into] = value;
+      if (this.story.globals?.includes(ins.into)) {
+        this.globalValues[ins.into] = value;
+        effects.push({ type: 'globals', values: this.globals });
+      }
+    }
+    this.state.pc++;
+    const step = this.run();
+    return { effects: [...effects, ...step.effects], block: step.block };
+  }
+
+  /** The screens shown over the story, bottom first. */
+  get screens(): string[] {
+    return [...(this.state.screens ?? [])];
+  }
+
+  /** Take a screen off the story (its own `close` button), as `hide screen` does. */
+  hideScreen(name: string): void {
+    showScreen(this.state, name, false);
   }
 
   /**
@@ -686,6 +729,14 @@ export class Runner {
           s.pc++;
           effects.push({ type: 'movie', path: ins.path });
           break;
+        case 'screen':
+          if (ins.mode === 'call') {
+            return this.blockOn({ type: 'screen', name: ins.name, line: ins.src.line, label: ins.src.label, ...fileOf(ins) }, effects);
+          }
+          s.pc++;
+          showScreen(s, ins.name, ins.mode === 'show');
+          effects.push({ type: 'screens', screens: [...(s.screens ?? [])] });
+          break;
         case 'camera':
           s.pc++;
           s.scene.camera = cameraOf(ins);
@@ -938,4 +989,12 @@ function cameraOf(ins: Extract<Instr, { op: 'camera' }>): CameraState | null {
 
 function durationOf(ins: Instr): { duration?: number } {
   return 'duration' in ins && ins.duration !== undefined ? { duration: ins.duration } : {};
+}
+
+/** Put a screen over the story (on top) or take it off. */
+function showScreen(s: RunState, name: string, show: boolean): void {
+  const list = (s.screens ?? []).filter((n) => n !== name);
+  if (show) list.push(name);
+  if (list.length) s.screens = list;
+  else delete s.screens;
 }

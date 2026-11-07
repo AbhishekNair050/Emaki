@@ -65,6 +65,8 @@ export type ScreenAction =
   | { do: 'quit' }
   | { do: 'jump'; label: string }
   | { do: 'set'; name: string; op: AssignOp; value: Expr }
+  /** On a screen the story called (`call screen map`): go on with the story, keeping `value`. */
+  | { do: 'return'; value?: Expr }
   /** On `slots`: what clicking a slot does. */
   | { do: 'load' }
   | { do: 'save' }
@@ -194,6 +196,15 @@ function parseAction(src: string): ScreenAction | string {
       if (arg && /^\d+$/.test(arg) && Number(arg) >= 1) return one({ do: 'page', to: Number(arg) });
       return `'page' needs next, previous or a page number`;
     }
+    case 'return': {
+      const rest = src.trim().slice('return'.length).trim();
+      if (!rest) return { do: 'return' };
+      try {
+        return { do: 'return', value: parseExpr(rest) };
+      } catch (e) {
+        return (e as Error).message;
+      }
+    }
     case 'set': {
       const m = /^set\s+([A-Za-z_]\w*)\s*(\+=|-=|=)\s*(.+)$/.exec(src.trim());
       if (!m) return `Expected 'set name = value' (or += / -=)`;
@@ -204,7 +215,7 @@ function parseAction(src: string): ScreenAction | string {
       }
     }
     case undefined: return `Expected an action after '->'`;
-    default: return `Unknown action '${verb}' (use start, continue, open, close, title, quit, jump, set or page; load and save on slots)`;
+    default: return `Unknown action '${verb}' (use start, continue, open, close, title, quit, jump, set, return or page; load and save on slots)`;
   }
 }
 
@@ -345,6 +356,7 @@ function actionText(a: ScreenAction): string {
     case 'jump': return `jump ${a.label}`;
     case 'set': return `set ${a.name} ${a.op} ${printExpr(a.value)}`;
     case 'page': return `page ${a.to}`;
+    case 'return': return a.value ? `return ${printExpr(a.value)}` : 'return';
     default: return a.do;
   }
 }
@@ -503,6 +515,8 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
           } else if (a.do === 'set') {
             if (!Object.prototype.hasOwnProperty.call(ctx.vars, a.name)) ctx.error(it.loc, 'unknown-variable', `Unknown variable '${a.name}'. Declare it at the top: var ${a.name} = 0`);
             checkVars(a.value, it.loc);
+          } else if (a.do === 'return' && a.value) {
+            checkVars(a.value, it.loc);
           }
         }
         c.actions = it.actions;
@@ -529,6 +543,14 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
 }
 
 /** Labels the screens' buttons start a game at or jump to. */
+/** Whether a screen has a button that leaves it (returns, closes, or goes elsewhere), so the story can call it. */
+export function screenCanLeave(def: ScreenDef): boolean {
+  const LEAVES = new Set(['return', 'close', 'jump', 'start', 'title', 'quit', 'continue']);
+  const walk = (items: readonly ScreenItem[]): boolean =>
+    items.some((it) => it.actions?.some((a) => LEAVES.has(a.do)) || (it.children ? walk(it.children) : false));
+  return walk(def.items);
+}
+
 export function screenTargets(defs: ScreenDef[]): string[] {
   const out: string[] = [];
   const walk = (items: ScreenItem[]) => {

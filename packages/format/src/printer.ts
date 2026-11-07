@@ -173,6 +173,9 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
       case 'movie':
         out.push(`${pad}movie ${q(s.path)}`);
         break;
+      case 'screen':
+        out.push(`${pad}${s.mode} screen ${s.name}${s.into ? ` -> ${s.into}` : ''}`);
+        break;
       case 'flash':
         out.push(pad + ['flash', s.color, s.duration].filter((x) => x !== undefined && x !== null).join(' '));
         break;

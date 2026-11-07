@@ -7,7 +7,7 @@
  */
 import type {
   AchievementDef, EndingDef,
-  AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, Stmt,
+  AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, ScreenMode, Stmt,
   Motion, Tone, Trivia, VarDef,
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
@@ -300,6 +300,18 @@ export function parse(source: string): ParseResult {
     return null;
   }
 
+  /** `show screen hud`, `hide screen hud`, `call screen map` or `call screen map -> place`. */
+  function screenStmt(mode: ScreenMode, args: string, ln: Line): Stmt | null {
+    const m = /^screen\s+([A-Za-z_]\w*)(?:\s*->\s*([A-Za-z_]\w*))?$/.exec(args);
+    if (!m || (m[2] && mode !== 'call')) {
+      err(ln.line, `bad-${mode}`, mode === 'call'
+        ? `Expected 'call screen name', or 'call screen name -> variable' to keep what it returns`
+        : `Expected '${mode} screen name'`);
+      return null;
+    }
+    return { type: 'screen', mode, name: m[1]!, ...(m[2] ? { into: m[2] } : {}), loc: { line: ln.line } };
+  }
+
   function parseCommand(word: string, t: string, ln: Line): Stmt | null {
     const loc = { line: ln.line };
     const args = t.slice(word.length).trim();
@@ -311,6 +323,7 @@ export function parse(source: string): ParseResult {
         return { type: 'scene', image: words.length ? words.join(' ') : null, transition, ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'show': {
+        if (/^screen(\s|$)/.test(args)) return screenStmt('show', args, ln);
         const { words, transition, duration } = splitWith(args, ln.line);
         let at: string | null = null;
         const atIdx = words.indexOf('at');
@@ -328,6 +341,7 @@ export function parse(source: string): ParseResult {
         return { type: 'show', tag: words[0], attrs: words.slice(1), at, transition, ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'hide': {
+        if (/^screen(\s|$)/.test(args)) return screenStmt('hide', args, ln);
         const { words, transition, duration } = splitWith(args, ln.line);
         if (words.length !== 1) { err(ln.line, 'bad-hide', `Expected 'hide name'`); return null; }
         return { type: 'hide', tag: words[0], transition, ...(duration !== undefined ? { duration } : {}), loc };
@@ -372,6 +386,7 @@ export function parse(source: string): ParseResult {
       }
       case 'jump':
       case 'call': {
+        if (word === 'call' && /^screen(\s|$)/.test(args)) return screenStmt('call', args, ln);
         if (!IDENT.test(args)) { err(ln.line, `bad-${word}`, `Expected '${word} label_name'`); return null; }
         return { type: word, target: args, loc };
       }

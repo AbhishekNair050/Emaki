@@ -117,6 +117,12 @@ export type Stmt = Trivia & (
   | { type: 'tone'; tone: Tone; over: number | null; loc: Loc }
   /** `movie "movie/op.mp4"`: a full-screen video; the story waits until it ends or the player skips it. */
   | { type: 'movie'; path: string; loc: Loc }
+  /**
+   * `show screen hud` keeps one of the game's screens over the story until
+   * `hide screen hud`; `call screen map -> place` shows it and waits for one of
+   * its buttons to `return` (a value, put in the variable `into`).
+   */
+  | { type: 'screen'; mode: ScreenMode; name: string; into?: string; loc: Loc }
   /** `flash`, `flash red`, `flash #fff 0.3`: the screen flashes a colour (white by default). */
   | { type: 'flash'; color: string | null; duration?: number; loc: Loc }
   /**
@@ -130,6 +136,8 @@ export type Stmt = Trivia & (
 
 /** An audio reference: either a declared `audio` name or a literal path. */
 export type AssetRef = { kind: 'name'; name: string } | { kind: 'path'; path: string };
+
+export type ScreenMode = 'show' | 'hide' | 'call';
 
 export type Severity = 'error' | 'warning';
 

@@ -57,6 +57,12 @@ export type Instr =
   | { op: 'tone'; tone: 'sepia' | 'mono' | 'none'; duration?: number; src: SrcRef }
   /** A full-screen video; blocks until it ends or the player skips it. */
   | { op: 'movie'; path: string; src: SrcRef }
+  /**
+   * `show`/`hide`: a screen stays over the story (part of the state) or goes.
+   * `call`: show it and block until one of its buttons returns; the value goes
+   * into the variable `into`, when given.
+   */
+  | { op: 'screen'; mode: 'show' | 'hide' | 'call'; name: string; into?: string; src: SrcRef }
   | { op: 'flash'; color: string; duration?: number; src: SrcRef }
   /**
    * Zoom the picture (backgrounds and characters, not the text) by `zoom` (1 =

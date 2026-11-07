@@ -13,7 +13,7 @@ import {
   type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
-import { compileScreens, parseCanvas, saveSlotCount, screenTargets } from './screens.ts';
+import { REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse } from './parser.ts';
 
@@ -390,6 +390,21 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
       case 'movie':
         code.push({ op: 'movie', path: s.path, src });
         return;
+      case 'screen': {
+        const def = program.screens.find((d) => d.name === s.name);
+        if ((REPLACEABLE_SCREENS as readonly string[]).includes(s.name)) {
+          error(s.loc, 'bad-screen', `'${s.name}' is opened by the player (the quick menu, the title), not during the story; give your screen another name`);
+        } else if (!def) {
+          error(s.loc, 'unknown-screen', didYouMean(s.name, program.screens.map((d) => d.name)) ?? `No screen named '${s.name}'. Write it with 'screen ${s.name}:'`);
+        } else if (s.mode === 'call' && !screenCanLeave(def)) {
+          warn(s.loc, 'no-return', `Nothing on 'screen ${s.name}' returns, so the story would wait forever; give a button '-> return' (or '-> return value')`);
+        }
+        if (s.into && !Object.prototype.hasOwnProperty.call(vars, s.into)) {
+          error(s.loc, 'unknown-variable', `Unknown variable '${s.into}'. Declare it at the top: var ${s.into} = ""`);
+        }
+        code.push({ op: 'screen', mode: s.mode, name: s.name, ...(s.into ? { into: s.into } : {}), src });
+        return;
+      }
       case 'flash':
         code.push({ op: 'flash', color: s.color ?? 'white', ...dur(s), src });
         return;
