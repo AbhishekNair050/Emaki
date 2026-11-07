@@ -280,6 +280,28 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .screen-button.picture .hover { position: absolute; left: 0; top: 0; opacity: 0; }
 .screen-button.picture:hover:not(:disabled) .hover, .screen-button.picture:focus-visible .hover { opacity: 1; }
 .overlay .screen-button.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.screen-slots, .screen-gallery { display: grid; gap: calc(1.6 * var(--u)); justify-content: center; }
+.overlay .screen-slot {
+  display: flex; flex-direction: column; align-items: stretch; gap: calc(0.6 * var(--u));
+  min-width: 0; width: 22cqw; padding: calc(0.8 * var(--u)); text-align: left;
+}
+.screen-slot-caption { font-size: max(12px, calc(2.2 * var(--u))); }
+.screen-slot-text { font-size: max(11px, calc(1.9 * var(--u))); color: var(--ui-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A save's picture: its scene drawn again, small. */
+.thumb, .screen-thumbnail { position: relative; overflow: hidden; aspect-ratio: var(--aspect, 16 / 9); width: 100%; background: #000; }
+.thumb .bg { position: absolute; inset: 0; background: #000 center / cover no-repeat; }
+.thumb .sprite { filter: none; transition: none; }
+.screen-thumbnail.empty { background: rgb(255 255 255 / 0.06); }
+.overlay .screen-gallery-item { min-width: 0; width: 16cqw; aspect-ratio: var(--aspect, 16 / 9); padding: 0; overflow: hidden; }
+.screen-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.screen-endings, .screen-achievements { list-style: none; margin: 0; padding: 0; color: var(--ui-text); font-size: max(13px, calc(2.8 * var(--u))); }
+.screen-endings .locked, .screen-achievements .locked { color: var(--ui-muted); }
+.screen-slider, .screen-toggle, .screen-choice {
+  display: flex; align-items: center; gap: 1.5cqw; color: var(--ui-text); font-size: max(13px, calc(2.6 * var(--u)));
+}
+.screen-field { display: flex; align-items: center; gap: 1cqw; }
+.screen-slider input[type=range] { width: 22cqw; accent-color: var(--accent); }
+.screen-toggle input { width: calc(2.6 * var(--u)); height: calc(2.6 * var(--u)); accent-color: var(--accent); }
 
 .title-screen { background: linear-gradient(180deg, rgba(4, 6, 10, 0.15), rgba(4, 6, 10, 0.75)); backdrop-filter: none; }
 .title-screen .title { font-size: max(26px, calc(9 * var(--u))); text-shadow: 0 calc(0.4 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.7); letter-spacing: 0.01em; max-width: 80%; line-height: 1.1; }

@@ -6,8 +6,8 @@
  * same Effect/Block contract later for shaders and particle effects.
  */
 import {
-  evaluate, isPercentPosition, parseAspect, parseCanvas,
-  type CompiledStory, type CompiledTranslation, type ScreenAction, type Span, type Value,
+  evaluate, isPercentPosition, parseAspect, parseCanvas, saveSlotCount,
+  type CompiledScreenItem, type CompiledStory, type CompiledTranslation, type ScreenAction, type Span, type Value,
 } from '@emaki/format';
 import {
   Runner, StoryError,
@@ -17,7 +17,7 @@ import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
-import { renderScreen } from './screens.ts';
+import { renderScreen, type ScreenHost } from './screens.ts';
 import { fadeVolume, LoopAudio, type Track } from './loop-audio.ts';
 import { Progress } from './progress.ts';
 import { ReadLines } from './read-lines.ts';
@@ -33,7 +33,6 @@ function positionLeft(at: string | null | undefined): string | undefined {
   if (!at) return undefined;
   return POSITIONS[at] ?? (isPercentPosition(at) ? at : undefined);
 }
-const SLOT_COUNT = 3;
 const AUTO_PER_CHAR_MS = 28;
 const CHOICE_GUARD_MS = 350;
 /** How long a transition may wait for its image to finish loading before going ahead anyway. */
@@ -66,6 +65,10 @@ export class Player {
   private translation: CompiledTranslation | null = null;
   /** The game's own screens open now, the top one showing (`open about` from the title pushes `about`). */
   private screenStack: string[] = [];
+  /** The page each screen's slots or gallery is on, from 0. */
+  private screenPages: Record<string, number> = {};
+  /** Last known full-screen state, for a `toggle ... fullscreen` (the host answers asynchronously). */
+  private fullscreenOn = false;
   /** Ends the movie that's playing, if any (see playMovie). */
   private endMovie: (() => void) | null = null;
   /** Whether the previous language swapped any pictures (switching away has to redraw them). */
@@ -1195,15 +1198,7 @@ export class Player {
     if (fresh) this.screenStack = [];
     if (this.screenStack[this.screenStack.length - 1] !== name) this.screenStack.push(name);
     const focused = this.overlay.querySelector(':focus') ? [...this.overlay.querySelectorAll('button')].indexOf(document.activeElement as HTMLButtonElement) : -1;
-    const node = renderScreen(name, screen, {
-      vars: () => this.screenVars(),
-      translated: (id) => this.translation?.strings[id] ?? null,
-      nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
-      url: this.assetUrl,
-      canvas: parseCanvas(this.story.meta.canvas),
-      enabled: (actions) => actions.every((a) => this.canRun(a)),
-      run: (actions) => this.runActions(actions),
-    });
+    const node = renderScreen(name, screen, this.screenHost(name));
     this.openOverlay(`screen screen-${name}`, node);
     // Esc closes a screen opened over the story or over another screen.
     this.overlay.onkeydown = (e) => {
@@ -1214,9 +1209,156 @@ export class Player {
     if (focused >= 0) this.overlay.querySelectorAll('button')[focused]?.focus({ preventScroll: true });
   }
 
-  /** Variables a screen sees: the story's, or on the title (between games) their starting values and the globals. */
-  private screenVars(): Readonly<Record<string, Value>> {
-    return this.mode === 'title' ? { ...this.story.vars, ...this.runner.globals } : this.runner.vars;
+  /**
+   * Show the game's own version of a built-in screen, if it has one: over the
+   * screen that's showing (so `close` returns to it), or on its own.
+   */
+  private openOwn(name: 'save' | 'load' | 'settings' | 'extras'): boolean {
+    if (!this.story.screens?.[name]) return false;
+    const over = this.overlayOpen && this.overlay.classList.contains('screen') && this.screenStack.length > 0;
+    this.openScreen(name, !over);
+    return true;
+  }
+
+  /** Variables a screen sees: the story's (on the title, between games, their starting values and the globals), and its page. */
+  private screenVars(name?: string): Readonly<Record<string, Value>> {
+    const story = this.mode === 'title' ? { ...this.story.vars, ...this.runner.globals } : this.runner.vars;
+    if (!name) return story;
+    return { page: (this.screenPages[name] ?? 0) + 1, pages: this.screenPageCount(name), ...story };
+  }
+
+  /** Pages of a screen's slots or gallery (the first one it has). */
+  private screenPageCount(name: string): number {
+    const find = (items: readonly CompiledScreenItem[]): CompiledScreenItem | null => {
+      for (const it of items) {
+        if (it.kind === 'slots' || it.kind === 'gallery') return it;
+        const inner = it.children ? find(it.children) : null;
+        if (inner) return inner;
+      }
+      return null;
+    };
+    const paged = find(this.story.screens?.[name]?.items ?? []);
+    if (!paged) return 1;
+    const total = paged.kind === 'slots' ? saveSlotCount(this.story.meta.save_slots) : (this.story.gallery ?? []).length;
+    return Math.max(1, Math.ceil(total / paged.count!));
+  }
+
+  /** What a screen needs from the player: text, pictures, saves, extras and settings. */
+  private screenHost(name: string): ScreenHost {
+    const saved = this.slots();
+    const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const SLIDERS: Record<string, keyof typeof RANGES> = {
+      text_speed: 'textSpeed', auto_wait: 'autoDelay', music_volume: 'musicVolume', sound_volume: 'soundVolume',
+      voice_volume: 'voiceVolume', text_size: 'textScale', box_opacity: 'boxOpacity',
+    };
+    const named = (id: string, table: Record<string, { name: string }> | undefined, kind: string) =>
+      this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
+    return {
+      vars: () => this.screenVars(name),
+      translated: (id) => this.translation?.strings[id] ?? null,
+      nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
+      url: this.assetUrl,
+      canvas: parseCanvas(this.story.meta.canvas),
+      enabled: (actions) => actions.every((a) => this.canRun(a, name)),
+      run: (actions) => this.runActions(actions, name),
+      page: this.screenPages[name] ?? 0,
+      slots: {
+        count: saved.length,
+        info: (i) => (saved[i] ? { date: new Date(saved[i]!.savedAt).toLocaleString(this.stage.lang || undefined), text: saved[i]!.preview } : null),
+        thumbnail: (i) => (saved[i] ? this.thumbnail(saved[i]!) : null),
+        canSave: () => this.mode === 'playing' && this.runner.block !== null,
+        use: (kind, i) => {
+          this.screenStack = [];
+          if (kind === 'save') this.saveTo(i);
+          else if (saved[i]) this.loadFrom(saved[i]!);
+        },
+      },
+      gallery: () => (this.story.gallery ?? []).map((image) => ({ name: image, url: this.assetUrl(this.story.images[image]!), seen: this.progress.hasSeen(image) })),
+      view: (image) => {
+        const seen = (this.story.gallery ?? []).filter((i) => this.progress.hasSeen(i));
+        this.viewImage(seen, Math.max(0, seen.indexOf(image)));
+      },
+      endings: () => Object.keys(this.story.endings ?? {}).map((id) => ({ name: named(id, this.story.endings, 'ending'), reached: this.progress.hasReached(id) })),
+      achievements: () => Object.keys(this.story.achievements ?? {}).map((id) => ({ name: named(id, this.story.achievements, 'achievement'), earned: this.achievements().includes(id) })),
+      settings: {
+        get: (setting, as) => {
+          const st = this.settings;
+          if (SLIDERS[setting]) return st[SLIDERS[setting]!];
+          switch (setting) {
+            case 'skip_unread': return st.skipMode === 'all';
+            case 'animations': return as === 'toggle' ? !this.reducedMotion : st.motion;
+            case 'fullscreen': return this.fullscreenOn;
+            case 'font': return st.font;
+            case 'language': return st.language;
+            case 'skip': return st.skipMode;
+            default: return '';
+          }
+        },
+        set: (setting, value) => {
+          if (SLIDERS[setting]) { this.updateSettings({ [SLIDERS[setting]!]: Number(value) }); return; }
+          switch (setting) {
+            case 'skip_unread': this.updateSettings({ skipMode: value === true ? 'all' : 'read' }); return;
+            case 'animations':
+              this.updateSettings({ motion: typeof value === 'boolean' ? (value ? 'full' : 'reduced') : (value as Settings['motion']) });
+              return;
+            case 'fullscreen':
+              void this.host.setFullscreen?.(value === true).then((on) => { this.fullscreenOn = on; });
+              return;
+            case 'font': this.updateSettings({ font: value as Settings['font'] }); return;
+            case 'skip': this.updateSettings({ skipMode: value as Settings['skipMode'] }); return;
+            case 'language':
+              this.updateSettings({ language: String(value) });
+              this.applyLanguage(); // redraws this screen in the new language
+              return;
+          }
+        },
+        range: (setting) => RANGES[SLIDERS[setting]!],
+        options: (setting): ReadonlyArray<readonly [string, string]> => {
+          switch (setting) {
+            case 'font': return FONTS.map(([id]) => [id, t(`ui.font_${id}`)] as const);
+            case 'skip': return [['read', t('ui.skip_read')], ['all', t('ui.skip_all')]];
+            case 'animations': return [['system', t('ui.motion_system')], ['full', t('ui.motion_full')], ['reduced', t('ui.motion_reduced')]];
+            case 'language': {
+              const source = this.sourceLanguage;
+              return [
+                ['auto', t('ui.language_auto')],
+                [source, languageName(source)],
+                ...(this.opts.translations ?? []).filter((x) => x.lang !== source).map((x) => [x.lang, languageName(x.lang)] as const),
+              ];
+            }
+            default: return [];
+          }
+        },
+        show: (setting, v) => {
+          if (setting === 'text_speed') return v >= INSTANT_SPEED ? t('ui.instant') : t('ui.letters_per_second', { n: v });
+          if (setting === 'auto_wait') return t('ui.seconds', { n: v.toFixed(2).replace(/0$/, '') });
+          return pct(v);
+        },
+      },
+      ui: (key, vars) => t(`ui.${key}`, vars),
+    };
+  }
+
+  /**
+   * A save's picture: its scene drawn again, small (background, characters,
+   * tone), from the saved state. Nothing is stored for it, and the game's
+   * theme.css styles it like the real stage.
+   */
+  private thumbnail(save: SaveData): HTMLElement {
+    const scene = save.state.scene;
+    const box = el('div', 'thumb');
+    const bg = el('div', 'bg');
+    const path = this.runner.imagePath(scene.bg);
+    if (path) bg.style.backgroundImage = `url("${this.assetUrl(path)}")`;
+    box.append(bg);
+    for (const sp of scene.sprites) {
+      const layers = this.runner.spriteLayers(sp);
+      if (layers?.length) box.append(makeSprite(sp.tag, layers.map(this.assetUrl), sp.at));
+    }
+    if (scene.tone === 'sepia') box.style.filter = 'sepia(0.85) saturate(0.9)';
+    else if (scene.tone === 'mono') box.style.filter = 'grayscale(1)';
+    return box;
   }
 
   private latestSave(): SaveData | null {
@@ -1226,8 +1368,14 @@ export class Player {
   }
 
   /** Whether an action can do anything now: there must be a save to continue or load, a way to quit, something to save. */
-  private canRun(a: ScreenAction): boolean {
+  private canRun(a: ScreenAction, screen?: string): boolean {
     switch (a.do) {
+      case 'page': {
+        if (!screen) return true;
+        const page = this.screenPages[screen] ?? 0;
+        const last = this.screenPageCount(screen) - 1;
+        return a.to === 'next' ? page < last : a.to === 'previous' ? page > 0 : a.to - 1 <= last && a.to - 1 !== page;
+      }
       case 'continue': return this.latestSave() !== null;
       case 'open':
         if (a.screen === 'load') return this.slots().some(Boolean);
@@ -1239,12 +1387,23 @@ export class Player {
     }
   }
 
-  private runActions(actions: readonly ScreenAction[]): void {
+  private runActions(actions: readonly ScreenAction[], screen?: string): void {
     let redraw = false;
     for (const a of actions) {
       switch (a.do) {
+        case 'page': {
+          if (!screen) break;
+          const last = this.screenPageCount(screen) - 1;
+          const page = this.screenPages[screen] ?? 0;
+          this.screenPages[screen] = Math.min(last, Math.max(0, a.to === 'next' ? page + 1 : a.to === 'previous' ? page - 1 : a.to - 1));
+          redraw = true;
+          break;
+        }
+        case 'load':
+        case 'save':
+          break; // only on slots, which handle them themselves
         case 'set': {
-          const vars = this.screenVars();
+          const vars = this.screenVars(screen);
           try {
             const v = evaluate(a.value, vars);
             const old = vars[a.name];
@@ -1328,6 +1487,7 @@ export class Player {
 
   /** Extras: gallery images seen, endings reached and achievements earned (locked ones as ???). */
   private showExtras(tab = this.extrasTabs()[0]): void {
+    if (this.openOwn('extras')) return;
     const tabs = this.extrasTabs();
     if (!tab) return;
     const bar = el('div', 'row extras-tabs');
@@ -1468,7 +1628,7 @@ export class Player {
   // ---------------------------------------------------------- saves
 
   private slots(): Array<(SaveData & { preview: string }) | null> {
-    return Array.from({ length: SLOT_COUNT }, (_, i) => {
+    return Array.from({ length: saveSlotCount(this.story.meta.save_slots) }, (_, i) => {
       const raw = storage.get(`${this.storeKey}:slot${i}`);
       if (!raw) return null;
       try { return JSON.parse(raw); } catch { return null; }
@@ -1567,6 +1727,7 @@ export class Player {
   }
 
   private showSettings(): void {
+    if (this.openOwn('settings')) return;
     const fromTitle = this.mode === 'title';
     const form = el('div', 'settings');
     const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -1664,6 +1825,7 @@ export class Player {
   }
 
   private showSlots(kind: 'save' | 'load'): void {
+    if (this.openOwn(kind)) return;
     const canSave = kind === 'save' && this.mode === 'playing' && this.runner.block !== null;
     const grid = el('div', 'slots');
     this.slots().forEach((s, i) => {
