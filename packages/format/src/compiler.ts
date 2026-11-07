@@ -13,7 +13,7 @@ import {
   type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
-import { compileScreens, parseCanvas } from './screens.ts';
+import { compileScreens, parseCanvas, saveSlotCount, screenTargets } from './screens.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse } from './parser.ts';
 
@@ -499,10 +499,11 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
 
   // --- Screens ----------------------------------------------------------
   const canvas = parseCanvas(meta.canvas);
+  if (meta.save_slots !== undefined && !/^\d+$/.test(meta.save_slots)) warn(1, 'bad-save-slots', `'save_slots: ${meta.save_slots}' should be a number of save slots, like 60`);
   if (meta.canvas !== undefined && !canvas) warn(1, 'bad-canvas', `'canvas: ${meta.canvas}' should be the size your UI art is drawn at, like 1920x1080`);
   const screenStrings: SourceString[] = [];
   const screens = compileScreens(program.screens, {
-    images, labels: new Set(Object.keys(labels)), vars, canvas,
+    images, labels: new Set(Object.keys(labels)), vars, canvas, saveSlots: saveSlotCount(meta.save_slots),
     error: (loc, code, message) => error(loc, code, message),
     warn: (loc, code, message) => warn(loc, code, message),
     textId: (screen, text) => `screen.${screen}.${fnv1a(text)}`,
@@ -518,6 +519,10 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   if (code.length && !diagnostics.some((d) => d.severity === 'error')) {
     const seen = reachable(code, start);
     if (labels.title !== undefined) for (const i of reachable(code, labels.title)) seen.add(i);
+    // Labels a screen's buttons start or jump to are ways in too.
+    for (const label of screenTargets(program.screens)) {
+      if (labels[label] !== undefined) for (const i of reachable(code, labels[label]!)) seen.add(i);
+    }
     for (const l of program.labels) {
       if (!seen.has(labels[l.name])) warn(l.loc, 'unreachable-label', `Label '${l.name}' can never be reached`);
     }

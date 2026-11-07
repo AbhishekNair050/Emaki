@@ -23,9 +23,32 @@ import { parseMarkup, type Span } from './markup.ts';
 
 // ------------------------------------------------------------------ syntax tree
 
-export type ScreenKind = 'image' | 'text' | 'button' | 'row' | 'column' | 'box';
-export const SCREEN_KINDS: readonly ScreenKind[] = ['image', 'text', 'button', 'row', 'column', 'box'];
+export type ScreenKind =
+  | 'image' | 'text' | 'button' | 'row' | 'column' | 'box'
+  | 'slots' | 'thumbnail' | 'gallery' | 'endings' | 'achievements'
+  | 'slider' | 'toggle' | 'choice';
+export const SCREEN_KINDS: readonly ScreenKind[] = [
+  'image', 'text', 'button', 'row', 'column', 'box',
+  'slots', 'thumbnail', 'gallery', 'endings', 'achievements', 'slider', 'toggle', 'choice',
+];
 const CONTAINERS: ReadonlySet<ScreenKind> = new Set(['row', 'column', 'box']);
+
+/**
+ * Player settings a screen can show, by kind of control. Sliders are numbers,
+ * toggles are on/off, choices pick one of a few options.
+ */
+export const SCREEN_SETTINGS = {
+  slider: ['text_speed', 'auto_wait', 'music_volume', 'sound_volume', 'voice_volume', 'text_size', 'box_opacity'],
+  toggle: ['skip_unread', 'animations', 'fullscreen'],
+  choice: ['font', 'language', 'animations', 'skip'],
+} as const;
+
+/** Variables each cell of `slots` sees (besides the story's own). */
+export const SLOT_VARS = ['slot_number', 'slot_empty', 'slot_date', 'slot_text'] as const;
+/** Variables every screen sees: the page of its slots or gallery. */
+export const PAGE_VARS = ['page', 'pages'] as const;
+/** The most cells one `slots` or `gallery` can show at a time. */
+export const MAX_CELLS = 60;
 
 /** A length: a percentage of the screen, or pixels on the declared canvas. */
 export interface Len { value: number; unit: '%' | 'px' }
@@ -41,7 +64,12 @@ export type ScreenAction =
   | { do: 'title' }
   | { do: 'quit' }
   | { do: 'jump'; label: string }
-  | { do: 'set'; name: string; op: AssignOp; value: Expr };
+  | { do: 'set'; name: string; op: AssignOp; value: Expr }
+  /** On `slots`: what clicking a slot does. */
+  | { do: 'load' }
+  | { do: 'save' }
+  /** Turn the page of the screen's slots or gallery. */
+  | { do: 'page'; to: 'next' | 'previous' | number };
 
 export interface ScreenItem extends Trivia {
   kind: ScreenKind;
@@ -61,6 +89,12 @@ export interface ScreenItem extends Trivia {
   gap?: Len;
   /** A class name for theme.css. */
   className?: string;
+  /** How many cells a `slots` or `gallery` shows per page. */
+  count?: number;
+  /** How many of them across (all of them in one row when absent). */
+  columns?: number;
+  /** The setting a slider, toggle or choice controls. */
+  setting?: string;
   actions?: ScreenAction[];
   cond?: Expr;
   children?: ScreenItem[];
@@ -70,8 +104,8 @@ export interface ScreenItem extends Trivia {
 export interface ScreenDef extends Trivia { name: string; items: ScreenItem[]; loc: Loc }
 
 /** Screens Emaki has built in; a `screen` with one of these names replaces it. */
-export const REPLACEABLE_SCREENS = ['title', 'menu'] as const;
-/** Built-in screens `open` can show (and, later, that a game can replace). */
+export const REPLACEABLE_SCREENS = ['title', 'menu', 'load', 'save', 'settings', 'extras'] as const;
+/** Built-in screens `open` can show. */
 export const BUILTIN_SCREENS = ['load', 'save', 'settings', 'extras', 'history'] as const;
 
 // ------------------------------------------------------------------ parsing one line
@@ -153,6 +187,13 @@ function parseAction(src: string): ScreenAction | string {
     case 'quit': return none({ do: 'quit' });
     case 'open': return name('a screen name, like open settings') ?? one({ do: 'open', screen: arg! });
     case 'jump': return name('a label') ?? one({ do: 'jump', label: arg! });
+    case 'load': return none({ do: 'load' });
+    case 'save': return none({ do: 'save' });
+    case 'page': {
+      if (arg === 'next' || arg === 'previous') return one({ do: 'page', to: arg });
+      if (arg && /^\d+$/.test(arg) && Number(arg) >= 1) return one({ do: 'page', to: Number(arg) });
+      return `'page' needs next, previous or a page number`;
+    }
     case 'set': {
       const m = /^set\s+([A-Za-z_]\w*)\s*(\+=|-=|=)\s*(.+)$/.exec(src.trim());
       if (!m) return `Expected 'set name = value' (or += / -=)`;
@@ -163,7 +204,7 @@ function parseAction(src: string): ScreenAction | string {
       }
     }
     case undefined: return `Expected an action after '->'`;
-    default: return `Unknown action '${verb}' (use start, continue, open, close, title, quit, jump or set)`;
+    default: return `Unknown action '${verb}' (use start, continue, open, close, title, quit, jump, set or page; load and save on slots)`;
   }
 }
 
@@ -204,10 +245,16 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
   const kind = tokens.shift()?.text as ScreenKind;
   if (!SCREEN_KINDS.includes(kind)) return { error: `Unknown screen element '${kind}' (use ${SCREEN_KINDS.join(', ')})` };
   item.kind = kind;
-  if (CONTAINERS.has(kind) !== container) {
-    return { error: container ? `'${kind}' can't hold other elements; only row, column and box can` : `'${kind}' needs a ':' and the elements it holds, indented under it` };
+  if (kind !== 'slots' && CONTAINERS.has(kind) !== container) {
+    return { error: container ? `'${kind}' can't hold other elements; only row, column, box and slots can` : `'${kind}' needs a ':' and the elements it holds, indented under it` };
   }
-  if (item.actions && kind !== 'button') return { error: `Only a button has actions ('->')` };
+  if (item.actions && kind !== 'button' && kind !== 'slots') return { error: `Only buttons and slots have actions ('->')` };
+  if (kind === 'slots') {
+    const a = item.actions;
+    if (!a || a.length !== 1 || (a[0]!.do !== 'load' && a[0]!.do !== 'save')) return { error: `Slots need '-> load' or '-> save': what clicking a slot does` };
+  } else if (item.actions?.some((a) => a.do === 'load' || a.do === 'save')) {
+    return { error: `'load' and 'save' go on slots ('slots 6 -> load'); a button opens the screen with 'open load'` };
+  }
 
   if (kind === 'image') {
     const t = tokens.shift();
@@ -217,6 +264,18 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     const t = tokens.shift();
     if (!t?.quoted) return { error: kind === 'text' ? `Expected 'text "What it says"'` : `A button needs its label first: 'button "New Game" -> start' (also when it's a picture: it's what screen readers say)` };
     item.text = t.text;
+  } else if (kind === 'slots' || kind === 'gallery') {
+    const n = tokens.shift()?.text;
+    if (!n || !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > MAX_CELLS) return { error: `Expected how many to show at once, like '${kind} 6' (1 to ${MAX_CELLS})` };
+    item.count = Number(n);
+  } else if (kind === 'slider' || kind === 'toggle' || kind === 'choice') {
+    const label = tokens.shift();
+    const setting = tokens.shift();
+    const names = SCREEN_SETTINGS[kind] as readonly string[];
+    if (!label?.quoted) return { error: `A ${kind} needs its label first (what it's for, and what screen readers say): ${kind} "Music" ${names[0]}` };
+    if (!setting || setting.quoted || !names.includes(setting.text)) return { error: `A ${kind} controls one of: ${names.join(', ')}` };
+    item.text = label.text;
+    item.setting = setting.text;
   }
 
   while (tokens.length) {
@@ -244,7 +303,7 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     } else if (opt === 'gap') {
       const g = parseLen(tokens.shift()?.text);
       if (!g) return { error: `'gap' needs a length, like 'gap 2%' or 'gap 24px'` };
-      if (kind !== 'row' && kind !== 'column') return { error: `Only a row or a column has a gap between its elements` };
+      if (kind !== 'row' && kind !== 'column' && kind !== 'slots' && kind !== 'gallery') return { error: `Only rows, columns, slots and galleries have a gap between their elements` };
       item.gap = g;
     } else if (/^class=/.test(opt)) {
       const c = opt.slice('class='.length);
@@ -255,13 +314,18 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
       const p = tokens.shift();
       if (!p || (!p.quoted && !/^[A-Za-z_]\w*$/.test(p.text))) return { error: `'${opt}' needs a picture: ${opt} "ui/button.png"` };
       if (opt === 'image') item.image = asset(p); else item.hover = asset(p);
+    } else if (opt === 'columns') {
+      const n = tokens.shift()?.text;
+      if (kind !== 'slots' && kind !== 'gallery') return { error: `'columns' is for slots and gallery` };
+      if (!n || !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > item.count!) return { error: `'columns' needs how many across, from 1 to ${item.count}` };
+      item.columns = Number(n);
     } else if (opt === 'alt') {
       const p = tokens.shift();
       if (kind !== 'image') return { error: `'alt' describes an image for screen readers` };
       if (!p?.quoted) return { error: `'alt' needs a description in quotes` };
       item.alt = p.text;
     } else {
-      return { error: `Unexpected '${t.quoted ? `"${t.text}"` : t.text}' (options: at, size, anchor, gap, class=, image, hover, alt)` };
+      return { error: `Unexpected '${t.quoted ? `"${t.text}"` : t.text}' (options: at, size, anchor, gap, columns, class=, image, hover, alt)` };
     }
   }
   if (item.hover && !item.image) return { error: `A button with 'hover' needs its 'image' too` };
@@ -280,6 +344,7 @@ function actionText(a: ScreenAction): string {
     case 'open': return `open ${a.screen}`;
     case 'jump': return `jump ${a.label}`;
     case 'set': return `set ${a.name} ${a.op} ${printExpr(a.value)}`;
+    case 'page': return `page ${a.to}`;
     default: return a.do;
   }
 }
@@ -288,7 +353,10 @@ function actionText(a: ScreenAction): string {
 export function printScreenLine(it: ScreenItem): string {
   const parts: string[] = [it.kind];
   if (it.kind === 'image' && it.image) parts.push(assetText(it.image));
+  if (it.count !== undefined) parts.push(String(it.count));
+  if (it.columns !== undefined) parts.push('columns', String(it.columns));
   if (it.text !== undefined) parts.push(quote(it.text));
+  if (it.setting) parts.push(it.setting);
   if (it.kind === 'button' && it.image) parts.push('image', assetText(it.image));
   if (it.hover) parts.push('hover', assetText(it.hover));
   if (it.at) parts.push('at', lenText(it.at[0]), lenText(it.at[1]));
@@ -322,6 +390,9 @@ export interface CompiledScreenItem {
   anchor?: [number, number];
   gap?: number;
   className?: string;
+  count?: number;
+  columns?: number;
+  setting?: string;
   cond?: Expr;
   actions?: ScreenAction[];
   children?: CompiledScreenItem[];
@@ -337,6 +408,8 @@ export interface ScreenContext {
   canvas: [number, number] | null;
   error: (loc: Loc, code: string, message: string) => void;
   warn: (loc: Loc, code: string, message: string) => void;
+  /** How many save slots the game has (`save_slots:` in the header). */
+  saveSlots: number;
   /** Ids from the compiler's id scheme for translatable text. */
   textId: (screen: string, text: string) => string;
   /** Record a translatable string. */
@@ -372,8 +445,8 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
 
   for (const def of defs) {
     if (out[def.name]) { ctx.error(def.loc, 'duplicate', `'screen ${def.name}' is already defined`); continue; }
-    if ((BUILTIN_SCREENS as readonly string[]).includes(def.name)) {
-      ctx.error(def.loc, 'reserved-screen', `'${def.name}' is a built-in screen that can't be replaced yet; give yours another name`);
+    if (def.name === 'history') {
+      ctx.error(def.loc, 'reserved-screen', `The history screen can't be replaced yet; give yours another name`);
       continue;
     }
     const compileItem = (it: ScreenItem): CompiledScreenItem => {
@@ -385,6 +458,9 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
         c.text = m.plain;
         if (m.styled) c.spans = m.spans;
         ctx.addString(c.id, it.text, it.loc);
+        for (const m of it.text.matchAll(/\{\{|\}\}|\{\s*([A-Za-z_]\w*)\s*\}/g)) {
+          if (m[1] && !known(m[1])) ctx.error(it.loc, 'unknown-variable', (SLOT_VARS as readonly string[]).includes(m[1]) ? `'{${m[1]}}' is only known inside 'slots'` : `Unknown variable '${m[1]}' in text`);
+        }
       }
       if (it.image) c.image = picture(it.image, it.loc);
       if (it.hover) c.hover = picture(it.hover, it.loc);
@@ -401,6 +477,16 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
       if (it.anchor && it.anchor !== 'top-left') c.anchor = ANCHOR_POINT[it.anchor];
       if (it.gap) c.gap = toPct(it.gap, 1, it.loc);
       if (it.className) c.className = it.className;
+      if (it.count !== undefined) c.count = it.count;
+      if (it.columns !== undefined) c.columns = it.columns;
+      if (it.setting) c.setting = it.setting;
+      if (it.kind === 'thumbnail' && !inSlot) ctx.error(it.loc, 'bad-screen', `A thumbnail shows a save, so it goes inside 'slots'`);
+      if (inSlot && (it.kind === 'button' || it.kind === 'slots' || it.kind === 'slider' || it.kind === 'toggle' || it.kind === 'choice')) {
+        ctx.error(it.loc, 'bad-screen', `A slot is a button already, so it can't hold a ${it.kind}; put it next to the slots instead`);
+      }
+      if (it.kind === 'slots' && it.count! > ctx.saveSlots) {
+        ctx.warn(it.loc, 'few-slots', `The game has ${ctx.saveSlots} save slots, so 'slots ${it.count}' can't fill a page; add 'save_slots: ${Math.max(it.count! * 5, 30)}' to the header`);
+      }
       if (it.cond) {
         checkVars(it.cond, it.loc);
         c.cond = it.cond;
@@ -421,17 +507,47 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
         }
         c.actions = it.actions;
       }
-      if (it.children) c.children = it.children.map(compileItem);
+      if (it.children) {
+        const was = inSlot;
+        if (it.kind === 'slots') inSlot = true;
+        c.children = it.children.map(compileItem);
+        inSlot = was;
+      }
       return c;
     };
+    let inSlot = false;
+    const known = (name: string) => Object.prototype.hasOwnProperty.call(ctx.vars, name)
+      || (PAGE_VARS as readonly string[]).includes(name) || (inSlot && (SLOT_VARS as readonly string[]).includes(name));
     const checkVars = (e: Expr, loc: Loc) => {
       for (const name of freeVars(e)) {
-        if (!Object.prototype.hasOwnProperty.call(ctx.vars, name)) ctx.error(loc, 'unknown-variable', `Unknown variable '${name}'`);
+        if (!known(name)) ctx.error(loc, 'unknown-variable', (SLOT_VARS as readonly string[]).includes(name) ? `'${name}' is only known inside 'slots'` : `Unknown variable '${name}'`);
       }
     };
     out[def.name] = { items: def.items.map(compileItem) };
   }
   return out;
+}
+
+/** Labels the screens' buttons start a game at or jump to. */
+export function screenTargets(defs: ScreenDef[]): string[] {
+  const out: string[] = [];
+  const walk = (items: ScreenItem[]) => {
+    for (const it of items) {
+      for (const a of it.actions ?? []) {
+        if (a.do === 'jump') out.push(a.label);
+        else if (a.do === 'start' && a.label) out.push(a.label);
+      }
+      if (it.children) walk(it.children);
+    }
+  };
+  for (const d of defs) walk(d.items);
+  return out;
+}
+
+/** How many save slots a game has: `save_slots:` in the header (3 by default, at most 300). */
+export function saveSlotCount(v: string | undefined): number {
+  const n = v && /^\d+$/.test(v) ? Number(v) : 3;
+  return Math.min(300, Math.max(1, n));
 }
 
 /** `canvas: 1920x1080` → [1920, 1080]; null when absent or malformed. */
