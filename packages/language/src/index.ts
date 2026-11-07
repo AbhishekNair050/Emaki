@@ -248,6 +248,12 @@ export class Analysis {
 
   // ------------------------------------------------------------ completion
 
+  /** The game's own screens that the story can show or call (not the ones replacing built-in screens). */
+  private storyScreens(): string[] {
+    return this.lines.flatMap((l) => /^screen\s+([A-Za-z_]\w*)\s*:/.exec(l)?.[1] ?? [])
+      .filter((n) => !['title', 'menu', 'load', 'save', 'settings', 'extras'].includes(n));
+  }
+
   /** Suggestions for the cursor position, based on the text before it on the line. */
   completionsAt(line: number, col: number): Completion[] {
     const before = (this.lines[line] ?? '').slice(0, col);
@@ -263,6 +269,9 @@ export class Analysis {
       return [...images.filter((s) => !s.name.includes(' ')).map((s): Completion => ({ label: s.name, kind: 'image', detail: s.detail })),
         { label: 'black', kind: 'value', detail: 'empty black screen' }];
     }
+    // `show screen hud`, `call screen map`: the game's screens.
+    const screens = this.storyScreens();
+    if (/^\s+(show|hide|call)\s+screen\s+\w*$/.test(before)) return values(screens, 'screen');
     // Attributes after a sprite tag: `show mira sm|` or a say line `mira sm|`.
     const shown = /^\s+show\s+(\w+)\s+\w*$/.exec(before)?.[1];
     const speaker = /^\s+(\w+)\s+\w*$/.exec(before)?.[1];
@@ -274,7 +283,8 @@ export class Analysis {
     }
     if (/^\s+(show|hide)\s+\w*$/.test(before)) {
       const tags = [...new Set(images.map((s) => s.name.split(' ')[0]!))];
-      return tags.map((t): Completion => ({ label: t, kind: 'image', detail: 'sprite' }));
+      const all = tags.map((t): Completion => ({ label: t, kind: 'image', detail: 'sprite' }));
+      return screens.length ? [...all, ...values(['screen'], 'one of your screens')] : all;
     }
     if (/^\s+set\s+\w*$/.test(before) || /^\s+(if|elif)\s/.test(before) || /\{\w*$/.test(before) || /"\s+if\s/.test(before)) {
       return of('variable');

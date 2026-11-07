@@ -141,6 +141,13 @@ describe('completion', () => {
     expect(labels(edit('  mira '), 27)).toEqual(['smile', 'sad']);
   });
 
+  it('offers the game\'s screens after show screen and call screen', () => {
+    const withScreens = (line: string) => edit(line) + '\nscreen map:\n  button "Go" -> return\n\nscreen settings:\n  button "Done" -> close\n';
+    expect(labels(withScreens('  show '), 27)).toEqual(['kitchen', 'mira', 'screen']);
+    expect(labels(withScreens('  call screen '), 27)).toEqual(['map']);
+    expect(labels(withScreens('  hide screen m'), 27)).toEqual(['map']);
+  });
+
   it('offers transitions, positions, variables and channels', () => {
     expect(labels(edit('  scene kitchen with '), 27)).toEqual(['fade', 'dissolve', 'move', 'none']);
     expect(labels(edit('  show mira smile at '), 27)).toEqual(['left', 'center', 'right']);
