@@ -17,6 +17,7 @@ import {
   DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
+import { watchGamepads } from './gamepad.ts';
 import { renderScreen, type ScreenHost } from './screens.ts';
 import { fadeVolume, LoopAudio, type Track } from './loop-audio.ts';
 import { Progress } from './progress.ts';
@@ -67,6 +68,11 @@ export class Player {
   private screenStack: string[] = [];
   /** The game's screens shown over the story (`show screen`, `call screen`). */
   private readonly screenLayer: HTMLElement;
+  private readonly nextEl: HTMLElement;
+  /** Who says the line on screen ("" for narration), for `screen textbox`. */
+  private speaking = '';
+  /** Story screens drawn last time, so only newly shown ones play their transition. */
+  private drawnStoryScreens = new Set<string>();
   /** The page each screen's slots or gallery is on, from 0. */
   private screenPages: Record<string, number> = {};
   /** Last known full-screen state, for a `toggle ... fullscreen` (the host answers asynchronously). */
@@ -176,7 +182,8 @@ export class Player {
     this.textEl.setAttribute('aria-hidden', 'true');
     this.liveRegion = el('div', 'sr-only');
     this.liveRegion.setAttribute('aria-live', 'polite');
-    this.textbox.append(this.sideEl, this.namebox, this.textEl, this.liveRegion, el('div', 'next-indicator', '▾'));
+    this.nextEl = el('div', 'next-indicator', '▾');
+    this.textbox.append(this.sideEl, this.namebox, this.textEl, this.liveRegion, this.nextEl);
     this.screenLayer = el('div', 'layer screen-layer');
     this.choicesEl = el('div', 'choices');
     this.choicesEl.setAttribute('role', 'group');
@@ -211,19 +218,37 @@ export class Player {
     root.replaceChildren(this.stage);
     this.applySettings();
     this.applyLanguage();
+    this.drawTextbox();
 
     this.stage.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('button, .overlay.open, .screen-layer label, .screen-layer .called')) return;
+      if ((e.target as HTMLElement).closest('button, .overlay.open, .screen-layer label, .screen-layer .called, .textbox label')) return;
+      // With the interface hidden (H, or a text box's own hide button), a click brings it back.
+      if (this.stage.classList.contains('hide-ui') && this.mode === 'playing') { this.stage.classList.remove('hide-ui'); return; }
       this.onAdvance();
     });
     this.stage.addEventListener('wheel', (e) => {
       if (this.mode === 'playing' && !this.overlayOpen && e.deltaY < 0) this.back();
     }, { passive: true });
     this.host.onBackButton?.(() => this.handleBack());
+    this.stopGamepads = watchGamepads({
+      scope: () => (this.overlayOpen ? this.overlay : this.stage),
+      advance: () => {
+        const first = this.choicesEl.querySelector<HTMLElement>('button');
+        if (first && !this.overlayOpen) first.focus();
+        else if (!this.overlayOpen) this.onAdvance();
+      },
+      cancel: () => { if (!this.closeScreenOnTop() && this.overlayOpen && this.mode === 'playing') this.closeOverlay(); },
+      menu: () => {
+        if (this.mode !== 'playing' || this.overlayOpen) return;
+        if (this.story.screens?.menu) this.openScreen('menu', true); else this.showSettings();
+      },
+      back: () => { if (!this.overlayOpen) this.back(); },
+    });
     window.addEventListener('keydown', this.keyListener);
     window.addEventListener('beforeunload', this.unloadListener);
   }
 
+  private readonly stopGamepads: () => void;
   private readonly keyListener = (e: KeyboardEvent) => this.onKey(e);
   private readonly unloadListener = () => { this.read.flush(); this.devStash(); };
 
@@ -238,6 +263,7 @@ export class Player {
     this.read.flush();
     window.removeEventListener('keydown', this.keyListener);
     window.removeEventListener('beforeunload', this.unloadListener);
+    this.stopGamepads();
     this.stage.remove();
   }
 
@@ -254,6 +280,7 @@ export class Player {
     this.runner = new Runner(story);
     this.runner.setTranslation(this.translation);
     this.loadGlobals();
+    this.drawTextbox();
     if (this.mode === 'title') { this.closeOverlay(); this.showTitle(); return true; }
     if (!save) { this.showTitle(); return false; }
     let step: Step | null = null;
@@ -337,6 +364,24 @@ export class Player {
       return this.present(step, true);
     });
   }
+
+  /**
+   * Editor: show one of the game's screens while it's being written (null:
+   * stop). `again` redraws it after the script changed. The text box needs no
+   * preview: during a game it's always the live one.
+   */
+  previewScreen(name: string | null, again = false): void {
+    if (name === this.previewing && !again) return;
+    const was = this.previewing;
+    this.previewing = name;
+    if (name && name !== 'textbox' && this.story.screens?.[name]) { this.openScreen(name, true); return; }
+    if (was && this.overlay.classList.contains(`screen-${was}`)) {
+      this.screenStack = [];
+      if (this.mode === 'title') this.showTitleMenu(); else this.closeOverlay();
+    }
+  }
+
+  private previewing: string | null = null;
 
   setVar(name: string, value: Value): void {
     this.guard(() => this.runner.setVar(name, value));
@@ -430,6 +475,11 @@ export class Player {
     this.clearTimers();
     this.choicesEl.replaceChildren();
     this.drawStoryScreens(b);
+    // The game's own text box: its buttons follow what can be done now (Back at the first line can't).
+    if (this.story.screens?.textbox) {
+      if (b.type === 'say') this.speaking = b.who?.name ?? '';
+      this.drawTextbox();
+    }
     this.backBtn.disabled = !this.runner.canGoBack;
     this.textbox.classList.toggle('waiting', false);
     this.nvlEl.classList.remove('waiting');
@@ -499,6 +549,10 @@ export class Player {
 
   private showLine(b: SayBlock, instant: boolean, announce = true): void {
     this.textbox.hidden = false;
+    if (this.speaking !== (b.who?.name ?? '')) {
+      this.speaking = b.who?.name ?? '';
+      if (this.story.screens?.textbox) this.drawTextbox();
+    }
     this.namebox.textContent = b.who?.name ?? '';
     this.namebox.hidden = !b.who;
     this.namebox.style.color = b.who?.color ?? '';
@@ -702,6 +756,31 @@ export class Player {
   private updateToggles(): void {
     this.autoBtn.setAttribute('aria-pressed', String(this.auto));
     this.skipBtn.setAttribute('aria-pressed', String(this.skip));
+    if (this.story.screens?.textbox) this.drawTextbox();
+  }
+
+  /**
+   * The game's own text box (`screen textbox`), drawn over the whole stage with
+   * the line, the name and the side image where it places them; or the built-in
+   * one. Buttons on it replace the quick menu.
+   */
+  private drawTextbox(): void {
+    const screen = this.story.screens?.textbox;
+    this.stage.classList.toggle('own-textbox', !!screen);
+    const hasButtons = (items: readonly CompiledScreenItem[]): boolean => items.some((it) => it.kind === 'button' || (it.children ? hasButtons(it.children) : false));
+    this.stage.classList.toggle('own-quickmenu', !!screen && hasButtons(screen.items));
+    if (!screen) {
+      if (this.textbox.firstElementChild?.classList.contains('screen-root')) {
+        for (const e of [this.sideEl, this.namebox, this.textEl]) { e.removeAttribute('style'); e.classList.remove('screen-part'); }
+        this.textbox.replaceChildren(this.sideEl, this.namebox, this.textEl, this.liveRegion, this.nextEl);
+      }
+      return;
+    }
+    const focused = this.textbox.contains(document.activeElement) ? (document.activeElement as HTMLElement).getAttribute('aria-label') ?? (document.activeElement as HTMLElement).textContent : null;
+    const node = renderScreen('textbox', screen, this.screenHost('textbox', true));
+    node.append(this.liveRegion, this.nextEl);
+    this.textbox.replaceChildren(node);
+    if (focused !== null) [...this.textbox.querySelectorAll<HTMLElement>('button')].find((x) => (x.getAttribute('aria-label') ?? x.textContent) === focused)?.focus({ preventScroll: true });
   }
 
   // ---------------------------------------------------------- visuals
@@ -1145,6 +1224,7 @@ export class Player {
     this.updateToggles();
     this.stage.classList.remove('playing');
     this.screenLayer.replaceChildren();
+    if (this.story.screens?.textbox) this.drawTextbox();
     this.textbox.hidden = true;
     this.choicesEl.replaceChildren();
     this.spriteLayer.replaceChildren();
@@ -1220,6 +1300,8 @@ export class Player {
     if (this.screenStack[this.screenStack.length - 1] !== name) this.screenStack.push(name);
     const focused = this.overlay.querySelector(':focus') ? [...this.overlay.querySelectorAll('button')].indexOf(document.activeElement as HTMLButtonElement) : -1;
     const node = renderScreen(name, screen, this.screenHost(name));
+    const shown = this.overlayOpen && this.overlay.querySelector<HTMLElement>(':scope > .screen-root')?.dataset.screen;
+    if (shown !== name) this.enter(node, screen);
     this.openOverlay(`screen screen-${name}`, node);
     // Esc closes a screen opened over the story or over another screen.
     this.overlay.onkeydown = (e) => {
@@ -1245,7 +1327,7 @@ export class Player {
   private screenVars(name?: string): Readonly<Record<string, Value>> {
     const story = this.mode === 'title' ? { ...this.story.vars, ...this.runner.globals } : this.runner.vars;
     if (!name) return story;
-    return { page: (this.screenPages[name] ?? 0) + 1, pages: this.screenPageCount(name), ...story };
+    return { page: (this.screenPages[name] ?? 0) + 1, pages: this.screenPageCount(name), ...(name === 'textbox' ? { speaker: this.speaking } : {}), ...story };
   }
 
   /** Pages of a screen's slots or gallery (the first one it has). */
@@ -1264,100 +1346,112 @@ export class Player {
     return Math.max(1, Math.ceil(total / paged.count!));
   }
 
-  /** What a screen needs from the player: text, pictures, saves, extras and settings. */
-  private screenHost(name: string, onStory = false): ScreenHost {
-    const saved = this.slots();
+  /** The player's settings by their script name (music_volume, skip_unread, font, ...), for screens. */
+  private screenSettings(): ScreenHost['settings'] {
     const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     const SLIDERS: Record<string, keyof typeof RANGES> = {
       text_speed: 'textSpeed', auto_wait: 'autoDelay', music_volume: 'musicVolume', sound_volume: 'soundVolume',
       voice_volume: 'voiceVolume', text_size: 'textScale', box_opacity: 'boxOpacity',
     };
-    const named = (id: string, table: Record<string, { name: string }> | undefined, kind: string) =>
-      this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
     return {
-      vars: () => this.screenVars(name),
-      translated: (id) => this.translation?.strings[id] ?? null,
-      nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
-      url: this.assetUrl,
-      canvas: parseCanvas(this.story.meta.canvas),
-      enabled: (actions) => actions.every((a) => this.canRun(a, name)),
-      run: (actions) => this.runActions(actions, name, onStory),
-      page: this.screenPages[name] ?? 0,
-      slots: {
-        count: saved.length,
-        info: (i) => (saved[i] ? { date: new Date(saved[i]!.savedAt).toLocaleString(this.stage.lang || undefined), text: saved[i]!.preview } : null),
-        thumbnail: (i) => (saved[i] ? this.thumbnail(saved[i]!) : null),
-        canSave: () => this.mode === 'playing' && this.runner.block !== null,
-        use: (kind, i) => {
-          this.screenStack = [];
-          if (kind === 'save') this.saveTo(i);
-          else if (saved[i]) this.loadFrom(saved[i]!);
-        },
+      get: (setting, as) => {
+        const st = this.settings;
+        if (SLIDERS[setting]) return st[SLIDERS[setting]!];
+        switch (setting) {
+          case 'skip_unread': return st.skipMode === 'all';
+          case 'animations': return as === 'toggle' ? !this.reducedMotion : st.motion;
+          case 'fullscreen': return this.fullscreenOn;
+          case 'font': return st.font;
+          case 'language': return st.language;
+          case 'skip': return st.skipMode;
+          default: return '';
+        }
       },
-      gallery: () => (this.story.gallery ?? []).map((image) => ({ name: image, url: this.assetUrl(this.story.images[image]!), seen: this.progress.hasSeen(image) })),
-      view: (image) => {
-        const seen = (this.story.gallery ?? []).filter((i) => this.progress.hasSeen(i));
-        this.viewImage(seen, Math.max(0, seen.indexOf(image)));
+      set: (setting, value) => {
+        if (SLIDERS[setting]) { this.updateSettings({ [SLIDERS[setting]!]: Number(value) }); return; }
+        switch (setting) {
+          case 'skip_unread': this.updateSettings({ skipMode: value === true ? 'all' : 'read' }); return;
+          case 'animations':
+            this.updateSettings({ motion: typeof value === 'boolean' ? (value ? 'full' : 'reduced') : (value as Settings['motion']) });
+            return;
+          case 'fullscreen':
+            void this.host.setFullscreen?.(value === true).then((on) => { this.fullscreenOn = on; });
+            return;
+          case 'font': this.updateSettings({ font: value as Settings['font'] }); return;
+          case 'skip': this.updateSettings({ skipMode: value as Settings['skipMode'] }); return;
+          case 'language':
+            this.updateSettings({ language: String(value) });
+            this.applyLanguage(); // redraws this screen in the new language
+            return;
+        }
       },
-      endings: () => Object.keys(this.story.endings ?? {}).map((id) => ({ name: named(id, this.story.endings, 'ending'), reached: this.progress.hasReached(id) })),
-      achievements: () => Object.keys(this.story.achievements ?? {}).map((id) => ({ name: named(id, this.story.achievements, 'achievement'), earned: this.achievements().includes(id) })),
-      settings: {
-        get: (setting, as) => {
-          const st = this.settings;
-          if (SLIDERS[setting]) return st[SLIDERS[setting]!];
-          switch (setting) {
-            case 'skip_unread': return st.skipMode === 'all';
-            case 'animations': return as === 'toggle' ? !this.reducedMotion : st.motion;
-            case 'fullscreen': return this.fullscreenOn;
-            case 'font': return st.font;
-            case 'language': return st.language;
-            case 'skip': return st.skipMode;
-            default: return '';
+      range: (setting) => RANGES[SLIDERS[setting]!],
+      options: (setting): ReadonlyArray<readonly [string, string]> => {
+        switch (setting) {
+          case 'font': return FONTS.map(([id]) => [id, t(`ui.font_${id}`)] as const);
+          case 'skip': return [['read', t('ui.skip_read')], ['all', t('ui.skip_all')]];
+          case 'animations': return [['system', t('ui.motion_system')], ['full', t('ui.motion_full')], ['reduced', t('ui.motion_reduced')]];
+          case 'language': {
+            const source = this.sourceLanguage;
+            return [
+              ['auto', t('ui.language_auto')],
+              [source, languageName(source)],
+              ...(this.opts.translations ?? []).filter((x) => x.lang !== source).map((x) => [x.lang, languageName(x.lang)] as const),
+            ];
           }
-        },
-        set: (setting, value) => {
-          if (SLIDERS[setting]) { this.updateSettings({ [SLIDERS[setting]!]: Number(value) }); return; }
-          switch (setting) {
-            case 'skip_unread': this.updateSettings({ skipMode: value === true ? 'all' : 'read' }); return;
-            case 'animations':
-              this.updateSettings({ motion: typeof value === 'boolean' ? (value ? 'full' : 'reduced') : (value as Settings['motion']) });
-              return;
-            case 'fullscreen':
-              void this.host.setFullscreen?.(value === true).then((on) => { this.fullscreenOn = on; });
-              return;
-            case 'font': this.updateSettings({ font: value as Settings['font'] }); return;
-            case 'skip': this.updateSettings({ skipMode: value as Settings['skipMode'] }); return;
-            case 'language':
-              this.updateSettings({ language: String(value) });
-              this.applyLanguage(); // redraws this screen in the new language
-              return;
-          }
-        },
-        range: (setting) => RANGES[SLIDERS[setting]!],
-        options: (setting): ReadonlyArray<readonly [string, string]> => {
-          switch (setting) {
-            case 'font': return FONTS.map(([id]) => [id, t(`ui.font_${id}`)] as const);
-            case 'skip': return [['read', t('ui.skip_read')], ['all', t('ui.skip_all')]];
-            case 'animations': return [['system', t('ui.motion_system')], ['full', t('ui.motion_full')], ['reduced', t('ui.motion_reduced')]];
-            case 'language': {
-              const source = this.sourceLanguage;
-              return [
-                ['auto', t('ui.language_auto')],
-                [source, languageName(source)],
-                ...(this.opts.translations ?? []).filter((x) => x.lang !== source).map((x) => [x.lang, languageName(x.lang)] as const),
-              ];
-            }
-            default: return [];
-          }
-        },
-        show: (setting, v) => {
-          if (setting === 'text_speed') return v >= INSTANT_SPEED ? t('ui.instant') : t('ui.letters_per_second', { n: v });
-          if (setting === 'auto_wait') return t('ui.seconds', { n: v.toFixed(2).replace(/0$/, '') });
-          return pct(v);
-        },
+          default: return [];
+        }
       },
-      ui: (key, vars) => t(`ui.${key}`, vars),
+      show: (setting, v) => {
+        if (setting === 'text_speed') return v >= INSTANT_SPEED ? t('ui.instant') : t('ui.letters_per_second', { n: v });
+        if (setting === 'auto_wait') return t('ui.seconds', { n: v.toFixed(2).replace(/0$/, '') });
+        return pct(v);
+      },
+    };
+    }
+
+    /** What a screen needs from the player: text, pictures, saves, extras and settings. */
+    private screenHost(name: string, onStory = false): ScreenHost {
+      const saved = this.slots();
+      const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
+      const named = (id: string, table: Record<string, { name: string }> | undefined, kind: string) =>
+        this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
+      return {
+        vars: () => this.screenVars(name),
+        translated: (id) => this.translation?.strings[id] ?? null,
+        nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
+        url: this.assetUrl,
+        canvas: parseCanvas(this.story.meta.canvas),
+        enabled: (actions) => actions.every((a) => this.canRun(a, name)),
+        run: (actions) => this.runActions(actions, name, onStory),
+        page: this.screenPages[name] ?? 0,
+        slots: {
+          count: saved.length,
+          info: (i) => (saved[i] ? { date: new Date(saved[i]!.savedAt).toLocaleString(this.stage.lang || undefined), text: saved[i]!.preview } : null),
+          thumbnail: (i) => (saved[i] ? this.thumbnail(saved[i]!) : null),
+          canSave: () => this.mode === 'playing' && this.runner.block !== null,
+          use: (kind, i) => {
+            this.screenStack = [];
+            if (kind === 'save') this.saveTo(i);
+            else if (saved[i]) this.loadFrom(saved[i]!);
+          },
+        },
+        gallery: () => (this.story.gallery ?? []).map((image) => ({ name: image, url: this.assetUrl(this.story.images[image]!), seen: this.progress.hasSeen(image) })),
+        view: (image) => {
+          const seen = (this.story.gallery ?? []).filter((i) => this.progress.hasSeen(i));
+          this.viewImage(seen, Math.max(0, seen.indexOf(image)));
+        },
+        endings: () => Object.keys(this.story.endings ?? {}).map((id) => ({ name: named(id, this.story.endings, 'ending'), reached: this.progress.hasReached(id) })),
+        achievements: () => Object.keys(this.story.achievements ?? {}).map((id) => ({ name: named(id, this.story.achievements, 'achievement'), earned: this.achievements().includes(id) })),
+        settings: this.screenSettings(),
+      part: (kind) => (kind === 'dialogue' ? this.textEl : kind === 'speaker' ? this.namebox : this.sideEl),
+      selected: (actions) => actions.length > 0 && actions.every((a) => this.isSelected(a, name)),
+      sound: (kind) => {
+        const path = this.story.meta[`${kind}_sound`];
+        if (path) this.playSound(path);
+      },
+        ui: (key, vars) => t(`ui.${key}`, vars),
     };
   }
 
@@ -1404,7 +1498,28 @@ export class Player {
         if (a.screen === 'extras') return this.extrasTabs().length > 0;
         return true;
       case 'quit': return !!this.host.quit && !!this.opts.ownsDocument;
+      case 'switch': return this.screenStack[this.screenStack.length - 1] !== a.screen;
+      case 'back': return this.mode === 'playing' && this.runner.canGoBack;
+      case 'auto': case 'skip': case 'hide': return this.mode === 'playing';
+      case 'quicksave': return this.mode === 'playing' && this.runner.block !== null;
+      case 'quickload': return storage.get(`${this.storeKey}:quick`) !== null;
+      case 'voice': { const b = this.runner.block; return this.mode === 'playing' && !!(b?.type === 'say' ? b.voice : this.runner.lastSay?.voice); }
       default: return true;
+    }
+  }
+
+  /** Whether a button's action is in effect now, so it shows as selected. */
+  private isSelected(a: ScreenAction, screen?: string): boolean {
+    switch (a.do) {
+      case 'auto': return this.auto;
+      case 'skip': return this.skip;
+      case 'page': return !!screen && typeof a.to === 'number' && (this.screenPages[screen] ?? 0) === a.to - 1;
+      case 'open': case 'switch': return this.screenStack[this.screenStack.length - 1] === a.screen && this.overlayOpen;
+      case 'setting': {
+        const as = typeof a.value === 'boolean' ? 'toggle' : typeof a.value === 'number' ? 'slider' : 'choice';
+        return String(this.screenSettings().get(a.name, as)) === String(a.value);
+      }
+      default: return false;
     }
   }
 
@@ -1439,6 +1554,39 @@ export class Player {
           redraw = true;
           break;
         }
+        case 'setting':
+          this.screenSettings().set(a.name, a.value);
+          redraw = true;
+          break;
+        case 'back': this.back(); return;
+        case 'auto': this.toggleAuto(); return;
+        case 'skip': this.toggleSkip(); return;
+        case 'hide': this.stage.classList.add('hide-ui'); return;
+        case 'voice': {
+          const b = this.runner.block;
+          const v = b?.type === 'say' ? b.voice : this.runner.lastSay?.voice;
+          if (v) this.playVoice(v);
+          return;
+        }
+        case 'quicksave': {
+          if (!this.runner.block) return;
+          const ok = storage.set(`${this.storeKey}:quick`, JSON.stringify(this.runner.save()));
+          this.toast(ok ? this.t('ui.quick_saved') : this.t('ui.could_not_save'));
+          if (this.story.screens?.textbox) this.drawTextbox();
+          return;
+        }
+        case 'quickload': {
+          const raw = storage.get(`${this.storeKey}:quick`);
+          this.screenStack = [];
+          try { if (raw) this.loadFrom(JSON.parse(raw)); } catch { this.toast(this.t('ui.could_not_load')); }
+          return;
+        }
+        case 'switch':
+          // Tabs: the new screen takes this one's place, so `close` goes back to what was under both.
+          if (this.screenStack.length) this.screenStack.pop();
+          if (this.story.screens?.[a.screen]) { this.openScreen(a.screen); return; }
+          this.runActions([{ do: 'open', screen: a.screen }], screen, onStory);
+          return;
         case 'start':
           this.screenStack = [];
           if (a.label) this.startAtLabel(a.label); else this.start();
@@ -1495,8 +1643,15 @@ export class Player {
           return;
       }
     }
-    if (redraw && onStory) this.drawStoryScreens();
+    if (redraw && screen === 'textbox') this.drawTextbox();
+    else if (redraw && onStory) this.drawStoryScreens();
     else if (redraw && this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
+  }
+
+  /** A screen with `with fade` fades in as it opens (not when it's redrawn). */
+  private enter(node: HTMLElement, screen: { transition?: string; duration?: number }): void {
+    if (!screen.transition || this.reducedMotion) return;
+    node.style.animation = `screen-in ${screen.duration ?? 0.3}s ease-out both`;
   }
 
   /**
@@ -1513,8 +1668,10 @@ export class Player {
       if (!screen) return [];
       const node = renderScreen(n, screen, this.screenHost(n, true));
       node.classList.add(how);
+      if (!this.drawnStoryScreens.has(n)) this.enter(node, screen);
       return [node];
     });
+    this.drawnStoryScreens = new Set([...names, ...(call ? [call] : [])]);
     this.screenLayer.replaceChildren(...nodes);
     if (focused !== null) [...this.screenLayer.querySelectorAll<HTMLElement>('button')].find((x) => x.textContent === focused)?.focus({ preventScroll: true });
   }
@@ -1760,6 +1917,7 @@ export class Player {
     if (this.mode === 'playing' && (this.translation?.assets || this.translationHadAssets)) this.syncScene(this.runner.save().state.scene);
     this.translationHadAssets = !!this.translation?.assets;
     if (this.mode === 'playing') this.drawStoryScreens();
+    if (this.story.screens?.textbox) this.drawTextbox();
     if (this.overlay.classList.contains('screen') && this.screenStack.length) this.openScreen(this.screenStack[this.screenStack.length - 1]!);
     else if (this.mode === 'title' && this.overlay.classList.contains('title-screen')) this.showTitleMenu();
     else if (this.mode === 'playing' && block) {
@@ -1970,7 +2128,16 @@ export class Player {
   }
 
   /** The phone's back button: close what's open, then offer to leave, then quit. */
+  /** Close the game's own screen that's open on top (as its `close` would), if one is; false if there's none to close. */
+  private closeScreenOnTop(): boolean {
+    if (!this.overlayOpen || !this.overlay.classList.contains('screen') || !this.screenStack.length) return false;
+    if (this.mode === 'title' && this.screenStack.length <= 1 && this.screenStack[0] === 'title') return false;
+    this.runActions([{ do: 'close' }]);
+    return true;
+  }
+
   private handleBack(): void {
+    if (this.closeScreenOnTop()) return;
     if (this.mode === 'title') {
       if (this.overlay.classList.contains('title-screen')) this.host.quit?.();
       else this.showTitleMenu();

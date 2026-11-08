@@ -246,7 +246,7 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .overlay h1, .overlay h2 { margin: 0; font-family: var(--story-font); font-weight: 500; text-align: center; }
 .overlay h2 { font-size: max(18px, calc(5 * var(--u))); }
 .overlay p { margin: 0; color: var(--ui-muted); font-size: max(13px, calc(2.8 * var(--u))); text-align: center; }
-:is(.overlay, .screen-layer) button {
+:is(.overlay, .screen-layer, .own-textbox .textbox) button {
   min-width: 18cqw;
   padding: calc(1.4 * var(--u)) 2.4cqw;
   background: var(--choice-bg);
@@ -256,8 +256,8 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
   font: 500 max(13px, calc(2.8 * var(--u))) / 1.2 var(--ui-font);
   cursor: pointer;
 }
-:is(.overlay, .screen-layer) button:hover:not(:disabled), :is(.overlay, .screen-layer) button:focus-visible { border-color: var(--accent); background: var(--choice-hover); outline: none; }
-:is(.overlay, .screen-layer) button:disabled { opacity: 0.4; cursor: default; }
+:is(.overlay, .screen-layer, .own-textbox .textbox) button:hover:not(:disabled), :is(.overlay, .screen-layer, .own-textbox .textbox) button:focus-visible { border-color: var(--accent); background: var(--choice-hover); outline: none; }
+:is(.overlay, .screen-layer, .own-textbox .textbox) button:disabled { opacity: 0.4; cursor: default; }
 .overlay .row { display: flex; gap: 1.5cqw; flex-wrap: wrap; justify-content: center; }
 
 /* ---- The game's own screens (`screen name:`); see docs/theming.md ---- */
@@ -277,15 +277,58 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .screen-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .screen-text { color: var(--ui-text); font-size: max(13px, calc(3 * var(--u))); text-align: center; }
 .screen-image { display: block; }
-:is(.overlay, .screen-layer) .screen-button.picture {
+:is(.overlay, .screen-layer, .own-textbox .textbox) .screen-button.picture {
   position: relative; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; line-height: 0;
 }
-.screen-button.picture img { display: block; }
-.screen-button.picture .hover { position: absolute; left: 0; top: 0; opacity: 0; }
-.screen-button.picture:hover:not(:disabled) .hover, .screen-button.picture:focus-visible .hover { opacity: 1; }
-:is(.overlay, .screen-layer) .screen-button.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Picture buttons and slots: the idle picture sets the size; the others lie on it, shown in their state
+   (selected wins over unusable, so the page you're on can show as chosen). */
+.picture > img { display: block; }
+.picture > img:not(.idle) { position: absolute; left: 0; top: 0; opacity: 0; }
+.picture:hover:not(:disabled) > .hover, .picture:focus-visible > .hover,
+.picture:active:not(:disabled) > .pressed,
+.picture:disabled > .disabled, .picture.selected > .selected { opacity: 1; }
+.picture:disabled:has(> .disabled) { opacity: 1; }
+.picture.selected:has(> .selected) { opacity: 1; }
+:is(.overlay, .screen-layer, .own-textbox .textbox) .screen-slot.picture {
+  position: relative; display: block; width: auto; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; text-align: left; line-height: 1.2;
+}
+.screen-slot.picture > :not(img) { position: absolute; }
+/* Picture sliders: the game's track and knob. */
+.screen-slider.picture { display: block; }
+.screen-slider.picture .screen-field { display: block; width: 100%; height: 100%; }
+.screen-slider.picture .screen-field { position: relative; }
+.screen-slider.picture .fill {
+  position: absolute; inset: 0; background: center / 100% 100% no-repeat;
+  clip-path: inset(0 calc((1 - var(--fill, 0)) * 100%) 0 0); pointer-events: none;
+}
+.screen-slider input.picture {
+  -webkit-appearance: none; appearance: none; position: relative; display: block; margin: 0; width: 100%; height: 100%;
+  background: none; cursor: pointer;
+}
+.screen-slider input.picture::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; border: 0; width: var(--knob-w, 1cqw); height: var(--knob-h, 100%);
+  background: var(--knob, none) center / contain no-repeat;
+}
+.screen-slider input.picture::-moz-range-thumb {
+  border: 0; border-radius: 0; width: var(--knob-w, 1cqw); height: var(--knob-h, 100%);
+  background: var(--knob, none) center / contain no-repeat;
+}
+.screen-slider input.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+/* `screen name with fade:` */
+@keyframes screen-in { from { opacity: 0; } }
+/* `screen textbox`: the game's own text box, laid out over the whole stage. */
+.stage.own-textbox .textbox {
+  inset: 0; min-height: 0; padding: 0; background: none; border: 0; border-radius: 0; backdrop-filter: none; pointer-events: none;
+}
+.stage.own-textbox .textbox .screen-root { display: block; }
+.stage.own-textbox .textbox :is(button, label, input, select) { pointer-events: auto; }
+.stage.own-textbox .textbox .screen-part { position: absolute; transform: none; }
+.stage.own-textbox .namebox.screen-part { padding: 0; background: none; border: 0; border-radius: 0; }
+.stage.own-textbox .side-image.screen-part { height: auto; }
+.stage.own-quickmenu .quickmenu { display: none; }
+:is(.overlay, .screen-layer, .own-textbox .textbox) .screen-button.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .screen-slots, .screen-gallery { display: grid; gap: calc(1.6 * var(--u)); justify-content: center; }
-:is(.overlay, .screen-layer) .screen-slot {
+:is(.overlay, .screen-layer, .own-textbox .textbox) .screen-slot {
   display: flex; flex-direction: column; align-items: stretch; gap: calc(0.6 * var(--u));
   min-width: 0; width: 22cqw; padding: calc(0.8 * var(--u)); text-align: left;
 }
@@ -296,7 +339,7 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .thumb .bg { position: absolute; inset: 0; background: #000 center / cover no-repeat; }
 .thumb .sprite { filter: none; transition: none; }
 .screen-thumbnail.empty { background: rgb(255 255 255 / 0.06); }
-:is(.overlay, .screen-layer) .screen-gallery-item { min-width: 0; width: 16cqw; aspect-ratio: var(--aspect, 16 / 9); padding: 0; overflow: hidden; }
+:is(.overlay, .screen-layer, .own-textbox .textbox) .screen-gallery-item { min-width: 0; width: 16cqw; aspect-ratio: var(--aspect, 16 / 9); padding: 0; overflow: hidden; }
 .screen-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .screen-endings, .screen-achievements { list-style: none; margin: 0; padding: 0; color: var(--ui-text); font-size: max(13px, calc(2.8 * var(--u))); }
 .screen-endings .locked, .screen-achievements .locked { color: var(--ui-muted); }

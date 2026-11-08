@@ -79,6 +79,7 @@ export const UI_STRINGS = {
   'ui.empty': 'Empty',
   'ui.at_a_choice': 'At a choice',
   'ui.saved_to_slot': 'Saved to slot {n}',
+  'ui.quick_saved': 'Quick saved',
   'ui.could_not_save': 'Could not save (storage unavailable)',
   'ui.could_not_load': 'That save could not be loaded',
   'ui.loaded': 'Loaded',

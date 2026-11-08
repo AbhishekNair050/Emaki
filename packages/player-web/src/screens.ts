@@ -51,6 +51,12 @@ export interface ScreenHost {
   };
   /** Text of the player's own interface (locked "???", "Empty"), in the chosen language. */
   ui(key: 'locked' | 'empty' | 'slot', vars?: Record<string, string | number>): string;
+  /** The text box's own elements (the line, the name, the side image), placed where `screen textbox` puts them. */
+  part?(kind: 'dialogue' | 'speaker' | 'side'): HTMLElement;
+  /** Whether a button's action is in effect (auto is on, the setting holds that value, it's the page shown). */
+  selected?(actions: readonly ScreenAction[]): boolean;
+  /** Play the interface sound for pointing at or clicking a button, if the game has one. */
+  sound?(kind: 'hover' | 'click'): void;
 }
 
 export function renderScreen(name: string, screen: CompiledScreen, host: ScreenHost): HTMLElement {
@@ -131,6 +137,34 @@ function control(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Record
   return wrap;
 }
 
+/**
+ * A picture button's pictures: the idle one, and those for pointed at,
+ * pressed, selected and unusable when the screen gives them. theme-free CSS
+ * shows the right one (see style.css).
+ */
+function pictureStates(b: HTMLElement, it: CompiledScreenItem, host: ScreenHost, label: string, vars?: Readonly<Record<string, Value>>): void {
+  b.classList.add('picture');
+  b.setAttribute('aria-label', label);
+  b.title = label;
+  for (const k of ['image', 'hover', 'pressed', 'selected', 'disabled'] as const) {
+    if (!it[k]) continue;
+    // Slot pictures can differ by place on the page: "ui/slot{slot_cell}.png".
+    const img = picture(host.url(vars ? interpolate(it[k]!, vars) : it[k]!), it, host);
+    img.alt = '';
+    img.className = k === 'image' ? 'idle' : k;
+    b.append(img);
+  }
+}
+
+/** Interface sounds and the selected state, for anything clickable on a screen. */
+function wire(b: HTMLButtonElement, actions: readonly ScreenAction[], host: ScreenHost): void {
+  const on = host.selected?.(actions) ?? false;
+  b.classList.toggle('selected', on);
+  if (actions.some((a) => a.do === 'auto' || a.do === 'skip' || a.do === 'setting')) b.setAttribute('aria-pressed', String(on));
+  b.addEventListener('pointerenter', () => { if (!b.disabled) host.sound?.('hover'); });
+  b.addEventListener('click', () => host.sound?.('click'), { capture: true });
+}
+
 let controlIds = 0;
 
 function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Record<string, Value>>, slot?: number): HTMLElement | null {
@@ -143,11 +177,13 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       for (let k = 0; k < it.count! && first + k < host.slots.count; k++) {
         const i = first + k;
         const info = host.slots.info(i);
-        const cellVars = { ...vars, slot_number: i + 1, slot_empty: !info, slot_date: info?.date ?? '', slot_text: info?.text ?? '' };
+        const cellVars = { ...vars, slot_number: i + 1, slot_cell: k + 1, slot_empty: !info, slot_date: info?.date ?? '', slot_text: info?.text ?? '' };
         const b = document.createElement('button');
         b.type = 'button';
         b.className = info ? 'screen-slot' : 'screen-slot empty';
-        b.setAttribute('aria-label', host.ui('slot', { n: i + 1, label: info ? `${info.date} — ${info.text}` : host.ui('empty') }));
+        const slotLabel = host.ui('slot', { n: i + 1, label: info ? `${info.date} — ${info.text}` : host.ui('empty') });
+        if (it.image) pictureStates(b, { ...it, w: undefined, h: undefined }, host, slotLabel, cellVars);
+        b.setAttribute('aria-label', slotLabel);
         if (it.children?.length) {
           for (const c of it.children) { const n = renderItem(c, host, cellVars, i); if (n) b.append(n); }
         } else {
@@ -161,6 +197,8 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
           if (info) { const line = document.createElement('span'); line.className = 'screen-slot-text'; line.textContent = info.text; b.append(line); }
         }
         b.disabled = action === 'load' ? !info : !host.slots.canSave();
+        b.removeAttribute('title');
+        wire(b, [], host);
         b.addEventListener('click', (e) => { e.stopPropagation(); host.slots.use(action, i); });
         div.append(b);
       }
@@ -228,7 +266,33 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       const field = document.createElement('span');
       field.className = 'screen-field';
       field.append(input, out);
-      return control(it, host, vars, field);
+      if (!it.image) return control(it, host, vars, field);
+      // A picture slider: the track and knob are the game's art, and the label is for screen readers only.
+      // The bar fills up to the value (the empty track is the screen's own art underneath), and the knob rides on it.
+      input.classList.add('picture');
+      const fill = document.createElement('span');
+      fill.className = 'fill';
+      fill.style.backgroundImage = `url("${host.url(it.image)}")`;
+      const setFill = () => field.style.setProperty('--fill', String((Number(input.value) - r.min) / (r.max - r.min || 1)));
+      setFill();
+      input.addEventListener('input', setFill);
+      field.prepend(fill);
+      if (it.knob) {
+        input.style.setProperty('--knob', `url("${host.url(it.knob)}")`);
+        const k = new Image();
+        k.addEventListener('load', () => {
+          const cw = host.canvas?.[0] ?? 1920;
+          input.style.setProperty('--knob-w', `${(k.naturalWidth / cw) * 100}cqw`);
+          input.style.setProperty('--knob-h', `${(k.naturalHeight / cw) * 100}cqw`);
+        }, { once: true });
+        k.src = host.url(it.knob);
+      }
+      const wrap = control({ ...it, x: undefined, y: undefined, w: undefined, h: undefined, anchor: undefined }, host, vars, field);
+      wrap.classList.add('picture');
+      wrap.querySelector('.screen-label')!.classList.add('sr-only');
+      out.classList.add('sr-only');
+      place(wrap, it);
+      return wrap;
     }
     case 'toggle': {
       const input = document.createElement('input');
@@ -251,6 +315,16 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       }
       select.addEventListener('change', () => host.settings.set(it.setting!, select.value));
       return control(it, host, vars, select);
+    }
+    case 'dialogue':
+    case 'speaker':
+    case 'side': {
+      const node = host.part?.(it.kind);
+      if (!node) return null;
+      node.removeAttribute('style');
+      node.classList.add('screen-part');
+      place(node, it);
+      return node;
     }
     case 'image': {
       const fill = slot === undefined && it.x === undefined && it.w === undefined && it.h === undefined;
@@ -276,24 +350,12 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'screen-button';
-      if (it.image) {
-        // A picture button: the label is its accessible name, the pictures what's seen.
-        b.classList.add('picture');
-        b.setAttribute('aria-label', t.text);
-        b.title = t.text;
-        const idle = picture(host.url(it.image), it, host);
-        idle.alt = '';
-        idle.className = 'idle';
-        b.append(idle);
-        if (it.hover) {
-          const hover = picture(host.url(it.hover), it, host);
-          hover.alt = '';
-          hover.className = 'hover';
-          b.append(hover);
-        }
-      } else b.append(...host.nodes(t.text, t.spans));
+      // A picture button: the label is its accessible name, the pictures what's seen.
+      if (it.image) pictureStates(b, it, host, t.text);
+      else b.append(...host.nodes(t.text, t.spans));
       const actions = it.actions ?? [];
       b.disabled = !host.enabled(actions);
+      wire(b, actions, host);
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         host.run(actions);
