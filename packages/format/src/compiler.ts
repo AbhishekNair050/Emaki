@@ -518,7 +518,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   if (meta.canvas !== undefined && !canvas) warn(1, 'bad-canvas', `'canvas: ${meta.canvas}' should be the size your UI art is drawn at, like 1920x1080`);
   const screenStrings: SourceString[] = [];
   const screens = compileScreens(program.screens, {
-    images, labels: new Set(Object.keys(labels)), vars, canvas, saveSlots: saveSlotCount(meta.save_slots),
+    images, labels: new Set(Object.keys(labels)), vars, canvas, saveSlots: saveSlotCount(meta.save_slots), characters: new Set(Object.keys(characters)),
     error: (loc, code, message) => error(loc, code, message),
     warn: (loc, code, message) => warn(loc, code, message),
     textId: (screen, text) => `screen.${screen}.${fnv1a(text)}`,

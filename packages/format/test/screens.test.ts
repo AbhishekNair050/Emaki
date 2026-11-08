@@ -75,7 +75,7 @@ describe('screens', () => {
     expect(at('button "Go" -> start if y > 1')).toEqual(['unknown-variable']);
     expect(at('image missing')).toEqual(['unknown-image']);
     expect(at('button "Go" -> close if x > 1')).toEqual([]);
-    expect(compile('screen history:\n  text "x"\nlabel start:\n  "x"\n').diagnostics.map((d) => d.code)).toContain('reserved-screen');
+    expect(compile('screen history:\n  text "x"\nlabel start:\n  "x"\n').diagnostics.map((d) => d.code)).not.toContain('reserved-screen'); // history can be replaced now
   });
 });
 
@@ -225,5 +225,66 @@ describe('text box and polish', () => {
     expect(at('slider "Music" music_volume knob "k.png"')).toEqual(['bad-screen']);
     expect(at('text "x" knob "k.png"')).toEqual(['bad-screen']);
     expect(compile('screen s with spin:\n  text "x"\nlabel start:\n  "x"\n').diagnostics.map((d) => d.code)).toEqual(['bad-screen']);
+  });
+});
+
+const M7 = `define rin "Rin"
+
+screen history:
+  log 3 at 136px 181px size 1600px 310px:
+    text "{log_name}" at 94px 0px
+    text "{log_text}" at 94px 50px size 1500px auto
+    button "Replay" -> voice if log_voice
+    button "Go back" -> rewind
+  button "Up" -> scroll up
+  button "Down" -> scroll down
+
+screen confirm:
+  image "ui/dialog_{confirm}.png"
+  text "{message}"
+  button "Yes" -> yes
+  button "No" -> no
+
+screen settings:
+  slider "Master" master_volume
+  slider "Rin" voice_volume rin
+  toggle "Mute Rin" voice_mute rin image "ui/box.png" selected "ui/ticked.png"
+  toggle "Ask before quitting" confirm_quit
+  button "Test" -> sample voice "voice/rin_test.ogg" rin
+  button "Reset" -> reset
+  button "Next choice" -> next_choice
+  button "Previous choice" -> previous_choice
+
+label start:
+  "x"
+`;
+
+describe('history, questions and per-character settings', () => {
+  it('parse, print back and compile', () => {
+    const p = parse(M7);
+    expect(p.diagnostics).toEqual([]);
+    expect(print(p.program)).toBe(M7);
+    const s = compile('---\ncanvas: 1920x1080\n---\n\n' + M7);
+    expect(s.diagnostics).toEqual([]);
+    const log = s.story!.screens!.history!.items[0]!;
+    expect(log).toMatchObject({ kind: 'log', count: 3 });
+    expect(log.children!.map((c) => c.actions?.[0]?.do)).toEqual([undefined, undefined, 'voice', 'rewind']);
+    const st = s.story!.screens!.settings!.items;
+    expect(st[1]).toMatchObject({ setting: 'voice_volume', character: 'rin' });
+    expect(st[2]).toMatchObject({ kind: 'toggle', character: 'rin', image: 'ui/box.png' });
+    expect(st[4]!.actions).toEqual([{ do: 'sample', channel: 'voice', path: 'voice/rin_test.ogg', character: 'rin' }]);
+  });
+
+  it('explain mistakes', () => {
+    const at = (screen: string, name = 's') =>
+      compile(`define rin "Rin"\nscreen ${name}:\n  ${screen.split('\n').join('\n  ')}\nlabel start:\n  "x"\n`).diagnostics.map((d) => d.code);
+    expect(at('button "x" -> rewind')).toEqual(['bad-screen']);                 // only in a log
+    expect(at('text "{log_text}"')).toEqual(['unknown-variable']);
+    expect(at('text "{message}"')).toEqual(['unknown-variable']);
+    expect(at('text "{message}"\nbutton "OK" -> yes', 'confirm')).toEqual([]);
+    expect(at('slider "Kei" voice_volume kei')).toEqual(['unknown-character']);
+    expect(at('log 3')).toEqual(['bad-screen']);                                // needs entries
+    expect(at('button "x" -> sample music "a.ogg"')).toEqual(['bad-screen']);
+    expect(at('button "x" -> scroll left')).toEqual(['bad-screen']);
   });
 });

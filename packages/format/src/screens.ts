@@ -27,16 +27,23 @@ export type ScreenKind =
   | 'image' | 'text' | 'button' | 'row' | 'column' | 'box'
   | 'slots' | 'thumbnail' | 'gallery' | 'endings' | 'achievements'
   | 'slider' | 'toggle' | 'choice'
-  | 'dialogue' | 'speaker' | 'side';
+  | 'dialogue' | 'speaker' | 'side'
+  | 'log';
 export const SCREEN_KINDS: readonly ScreenKind[] = [
   'image', 'text', 'button', 'row', 'column', 'box',
   'slots', 'thumbnail', 'gallery', 'endings', 'achievements', 'slider', 'toggle', 'choice',
-  'dialogue', 'speaker', 'side',
+  'dialogue', 'speaker', 'side', 'log',
 ];
 /** Parts of the text box, only in `screen textbox`: the line being said, who says it, their side image. */
 const TEXTBOX_PARTS: ReadonlySet<ScreenKind> = new Set(['dialogue', 'speaker', 'side']);
 /** Variables `screen textbox` sees: who is speaking ("" for narration). */
 export const TEXTBOX_VARS = ['speaker'] as const;
+/** Variables each entry of `log` sees: its place, who said it, what, and whether it has a voice to replay. */
+export const LOG_VARS = ['log_number', 'log_name', 'log_text', 'log_voice'] as const;
+/** Variables `screen confirm` sees: which question (title, quit, overwrite, ...) and its text in the player's language. */
+export const CONFIRM_VARS = ['confirm', 'message'] as const;
+/** Settings that can belong to one character: `slider "Rin" voice_volume rin`. */
+export const PER_CHARACTER_SETTINGS = ['voice_volume', 'voice_mute'] as const;
 /** How a screen appears when it opens (`screen menu with fade 0.3:`). */
 export const SCREEN_TRANSITIONS = ['fade', 'dissolve', 'none'] as const;
 const CONTAINERS: ReadonlySet<ScreenKind> = new Set(['row', 'column', 'box']);
@@ -46,8 +53,12 @@ const CONTAINERS: ReadonlySet<ScreenKind> = new Set(['row', 'column', 'box']);
  * toggles are on/off, choices pick one of a few options.
  */
 export const SCREEN_SETTINGS = {
-  slider: ['text_speed', 'auto_wait', 'music_volume', 'sound_volume', 'voice_volume', 'text_size', 'box_opacity'],
-  toggle: ['skip_unread', 'animations', 'fullscreen'],
+  slider: ['text_speed', 'auto_wait', 'master_volume', 'music_volume', 'sound_volume', 'voice_volume', 'text_size', 'box_opacity'],
+  toggle: [
+    'skip_unread', 'animations', 'fullscreen', 'master_mute', 'music_mute', 'sound_mute', 'voice_mute',
+    'confirm_title', 'confirm_quit', 'confirm_overwrite', 'confirm_load', 'confirm_quicksave', 'confirm_quickload',
+    'confirm_reset', 'confirm_next_choice', 'confirm_previous_choice', 'confirm_rewind',
+  ],
   choice: ['font', 'language', 'animations', 'skip'],
 } as const;
 
@@ -86,10 +97,25 @@ export type ScreenAction =
   | { do: 'setting'; name: string; value: string | number | boolean }
   /** The story's controls, for a text box or menu of your own: go back a line, auto, skip, hide the interface, quick save and load, replay the voice. */
   | { do: 'back' } | { do: 'auto' } | { do: 'skip' } | { do: 'hide' }
-  | { do: 'quicksave' } | { do: 'quickload' } | { do: 'voice' };
+  | { do: 'quicksave' } | { do: 'quickload' } | { do: 'voice' }
+  /** Answers on `screen confirm`. */
+  | { do: 'yes' } | { do: 'no' }
+  /** Put every setting back as it was (except the language). */
+  | { do: 'reset' }
+  /** Skip ahead to the next choice, or go back to the previous one. */
+  | { do: 'next_choice' } | { do: 'previous_choice' }
+  /** In a `log` entry: go back to that line. (`voice` there replays that line's voice.) */
+  | { do: 'rewind' }
+  /** Scroll a `log` by one entry. */
+  | { do: 'scroll'; to: 'up' | 'down' }
+  /** Play a sample at a channel's volume (a character's, for `voice ... rin`): the "test" button by a slider. */
+  | { do: 'sample'; channel: 'sound' | 'voice'; path: string; character?: string };
 
 /** Actions that take nothing after them. */
-const BARE_ACTIONS = ['continue', 'close', 'title', 'quit', 'load', 'save', 'back', 'auto', 'skip', 'hide', 'quicksave', 'quickload', 'voice'] as const;
+const BARE_ACTIONS = [
+  'continue', 'close', 'title', 'quit', 'load', 'save', 'back', 'auto', 'skip', 'hide', 'quicksave', 'quickload', 'voice',
+  'yes', 'no', 'reset', 'next_choice', 'previous_choice', 'rewind',
+] as const;
 
 export interface ScreenItem extends Trivia {
   kind: ScreenKind;
@@ -121,6 +147,8 @@ export interface ScreenItem extends Trivia {
   columns?: number;
   /** The setting a slider, toggle or choice controls. */
   setting?: string;
+  /** For a per-character setting (`slider "Rin" voice_volume rin`): whose. */
+  character?: string;
   actions?: ScreenAction[];
   cond?: Expr;
   children?: ScreenItem[];
@@ -136,7 +164,7 @@ export interface ScreenDef extends Trivia {
 }
 
 /** Screens Emaki has built in; a `screen` with one of these names replaces it. */
-export const REPLACEABLE_SCREENS = ['title', 'menu', 'load', 'save', 'settings', 'extras', 'textbox'] as const;
+export const REPLACEABLE_SCREENS = ['title', 'menu', 'load', 'save', 'settings', 'extras', 'textbox', 'history', 'confirm'] as const;
 /** Built-in screens `open` can show. */
 export const BUILTIN_SCREENS = ['load', 'save', 'settings', 'extras', 'history'] as const;
 
@@ -203,6 +231,9 @@ function parseLen(t: string | undefined): Len | null {
   return m ? { value: Number(m[1]), unit: m[2] as '%' | 'px' } : null;
 }
 
+/** Words that start an option, so they're never taken for a character id. */
+const OPTION_WORDS = new Set(['at', 'size', 'anchor', 'gap', 'columns', 'image', 'hover', 'pressed', 'selected', 'disabled', 'knob', 'alt']);
+
 const asset = (t: Token): AssetRef => (t.quoted ? { kind: 'path', path: t.text } : { kind: 'name', name: t.text });
 
 function parseAction(src: string): ScreenAction | string {
@@ -217,6 +248,12 @@ function parseAction(src: string): ScreenAction | string {
     case 'open': return name('a screen name, like open settings') ?? one({ do: 'open', screen: arg! });
     case 'switch': return name('a screen name, like switch load') ?? one({ do: 'switch', screen: arg! });
     case 'jump': return name('a label') ?? one({ do: 'jump', label: arg! });
+    case 'scroll': return arg === 'up' || arg === 'down' ? one({ do: 'scroll', to: arg }) : `'scroll' needs up or down`;
+    case 'sample': {
+      const m = /^sample\s+(sound|voice)\s+"([^"]+)"(?:\s+([A-Za-z_]\w*))?$/.exec(src.trim());
+      if (!m || (m[3] && m[1] !== 'voice')) return `Expected 'sample sound "sound/test.ogg"' or 'sample voice "voice/test.ogg" rin'`;
+      return { do: 'sample', channel: m[1] as 'sound' | 'voice', path: m[2]!, ...(m[3] ? { character: m[3] } : {}) };
+    }
     case 'setting': {
       const all = Object.values(SCREEN_SETTINGS).flat() as string[];
       const raw = more.join(' ');
@@ -248,7 +285,7 @@ function parseAction(src: string): ScreenAction | string {
       }
     }
     case undefined: return `Expected an action after '->'`;
-    default: return `Unknown action '${verb}' (use start, continue, open, switch, close, title, quit, jump, set, return, page, setting, back, auto, skip, hide, quicksave, quickload or voice; load and save on slots)`;
+    default: return `Unknown action '${verb}' (use start, continue, open, switch, close, title, quit, jump, set, return, page, setting, back, auto, skip, hide, quicksave, quickload, voice, yes, no, reset, next_choice, previous_choice, scroll, sample; rewind in a log; load and save on slots)`;
   }
 }
 
@@ -289,7 +326,8 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
   const kind = tokens.shift()?.text as ScreenKind;
   if (!SCREEN_KINDS.includes(kind)) return { error: `Unknown screen element '${kind}' (use ${SCREEN_KINDS.join(', ')})` };
   item.kind = kind;
-  if (kind !== 'slots' && CONTAINERS.has(kind) !== container) {
+  if (kind === 'log' && !container) return { error: `'log' needs a ':' and what each entry shows, indented under it` };
+  if (kind !== 'slots' && kind !== 'log' && CONTAINERS.has(kind) !== container) {
     return { error: container ? `'${kind}' can't hold other elements; only row, column, box and slots can` : `'${kind}' needs a ':' and the elements it holds, indented under it` };
   }
   if (item.actions && kind !== 'button' && kind !== 'slots') return { error: `Only buttons and slots have actions ('->')` };
@@ -308,7 +346,7 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     const t = tokens.shift();
     if (!t?.quoted) return { error: kind === 'text' ? `Expected 'text "What it says"'` : `A button needs its label first: 'button "New Game" -> start' (also when it's a picture: it's what screen readers say)` };
     item.text = t.text;
-  } else if (kind === 'slots' || kind === 'gallery') {
+  } else if (kind === 'slots' || kind === 'gallery' || kind === 'log') {
     const n = tokens.shift()?.text;
     if (!n || !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > MAX_CELLS) return { error: `Expected how many to show at once, like '${kind} 6' (1 to ${MAX_CELLS})` };
     item.count = Number(n);
@@ -322,6 +360,11 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     if (!setting || setting.quoted || !names.includes(setting.text)) return { error: `A ${kind} controls one of: ${names.join(', ')}` };
     item.text = label.text;
     item.setting = setting.text;
+    const who = tokens[0];
+    if ((PER_CHARACTER_SETTINGS as readonly string[]).includes(setting.text) && who && !who.quoted && /^[A-Za-z_]\w*$/.test(who.text) && !OPTION_WORDS.has(who.text)) {
+      item.character = who.text;
+      tokens.shift();
+    }
   }
 
   while (tokens.length) {
@@ -356,7 +399,7 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
       if (!/^[A-Za-z_][\w-]*$/.test(c)) return { error: `'class=' needs a name for theme.css, like class=heading` };
       item.className = c;
     } else if (opt === 'image' || opt === 'hover' || opt === 'pressed' || opt === 'selected' || opt === 'disabled' || opt === 'knob') {
-      const ok = kind === 'button' || kind === 'slots' ? opt !== 'knob' : kind === 'slider' ? opt === 'image' || opt === 'knob' : false;
+      const ok = kind === 'button' || kind === 'slots' || kind === 'toggle' ? opt !== 'knob' : kind === 'slider' ? opt === 'image' || opt === 'knob' : false;
       if (!ok) return { error: opt === 'knob' || kind === 'slider' ? `A picture slider has an 'image' (its track) and a 'knob'` : `'${opt}' is for picture buttons and slots` };
       const p = tokens.shift();
       if (!p || (!p.quoted && !/^[A-Za-z_]\w*$/.test(p.text))) return { error: `'${opt}' needs a picture: ${opt} "ui/button.png"` };
@@ -394,6 +437,8 @@ function actionText(a: ScreenAction): string {
     case 'set': return `set ${a.name} ${a.op} ${printExpr(a.value)}`;
     case 'page': return `page ${a.to}`;
     case 'switch': return `switch ${a.screen}`;
+    case 'scroll': return `scroll ${a.to}`;
+    case 'sample': return `sample ${a.channel} ${quote(a.path)}${a.character ? ` ${a.character}` : ''}`;
     case 'setting': return `setting ${a.name} ${a.value === true ? 'on' : a.value === false ? 'off' : typeof a.value === 'string' && !/^[\w-]+$/.test(a.value) ? quote(a.value) : a.value}`;
     case 'return': return a.value ? `return ${printExpr(a.value)}` : 'return';
     default: return a.do;
@@ -408,6 +453,7 @@ export function printScreenLine(it: ScreenItem): string {
   if (it.columns !== undefined) parts.push('columns', String(it.columns));
   if (it.text !== undefined) parts.push(quote(it.text));
   if (it.setting) parts.push(it.setting);
+  if (it.character) parts.push(it.character);
   if (it.kind !== 'image' && it.image) parts.push('image', assetText(it.image));
   if (it.hover) parts.push('hover', assetText(it.hover));
   if (it.pressed) parts.push('pressed', assetText(it.pressed));
@@ -452,6 +498,7 @@ export interface CompiledScreenItem {
   count?: number;
   columns?: number;
   setting?: string;
+  character?: string;
   cond?: Expr;
   actions?: ScreenAction[];
   children?: CompiledScreenItem[];
@@ -474,6 +521,8 @@ export interface ScreenContext {
   warn: (loc: Loc, code: string, message: string) => void;
   /** How many save slots the game has (`save_slots:` in the header). */
   saveSlots: number;
+  /** Character ids (`define`), for per-character settings. */
+  characters?: ReadonlySet<string>;
   /** Ids from the compiler's id scheme for translatable text. */
   textId: (screen: string, text: string) => string;
   /** Record a translatable string. */
@@ -509,10 +558,6 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
 
   for (const def of defs) {
     if (out[def.name]) { ctx.error(def.loc, 'duplicate', `'screen ${def.name}' is already defined`); continue; }
-    if (def.name === 'history') {
-      ctx.error(def.loc, 'reserved-screen', `The history screen can't be replaced yet; give yours another name`);
-      continue;
-    }
     const compileItem = (it: ScreenItem): CompiledScreenItem => {
       const c: CompiledScreenItem = { kind: it.kind };
       if (it.text !== undefined) {
@@ -550,6 +595,11 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
       if (it.count !== undefined) c.count = it.count;
       if (it.columns !== undefined) c.columns = it.columns;
       if (it.setting) c.setting = it.setting;
+      if (it.character) {
+        c.character = it.character;
+        if (ctx.characters && !ctx.characters.has(it.character)) ctx.error(it.loc, 'unknown-character', `No character '${it.character}' (define it: define ${it.character} "Name")`);
+      }
+      if (it.kind === 'log' && inLog) ctx.error(it.loc, 'bad-screen', `A log can't hold another log`);
       if (it.kind === 'thumbnail' && !inSlot) ctx.error(it.loc, 'bad-screen', `A thumbnail shows a save, so it goes inside 'slots'`);
       if (inSlot && (it.kind === 'button' || it.kind === 'slots' || it.kind === 'slider' || it.kind === 'toggle' || it.kind === 'choice')) {
         ctx.error(it.loc, 'bad-screen', `A slot is a button already, so it can't hold a ${it.kind}; put it next to the slots instead`);
@@ -582,23 +632,31 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
           } else if (a.do === 'setting') {
             const bad = settingValueProblem(a.name, a.value);
             if (bad) ctx.error(it.loc, 'bad-screen', bad);
+          } else if (a.do === 'rewind' && !inLog) {
+            ctx.error(it.loc, 'bad-screen', `'rewind' goes back to a line of the log, so it goes on a button inside 'log'`);
+          } else if (a.do === 'sample' && a.character && ctx.characters && !ctx.characters.has(a.character)) {
+            ctx.error(it.loc, 'unknown-character', `No character '${a.character}'`);
           }
         }
         c.actions = it.actions;
       }
       if (it.children) {
-        const was = inSlot;
+        const was = inSlot, wasLog = inLog;
         if (it.kind === 'slots') inSlot = true;
+        if (it.kind === 'log') inLog = true;
         c.children = it.children.map(compileItem);
         inSlot = was;
+        inLog = wasLog;
       }
       return c;
     };
-    let inSlot = false;
+    let inSlot = false, inLog = false;
     const parts = new Set<ScreenKind>();
     const known = (name: string) => Object.prototype.hasOwnProperty.call(ctx.vars, name)
       || (PAGE_VARS as readonly string[]).includes(name) || (inSlot && (SLOT_VARS as readonly string[]).includes(name))
-      || (def.name === 'textbox' && (TEXTBOX_VARS as readonly string[]).includes(name));
+      || (def.name === 'textbox' && (TEXTBOX_VARS as readonly string[]).includes(name))
+      || (def.name === 'confirm' && (CONFIRM_VARS as readonly string[]).includes(name))
+      || (inLog && (LOG_VARS as readonly string[]).includes(name));
     const checkVars = (e: Expr, loc: Loc) => {
       for (const name of freeVars(e)) {
         if (!known(name)) ctx.error(loc, 'unknown-variable', (SLOT_VARS as readonly string[]).includes(name) ? `'${name}' is only known inside 'slots'` : `Unknown variable '${name}'`);
@@ -630,7 +688,7 @@ function settingValueProblem(name: string, value: string | number | boolean): st
 
 /** Whether a screen has a button that leaves it (returns, closes, or goes elsewhere), so the story can call it. */
 export function screenCanLeave(def: ScreenDef): boolean {
-  const LEAVES = new Set(['return', 'close', 'jump', 'start', 'title', 'quit', 'continue']);
+  const LEAVES = new Set(['return', 'close', 'jump', 'start', 'title', 'quit', 'continue', 'yes', 'no']);
   const walk = (items: readonly ScreenItem[]): boolean =>
     items.some((it) => it.actions?.some((a) => LEAVES.has(a.do)) || (it.children ? walk(it.children) : false));
   return walk(def.items);
