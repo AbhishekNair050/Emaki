@@ -196,10 +196,12 @@ async function main(): Promise<void> {
   const statuses = new Map<string, SaveStatus>();
   for (const [path, text] of loaded) addDoc(path, text);
 
+  /** The screen the cursor is in (shown in the game), if any; see previewAt. */
+  let previewing: string | null = null;
   const script = new ScriptPane($('.cm-host'), initial.text, {
     onChange: (text) => { doc().text = text; doc().sync.changed(text); scheduleCompile(); },
     onRun: (line) => runFrom(line),
-    onCursor: (line) => flow.setCursor(labelAt(line)),
+    onCursor: (line) => { flow.setCursor(labelAt(line)); previewAt(line); },
     onSave: () => void doc().sync.saveNow(),
     onDrop: (drop, line) => void dropOnScript(drop, line),
     context: () => (docs.size > 1 ? { file: active, files: [...docs.values()].map((d) => ({ path: d.path, source: d.text })) } : undefined),
@@ -339,6 +341,22 @@ async function main(): Promise<void> {
     assets.scriptChanged();
     if (!player) startPlayer(story);
     else if (!player.reload(story)) flashNote('Couldn’t find the line the game was on after that edit, so it went back to the title screen.');
+    if (previewing) player?.previewScreen(previewing, true);
+  }
+
+  /** While the cursor is in a `screen name:` block, the game shows that screen, redrawn as it's edited. */
+  function previewAt(line: number): void {
+    const lines = doc().text.split('\n');
+    let name: string | null = null;
+    for (let i = line - 1; i >= 0; i--) {
+      const l = lines[i] ?? '';
+      if (!l.trim() || /^\s/.test(l)) continue;
+      name = /^screen\s+([A-Za-z_]\w*)/.exec(l)?.[1] ?? null;
+      break;
+    }
+    if (name === previewing) return;
+    previewing = name;
+    player?.previewScreen(name);
   }
 
   function startPlayer(s: CompiledStory): void {
