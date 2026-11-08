@@ -80,6 +80,7 @@ Each line is one element: `kind ["text"] [options] [-> actions] [if condition]`.
 | `quit` | Quits (only in desktop and phone apps; greyed out in a browser). |
 | `jump label` | Continues the story at a label, keeping the variables. |
 | `set visits += 1` | Changes a variable; the screen redraws. A `global var` changed this way is remembered. |
+| `return` / `return "beach"` | On a screen the story called (`call screen map -> place`), goes on with the story, putting the value in the call's variable. Elsewhere it's the same as `close`. |
 
 `if condition` at the end of a line shows the element only while the condition holds, which is how unlockable extras work.
 
@@ -132,6 +133,38 @@ screen settings:
 
 Changes apply at once and are remembered, exactly as in the built-in screen. The label is what the control is called on screen and for screen readers.
 
+### Screens during the story
+Your own screens can also appear while the story plays: a status bar, a phone, a map to pick a place from.
+
+```
+var day = 1
+var place = ""
+
+screen hud:
+  text "Day {day}" at 3% 4% anchor top-left
+  button "Phone" image "ui/phone.png" at 97% 4% anchor top-right -> open phone
+
+screen map:
+  image "ui/map.png"
+  button "Beach" image "ui/pin.png" at 30% 60% -> return "beach"
+  button "Town" image "ui/pin.png" at 70% 40% -> return "town"
+  button "Not yet" at 50% 92% anchor center -> return
+
+label start:
+  show screen hud
+  "Morning."
+  call screen map -> place
+  if place == "beach":
+    jump beach
+  hide screen hud
+```
+
+- `show screen hud` keeps the screen over the story, line after line, until `hide screen hud` (or its own `close` button). Its `{variables}` stay up to date. Clicks on its buttons go to the buttons; clicks anywhere else go on with the story as usual. Several can be shown at once; each new one goes on top. They're part of the game's state, so saves, loading and going back keep them.
+- `call screen map -> place` shows the screen and waits: the story goes on only when one of its buttons returns. `-> return "beach"` puts `"beach"` in `place`; a plain `-> return` (or `close`) goes on without changing it. `-> place` can be left out when the answer doesn't matter. The line said before stays in the text box underneath, like with choices, and going back returns to the screen.
+- These screens are drawn under the quick menu and above the text box, so a full-screen map covers the text box but the player can still save, load or open the settings. They're hidden with the rest of the interface when the player hides it (the H key); a called screen isn't, since it's waiting for an answer.
+- The screens the player opens themselves (`title`, `menu`, `save`, `load`, `settings`, `extras`) can't be shown or called. The compiler warns when a called screen has no button that returns, since the story would wait forever.
+- Style them with `.screen-layer .screen-hud`, `.screen-root.shown` and `.screen-root.called`.
+
 ### Extras screen
 `gallery 12 columns 4` is a page of gallery images (pictures seen so far, ??? for the rest; click one to see it full size, with the same `page` actions as slots). `endings` and `achievements` list the endings reached and achievements earned. Style them with `.screen-gallery-item`, `.screen-endings li.done` / `.locked` and so on.
 
@@ -172,6 +205,7 @@ These class names are kept stable between versions:
 | `.nvl-page`, `.nvl-line`, `.nvl-name`, `.nvl-text` | NVL mode pages (`.nvl-line[data-speaker="mira"]` for one character's lines). |
 | `.toast` | Short notices (achievements, "Saved"). |
 | `.overlay.screen`, `.screen-root`, `.screen-<name>` | One of your own screens (`.screen-title`, `.screen-menu`). |
+| `.screen-layer`, `.screen-root.shown`, `.screen-root.called` | Screens over the story (`show screen`, `call screen`) and the layer that holds them. |
 | `.screen-text`, `.screen-image`, `.screen-button`, `.screen-button.picture`, `.screen-row`, `.screen-column`, `.screen-box` | Their elements; add your own class with `class=name`. |
 | `.screen-slots`, `.screen-slot`, `.screen-slot.empty`, `.screen-slot-caption`, `.screen-slot-text`, `.thumb` | Save slots and their pictures. |
 | `.screen-gallery`, `.screen-gallery-item`, `.screen-gallery-item.locked`, `.screen-endings`, `.screen-achievements` (`li.done`, `li.locked`) | Extras. |

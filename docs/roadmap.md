@@ -65,7 +65,7 @@ Porting a commercial VN demo released in Japanese, English and both Chinese scri
 A game can replace any built-in screen with its own, written in the script and styled with `theme.css`, so it looks like itself. Proof: the commercial demo port gets its original title, menu, save/load, settings and text box back.
 - [x] Screen language (D-049): `screen name:` with images, text, buttons, rows, columns and boxes; placed by percentages, or by pixels on a declared `canvas: 1920x1080`; `if` on any element; actions `start`, `continue`, `open`, `close`, `title`, `quit`, `jump`, `set`. Replaces the title screen and the game menu
 - [x] Data screens (D-050): save/load slots with thumbnails and pages, settings sliders and toggles, the Extras gallery and endings
-- [ ] Screens during the story: `show screen`, `hide screen`, `call screen pick_place` with the choice in a variable (maps, phones, calendars)
+- [x] Screens during the story (D-051): `show screen`, `hide screen`, `call screen pick_place` with the choice in a variable (maps, phones, calendars)
 - [ ] The text box as a screen: name plate, dialogue, side image, quick menu buttons, box art
 - [ ] Polish: hover and pressed images, click and hover sounds, transitions between screens, gamepad navigation, live preview in the editor
 - [ ] Proof: the port's own UI

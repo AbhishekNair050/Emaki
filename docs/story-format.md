@@ -48,6 +48,7 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 | `still` | `target` | no | Remove the sprite's `loop` (its endless move stops). |
 | `tone` | `tone, duration?` | no | Scene tone = `sepia` or `mono` (`none` removes it): a tint over the picture (not the text), faded over `duration` seconds. Kept by `scene`; saved and rolled back with the scene. |
 | `movie` | `path` | yes | Play the video at `path` full screen; the host continues when it ends or the player skips it. Effect only (skipped when skipping or going back). |
+| `screen` | `mode (show/hide/call), name, into?` | call: **yes** | `show`: put screen `name` on top of the shown screens (state `screens`, a list, bottom first; moved to the top if already there). `hide`: take it off. pc+1. `call`: show screen `name` and wait until one of its buttons runs a `return` action; then, if `into` is given and the return had a value, vars[into] = that value. pc+1. |
 | `camera` | `zoom, x, y, duration?` | no | Scene camera = zoom `zoom` (≥ 1) toward the point `x`%, `y`% of the screen; `zoom 1, x 50, y 50` is the whole picture. Animated over `duration` seconds without blocking. Part of the scene, so saved and rolled back with it. |
 
 **Voices.** `voices` (optional) maps line ids to voice files. When a `say` runs without a `play voice` just before it and its id is in `voices`, play that file on the voice channel as if `play voice` had come first.
@@ -82,7 +83,7 @@ A span with empty `text` and a `pause` marks a pause at that point in a `say` li
   "children"?: Item[] }                  // row, column, box
 ```
 
-Actions: `{do:"start", label?}`, `{do:"continue"}`, `{do:"open", screen}`, `{do:"close"}`, `{do:"title"}`, `{do:"quit"}`, `{do:"jump", label}`, `{do:"set", name, op:"="|"+="|"-=", value: Expr}`, `{do:"page", to:"next"|"previous"|number}`; on `slots` only, `{do:"load"}` or `{do:"save"}` (what clicking a slot does).
+Actions: `{do:"start", label?}`, `{do:"continue"}`, `{do:"open", screen}`, `{do:"close"}`, `{do:"title"}`, `{do:"quit"}`, `{do:"jump", label}`, `{do:"set", name, op:"="|"+="|"-=", value: Expr}`, `{do:"page", to:"next"|"previous"|number}`, `{do:"return", value?: Expr}` (on a screen the story called: go on with the story, with the value; elsewhere like `close`); on `slots` only, `{do:"load"}` or `{do:"save"}` (what clicking a slot does).
 
 `slots` shows `count` save slots of the current page (`meta.save_slots` in all, default 3); its `children`, if any, are drawn in each slot with the variables `slot_number`, `slot_empty`, `slot_date` and `slot_text` added, and `thumbnail` (only inside `slots`) is the slot's saved scene redrawn. `gallery` shows `count` of `gallery` images per page. Every screen also sees `page` and `pages` for the first `slots` or `gallery` it has. Names `save`, `load`, `settings` and `extras` replace those built-in screens. An `image` with no `x`, `w` or `h` covers the screen; a placed image without a size is drawn at its natural size relative to `meta.canvas` (default 1920 wide). Pixel values in the script are converted to percentages at compile time.
 

@@ -237,6 +237,14 @@ label opening:
 
 `movie` plays a video over the whole screen; the story goes on when it ends. Players skip it with a click, Enter, Space or Escape, and skipping mode leaves it out. It plays at the music volume. MP4 (H.264 video, AAC sound) works in every browser and on phones; WebM works everywhere except older iPhones. A movie can have a version per language, like pictures (see [Translations](#translations)): `movie/opening.ja.mp4`.
 
+## Screens during the story
+```
+  show screen hud
+  call screen map -> place
+  hide screen hud
+```
+`show screen` keeps one of your own [screens](theming.md#screens-during-the-story) (a status bar, a phone) over the story until `hide screen`. `call screen map -> place` shows one and waits until one of its buttons returns (`-> return "beach"`), putting what it returns in the variable `place`; leave out `-> place` when only the waiting matters.
+
 ## Choices
 ```
 menu:
