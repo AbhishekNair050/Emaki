@@ -66,7 +66,8 @@ export function print(program: Program): string {
   for (const sc of program.screens) {
     blank();
     trivia(sc.leading, '', out);
-    out.push(`screen ${sc.name}:`);
+    const tr = sc.transition ? ` with ${sc.transition.name}${sc.transition.duration !== undefined ? ` ${sc.transition.duration}` : ''}` : '';
+    out.push(`screen ${sc.name}${tr}:`);
     const items = (list: ScreenItem[], depth: number) => {
       for (const it of list) {
         trivia(it.leading, INDENT.repeat(depth), out);

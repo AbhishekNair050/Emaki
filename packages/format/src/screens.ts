@@ -26,11 +26,19 @@ import { parseMarkup, type Span } from './markup.ts';
 export type ScreenKind =
   | 'image' | 'text' | 'button' | 'row' | 'column' | 'box'
   | 'slots' | 'thumbnail' | 'gallery' | 'endings' | 'achievements'
-  | 'slider' | 'toggle' | 'choice';
+  | 'slider' | 'toggle' | 'choice'
+  | 'dialogue' | 'speaker' | 'side';
 export const SCREEN_KINDS: readonly ScreenKind[] = [
   'image', 'text', 'button', 'row', 'column', 'box',
   'slots', 'thumbnail', 'gallery', 'endings', 'achievements', 'slider', 'toggle', 'choice',
+  'dialogue', 'speaker', 'side',
 ];
+/** Parts of the text box, only in `screen textbox`: the line being said, who says it, their side image. */
+const TEXTBOX_PARTS: ReadonlySet<ScreenKind> = new Set(['dialogue', 'speaker', 'side']);
+/** Variables `screen textbox` sees: who is speaking ("" for narration). */
+export const TEXTBOX_VARS = ['speaker'] as const;
+/** How a screen appears when it opens (`screen menu with fade 0.3:`). */
+export const SCREEN_TRANSITIONS = ['fade', 'dissolve', 'none'] as const;
 const CONTAINERS: ReadonlySet<ScreenKind> = new Set(['row', 'column', 'box']);
 
 /**
@@ -44,7 +52,7 @@ export const SCREEN_SETTINGS = {
 } as const;
 
 /** Variables each cell of `slots` sees (besides the story's own). */
-export const SLOT_VARS = ['slot_number', 'slot_empty', 'slot_date', 'slot_text'] as const;
+export const SLOT_VARS = ['slot_number', 'slot_cell', 'slot_empty', 'slot_date', 'slot_text'] as const;
 /** Variables every screen sees: the page of its slots or gallery. */
 export const PAGE_VARS = ['page', 'pages'] as const;
 /** The most cells one `slots` or `gallery` can show at a time. */
@@ -71,7 +79,17 @@ export type ScreenAction =
   | { do: 'load' }
   | { do: 'save' }
   /** Turn the page of the screen's slots or gallery. */
-  | { do: 'page'; to: 'next' | 'previous' | number };
+  | { do: 'page'; to: 'next' | 'previous' | number }
+  /** Show another screen in this one's place (tabs: save and load, pages of settings). */
+  | { do: 'switch'; screen: string }
+  /** Set a player setting (a picture button for each option); the button shows as selected while it holds. */
+  | { do: 'setting'; name: string; value: string | number | boolean }
+  /** The story's controls, for a text box or menu of your own: go back a line, auto, skip, hide the interface, quick save and load, replay the voice. */
+  | { do: 'back' } | { do: 'auto' } | { do: 'skip' } | { do: 'hide' }
+  | { do: 'quicksave' } | { do: 'quickload' } | { do: 'voice' };
+
+/** Actions that take nothing after them. */
+const BARE_ACTIONS = ['continue', 'close', 'title', 'quit', 'load', 'save', 'back', 'auto', 'skip', 'hide', 'quicksave', 'quickload', 'voice'] as const;
 
 export interface ScreenItem extends Trivia {
   kind: ScreenKind;
@@ -81,6 +99,12 @@ export interface ScreenItem extends Trivia {
   image?: AssetRef;
   /** A picture button's picture while pointed at or focused. */
   hover?: AssetRef;
+  /** ... while pressed, while selected (auto on, the setting it sets in effect, the page shown), and when it can't be used. */
+  pressed?: AssetRef;
+  selected?: AssetRef;
+  disabled?: AssetRef;
+  /** A picture slider's knob (its `image` is the track). */
+  knob?: AssetRef;
   /** Description of an `image` for screen readers (none: decorative). */
   alt?: string;
   at?: [Len, Len];
@@ -103,10 +127,16 @@ export interface ScreenItem extends Trivia {
   loc: Loc;
 }
 
-export interface ScreenDef extends Trivia { name: string; items: ScreenItem[]; loc: Loc }
+export interface ScreenDef extends Trivia {
+  name: string;
+  items: ScreenItem[];
+  /** `screen menu with fade 0.3:`: how it appears. */
+  transition?: { name: (typeof SCREEN_TRANSITIONS)[number]; duration?: number };
+  loc: Loc;
+}
 
 /** Screens Emaki has built in; a `screen` with one of these names replaces it. */
-export const REPLACEABLE_SCREENS = ['title', 'menu', 'load', 'save', 'settings', 'extras'] as const;
+export const REPLACEABLE_SCREENS = ['title', 'menu', 'load', 'save', 'settings', 'extras', 'textbox'] as const;
 /** Built-in screens `open` can show. */
 export const BUILTIN_SCREENS = ['load', 'save', 'settings', 'extras', 'history'] as const;
 
@@ -181,16 +211,19 @@ function parseAction(src: string): ScreenAction | string {
   const one = (a: ScreenAction): ScreenAction | string => (more.length ? `Unexpected '${more.join(' ')}' after '${verb} ${arg}'` : a);
   const none = (a: ScreenAction): ScreenAction | string => (arg !== undefined ? `'${verb}' takes nothing after it` : a);
   const name = (what: string): string | null => (arg && /^[A-Za-z_]\w*$/.test(arg) ? null : `'${verb}' needs ${what}`);
+  if ((BARE_ACTIONS as readonly string[]).includes(verb ?? '')) return none({ do: verb } as ScreenAction);
   switch (verb) {
     case 'start': return arg === undefined ? { do: 'start' } : name('a label') ?? one({ do: 'start', label: arg });
-    case 'continue': return none({ do: 'continue' });
-    case 'close': return none({ do: 'close' });
-    case 'title': return none({ do: 'title' });
-    case 'quit': return none({ do: 'quit' });
     case 'open': return name('a screen name, like open settings') ?? one({ do: 'open', screen: arg! });
+    case 'switch': return name('a screen name, like switch load') ?? one({ do: 'switch', screen: arg! });
     case 'jump': return name('a label') ?? one({ do: 'jump', label: arg! });
-    case 'load': return none({ do: 'load' });
-    case 'save': return none({ do: 'save' });
+    case 'setting': {
+      const all = Object.values(SCREEN_SETTINGS).flat() as string[];
+      const raw = more.join(' ');
+      if (!arg || !all.includes(arg) || !raw) return `Expected 'setting name value', like 'setting skip_unread on' or 'setting language ja' (settings: ${[...new Set(all)].join(', ')})`;
+      const value = raw === 'on' ? true : raw === 'off' ? false : /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : raw.replace(/^"(.*)"$/, '$1');
+      return { do: 'setting', name: arg, value };
+    }
     case 'page': {
       if (arg === 'next' || arg === 'previous') return one({ do: 'page', to: arg });
       if (arg && /^\d+$/.test(arg) && Number(arg) >= 1) return one({ do: 'page', to: Number(arg) });
@@ -215,7 +248,7 @@ function parseAction(src: string): ScreenAction | string {
       }
     }
     case undefined: return `Expected an action after '->'`;
-    default: return `Unknown action '${verb}' (use start, continue, open, close, title, quit, jump, set, return or page; load and save on slots)`;
+    default: return `Unknown action '${verb}' (use start, continue, open, switch, close, title, quit, jump, set, return, page, setting, back, auto, skip, hide, quicksave, quickload or voice; load and save on slots)`;
   }
 }
 
@@ -279,6 +312,8 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     const n = tokens.shift()?.text;
     if (!n || !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > MAX_CELLS) return { error: `Expected how many to show at once, like '${kind} 6' (1 to ${MAX_CELLS})` };
     item.count = Number(n);
+  } else if (TEXTBOX_PARTS.has(kind)) {
+    // Nothing to give: the player fills them in.
   } else if (kind === 'slider' || kind === 'toggle' || kind === 'choice') {
     const label = tokens.shift();
     const setting = tokens.shift();
@@ -320,11 +355,12 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
       const c = opt.slice('class='.length);
       if (!/^[A-Za-z_][\w-]*$/.test(c)) return { error: `'class=' needs a name for theme.css, like class=heading` };
       item.className = c;
-    } else if (opt === 'image' || opt === 'hover') {
-      if (kind !== 'button') return { error: `'${opt}' is for picture buttons` };
+    } else if (opt === 'image' || opt === 'hover' || opt === 'pressed' || opt === 'selected' || opt === 'disabled' || opt === 'knob') {
+      const ok = kind === 'button' || kind === 'slots' ? opt !== 'knob' : kind === 'slider' ? opt === 'image' || opt === 'knob' : false;
+      if (!ok) return { error: opt === 'knob' || kind === 'slider' ? `A picture slider has an 'image' (its track) and a 'knob'` : `'${opt}' is for picture buttons and slots` };
       const p = tokens.shift();
       if (!p || (!p.quoted && !/^[A-Za-z_]\w*$/.test(p.text))) return { error: `'${opt}' needs a picture: ${opt} "ui/button.png"` };
-      if (opt === 'image') item.image = asset(p); else item.hover = asset(p);
+      item[opt] = asset(p);
     } else if (opt === 'columns') {
       const n = tokens.shift()?.text;
       if (kind !== 'slots' && kind !== 'gallery') return { error: `'columns' is for slots and gallery` };
@@ -336,10 +372,11 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
       if (!p?.quoted) return { error: `'alt' needs a description in quotes` };
       item.alt = p.text;
     } else {
-      return { error: `Unexpected '${t.quoted ? `"${t.text}"` : t.text}' (options: at, size, anchor, gap, columns, class=, image, hover, alt)` };
+      return { error: `Unexpected '${t.quoted ? `"${t.text}"` : t.text}' (options: at, size, anchor, gap, columns, class=, image, hover, pressed, selected, disabled, knob, alt)` };
     }
   }
-  if (item.hover && !item.image) return { error: `A button with 'hover' needs its 'image' too` };
+  if ((item.hover || item.pressed || item.selected || item.disabled) && !item.image) return { error: `A button with 'hover', 'pressed', 'selected' or 'disabled' needs its 'image' too` };
+  if (item.knob && !item.image) return { error: `A picture slider needs its track ('image') too` };
   return { item, container };
 }
 
@@ -356,6 +393,8 @@ function actionText(a: ScreenAction): string {
     case 'jump': return `jump ${a.label}`;
     case 'set': return `set ${a.name} ${a.op} ${printExpr(a.value)}`;
     case 'page': return `page ${a.to}`;
+    case 'switch': return `switch ${a.screen}`;
+    case 'setting': return `setting ${a.name} ${a.value === true ? 'on' : a.value === false ? 'off' : typeof a.value === 'string' && !/^[\w-]+$/.test(a.value) ? quote(a.value) : a.value}`;
     case 'return': return a.value ? `return ${printExpr(a.value)}` : 'return';
     default: return a.do;
   }
@@ -369,8 +408,12 @@ export function printScreenLine(it: ScreenItem): string {
   if (it.columns !== undefined) parts.push('columns', String(it.columns));
   if (it.text !== undefined) parts.push(quote(it.text));
   if (it.setting) parts.push(it.setting);
-  if (it.kind === 'button' && it.image) parts.push('image', assetText(it.image));
+  if (it.kind !== 'image' && it.image) parts.push('image', assetText(it.image));
   if (it.hover) parts.push('hover', assetText(it.hover));
+  if (it.pressed) parts.push('pressed', assetText(it.pressed));
+  if (it.selected) parts.push('selected', assetText(it.selected));
+  if (it.disabled) parts.push('disabled', assetText(it.disabled));
+  if (it.knob) parts.push('knob', assetText(it.knob));
   if (it.at) parts.push('at', lenText(it.at[0]), lenText(it.at[1]));
   if (it.size) parts.push('size', it.size[0] ? lenText(it.size[0]) : 'auto', it.size[1] ? lenText(it.size[1]) : 'auto');
   if (it.anchor) parts.push('anchor', it.anchor);
@@ -393,6 +436,10 @@ export interface CompiledScreenItem {
   spans?: Span[];
   image?: string;
   hover?: string;
+  pressed?: string;
+  selected?: string;
+  disabled?: string;
+  knob?: string;
   alt?: string;
   x?: number;
   y?: number;
@@ -410,7 +457,12 @@ export interface CompiledScreenItem {
   children?: CompiledScreenItem[];
 }
 
-export interface CompiledScreen { items: CompiledScreenItem[] }
+export interface CompiledScreen {
+  items: CompiledScreenItem[];
+  /** How it appears: `fade` (or `dissolve`, the same for screens) over `duration` seconds. */
+  transition?: 'fade' | 'dissolve';
+  duration?: number;
+}
 
 export interface ScreenContext {
   images: Record<string, string>;
@@ -474,8 +526,14 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
           if (m[1] && !known(m[1])) ctx.error(it.loc, 'unknown-variable', (SLOT_VARS as readonly string[]).includes(m[1]) ? `'{${m[1]}}' is only known inside 'slots'` : `Unknown variable '${m[1]}' in text`);
         }
       }
-      if (it.image) c.image = picture(it.image, it.loc);
-      if (it.hover) c.hover = picture(it.hover, it.loc);
+      for (const k of ['image', 'hover', 'pressed', 'selected', 'disabled', 'knob'] as const) {
+        if (it[k]) c[k] = picture(it[k]!, it.loc);
+      }
+      if (TEXTBOX_PARTS.has(it.kind)) {
+        if (def.name !== 'textbox') ctx.error(it.loc, 'bad-screen', `'${it.kind}' is part of the text box, so it goes in 'screen textbox'`);
+        else if (parts.has(it.kind)) ctx.error(it.loc, 'bad-screen', `The text box has one '${it.kind}'`);
+        parts.add(it.kind);
+      }
       if (it.alt !== undefined) {
         c.alt = it.alt;
         c.id ??= ctx.textId(def.name, it.alt);
@@ -517,6 +575,13 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
             checkVars(a.value, it.loc);
           } else if (a.do === 'return' && a.value) {
             checkVars(a.value, it.loc);
+          } else if (a.do === 'switch') {
+            if (!names.has(a.screen) && !(BUILTIN_SCREENS as readonly string[]).includes(a.screen)) {
+              ctx.error(it.loc, 'unknown-screen', `No screen named '${a.screen}' (built in: ${BUILTIN_SCREENS.join(', ')})`);
+            }
+          } else if (a.do === 'setting') {
+            const bad = settingValueProblem(a.name, a.value);
+            if (bad) ctx.error(it.loc, 'bad-screen', bad);
           }
         }
         c.actions = it.actions;
@@ -530,19 +595,39 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
       return c;
     };
     let inSlot = false;
+    const parts = new Set<ScreenKind>();
     const known = (name: string) => Object.prototype.hasOwnProperty.call(ctx.vars, name)
-      || (PAGE_VARS as readonly string[]).includes(name) || (inSlot && (SLOT_VARS as readonly string[]).includes(name));
+      || (PAGE_VARS as readonly string[]).includes(name) || (inSlot && (SLOT_VARS as readonly string[]).includes(name))
+      || (def.name === 'textbox' && (TEXTBOX_VARS as readonly string[]).includes(name));
     const checkVars = (e: Expr, loc: Loc) => {
       for (const name of freeVars(e)) {
         if (!known(name)) ctx.error(loc, 'unknown-variable', (SLOT_VARS as readonly string[]).includes(name) ? `'${name}' is only known inside 'slots'` : `Unknown variable '${name}'`);
       }
     };
-    out[def.name] = { items: def.items.map(compileItem) };
+    const compiled: CompiledScreen = { items: def.items.map(compileItem) };
+    if (def.name === 'textbox' && !parts.has('dialogue')) ctx.error(def.loc, 'bad-screen', `The text box needs a 'dialogue': where the lines appear`);
+    if (def.transition && def.transition.name !== 'none') {
+      compiled.transition = def.transition.name;
+      if (def.transition.duration !== undefined) compiled.duration = def.transition.duration;
+    }
+    out[def.name] = compiled;
   }
   return out;
 }
 
-/** Labels the screens' buttons start a game at or jump to. */
+/** What's wrong with `setting name value`, or null: toggles take on/off, sliders a number, choices one of their options. */
+function settingValueProblem(name: string, value: string | number | boolean): string | null {
+  const is = (k: keyof typeof SCREEN_SETTINGS) => (SCREEN_SETTINGS[k] as readonly string[]).includes(name);
+  if (typeof value === 'boolean') return is('toggle') ? null : `'${name}' isn't on/off`;
+  if (typeof value === 'number') return is('slider') ? null : `'${name}' isn't a number`;
+  if (!is('choice')) return `'${name}' takes ${is('toggle') ? 'on or off' : 'a number'}`;
+  const OPTIONS: Record<string, readonly string[] | null> = {
+    font: ['serif', 'sans', 'legible', 'dyslexic'], animations: ['system', 'full', 'reduced'], skip: ['read', 'all'], language: null,
+  };
+  const ok = OPTIONS[name];
+  return !ok || ok.includes(value) ? null : `'${name}' is one of: ${ok.join(', ')}`;
+}
+
 /** Whether a screen has a button that leaves it (returns, closes, or goes elsewhere), so the story can call it. */
 export function screenCanLeave(def: ScreenDef): boolean {
   const LEAVES = new Set(['return', 'close', 'jump', 'start', 'title', 'quit', 'continue']);
@@ -551,6 +636,7 @@ export function screenCanLeave(def: ScreenDef): boolean {
   return walk(def.items);
 }
 
+/** Labels the screens' buttons start a game at or jump to. */
 export function screenTargets(defs: ScreenDef[]): string[] {
   const out: string[] = [];
   const walk = (items: ScreenItem[]) => {

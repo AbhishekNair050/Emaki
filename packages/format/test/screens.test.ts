@@ -162,3 +162,68 @@ describe('screens and the story', () => {
     expect(compile(src).diagnostics.map((d) => d.code)).not.toContain('unreachable-label');
   });
 });
+
+const BOX = `---
+canvas: 1920x1080
+---
+
+screen textbox:
+  image "ui/mw.png" at 0px 829px
+  image "ui/name.png" at 57px 786px if speaker
+  speaker at 215px 756px
+  dialogue at 220px 855px size 1522px 200px
+  side at 0px 600px
+  button "Auto" image "ui/auto.png" hover "ui/auto_on.png" pressed "ui/auto_down.png" selected "ui/auto_sel.png" -> auto
+  button "Save" image "ui/save.png" disabled "ui/save_off.png" -> open save
+  button "Quick save" -> quicksave
+  button "Hide" -> hide
+
+screen settings with fade 0.3:
+  slider "Music" music_volume image "ui/track.png" knob "ui/knob.png" at 919px 214px size 400px 18px
+  button "Skip all" image "ui/check.png" selected "ui/checked.png" -> setting skip_unread on
+  button "English" -> setting language en
+  button "Sound" -> switch sound
+
+screen sound:
+  button "Back" -> close
+
+label start:
+  "x"
+`;
+
+describe('text box and polish', () => {
+  it('parse, print back and compile', () => {
+    const p = parse(BOX);
+    expect(p.diagnostics).toEqual([]);
+    expect(print(p.program)).toBe(BOX.slice(BOX.indexOf('---')));
+    const r = compile(BOX);
+    expect(r.diagnostics).toEqual([]);
+    const tb = r.story!.screens!.textbox!;
+    expect(tb.items.map((i) => i.kind)).toEqual(['image', 'image', 'speaker', 'dialogue', 'side', 'button', 'button', 'button', 'button']);
+    expect(tb.items[3]).toMatchObject({ kind: 'dialogue', x: 11.458, w: 79.271 });
+    expect(tb.items[5]).toMatchObject({ pressed: 'ui/auto_down.png', selected: 'ui/auto_sel.png', actions: [{ do: 'auto' }] });
+    const st = r.story!.screens!.settings!;
+    expect(st).toMatchObject({ transition: 'fade', duration: 0.3 });
+    expect(st.items[0]).toMatchObject({ kind: 'slider', image: 'ui/track.png', knob: 'ui/knob.png' });
+    expect(st.items.slice(1).map((i) => i.actions)).toEqual([
+      [{ do: 'setting', name: 'skip_unread', value: true }], [{ do: 'setting', name: 'language', value: 'en' }], [{ do: 'switch', screen: 'sound' }],
+    ]);
+  });
+
+  it('explain mistakes', () => {
+    const at = (screen: string, name = 's') => compile(`screen ${name}:\n  ${screen.split('\n').join('\n  ')}\nlabel start:\n  "x"\n`).diagnostics.map((d) => d.code);
+    expect(at('dialogue')).toEqual(['bad-screen']);                          // only in the text box
+    expect(at('speaker', 'textbox')).toEqual(['bad-screen']);                // a text box needs a dialogue
+    expect(at('dialogue\ndialogue', 'textbox')).toEqual(['bad-screen']);
+    expect(at('text "{speaker}"')).toEqual(['unknown-variable']);
+    expect(at('dialogue\ntext "{speaker}"', 'textbox')).toEqual([]);
+    expect(at('button "x" -> setting skip_unread 3')).toEqual(['bad-screen']);
+    expect(at('button "x" -> setting font comic')).toEqual(['bad-screen']);
+    expect(at('button "x" -> setting loudness 3')).toEqual(['bad-screen']);
+    expect(at('button "x" -> switch nowhere')).toEqual(['unknown-screen']);
+    expect(at('button "x" hover "a.png" -> close')).toEqual(['bad-screen']);  // hover needs image
+    expect(at('slider "Music" music_volume knob "k.png"')).toEqual(['bad-screen']);
+    expect(at('text "x" knob "k.png"')).toEqual(['bad-screen']);
+    expect(compile('screen s with spin:\n  text "x"\nlabel start:\n  "x"\n').diagnostics.map((d) => d.code)).toEqual(['bad-screen']);
+  });
+});

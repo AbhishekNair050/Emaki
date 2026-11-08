@@ -12,7 +12,7 @@ import type {
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
 import { TONES } from './ast.ts';
-import { parseScreenLine, type ScreenDef, type ScreenItem } from './screens.ts';
+import { SCREEN_TRANSITIONS, parseScreenLine, type ScreenDef, type ScreenItem } from './screens.ts';
 
 interface Line {
   indent: number;
@@ -121,7 +121,7 @@ export function parse(source: string): ParseResult {
       return;
     }
 
-    if (word === 'screen' && /^screen\s+[A-Za-z_]\w*\s*:$/.test(t)) {
+    if (word === 'screen' && /^screen\s+[A-Za-z_]\w*(\s+with\s+.*)?:$/.test(t)) {
       parseScreen(ln);
       return;
     }
@@ -478,6 +478,12 @@ export function parse(source: string): ParseResult {
       return out;
     };
     const def: ScreenDef = { name, items: items(ln.children), loc: { line: ln.line } };
+    const w = /^screen\s+[A-Za-z_]\w*\s+with\s+(.*?)\s*:$/.exec(ln.text);
+    if (w) {
+      const m = /^([a-z]+)(?:\s+(\d+(?:\.\d+)?))?$/.exec(w[1]!);
+      if (!m || !(SCREEN_TRANSITIONS as readonly string[]).includes(m[1]!)) err(ln.line, 'bad-screen', `Expected 'screen ${name} with fade:' or 'with fade 0.3' (${SCREEN_TRANSITIONS.join(', ')})`);
+      else def.transition = { name: m[1] as (typeof SCREEN_TRANSITIONS)[number], ...(m[2] ? { duration: Number(m[2]) } : {}) };
+    }
     program.screens.push(attach(def, ln, program.screens.length === 0));
   }
 
