@@ -90,3 +90,37 @@ describe('screens during the story', () => {
     expect(codes('hide screen')).toEqual(['bad-hide']);
   });
 });
+
+describe('going back to a line or a choice', () => {
+  const SRC2 = `label start:
+  "One."
+  menu:
+    "Left":
+      "Two."
+    "Right":
+      "Two."
+  "Three."
+  menu:
+    "Up":
+      "Four."
+  "Five."
+`;
+  it('rewind to a line of the log, and back to the last choice', () => {
+    const run = new Runner(compile(SRC2).story!);
+    run.start();
+    run.advance();          // the first menu
+    run.choose(0);          // Two.
+    run.advance();          // Three.
+    expect(run.log.map((b) => b.text)).toEqual(['One.', 'Two.', 'Three.']);
+    expect(run.rewindTo(0)!.block).toMatchObject({ text: 'One.' });
+    expect(run.log.map((b) => b.text)).toEqual(['One.']);
+    expect(run.rewindTo(0)).toBeNull(); // already there
+    run.advance();
+    run.choose(1);
+    run.advance();
+    run.advance();          // the second menu
+    expect(run.canGoBackToChoice).toBe(true);
+    expect(run.backToChoice()!.block).toMatchObject({ type: 'menu', choices: [{ text: 'Left' }, { text: 'Right' }] });
+    expect(run.canGoBackToChoice).toBe(false);
+  });
+});

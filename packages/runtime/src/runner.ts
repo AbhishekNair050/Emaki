@@ -410,6 +410,40 @@ export class Runner {
     return this.history.length > 1;
   }
 
+  /**
+   * Go back to the `n`th line of the log (0 = the oldest kept), as if Back
+   * had been pressed until it was on screen. Null if there's no such line.
+   */
+  rewindTo(n: number): { block: Block; scene: SceneState } | null {
+    let seen = -1;
+    const at = this.history.findIndex((h) => h.block.type === 'say' && ++seen === n);
+    return at < 0 || at === this.history.length - 1 ? null : this.restore(at);
+  }
+
+  /** Go back to the last choice before the one on screen (skip back to a choice). Null if there's none. */
+  backToChoice(): { block: Block; scene: SceneState } | null {
+    const at = this.lastChoice();
+    return at < 0 ? null : this.restore(at);
+  }
+
+  get canGoBackToChoice(): boolean {
+    return this.lastChoice() >= 0;
+  }
+
+  private lastChoice(): number {
+    for (let i = this.history.length - 2; i >= 0; i--) if (this.history[i]!.block.type === 'menu') return i;
+    return -1;
+  }
+
+  private restore(at: number): { block: Block; scene: SceneState } {
+    this.history.length = at + 1;
+    const h = this.history[at]!;
+    this.state = clone(h.state);
+    this.applyGlobals();
+    this.current = this.localize(h.block);
+    return { block: this.current, scene: this.scene() };
+  }
+
   get block(): Block | null {
     return this.current;
   }
