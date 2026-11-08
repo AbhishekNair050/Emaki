@@ -63,14 +63,17 @@ A runtime should guard against loops that execute many instructions without bloc
 A span with empty `text` and a `pause` marks a pause at that point in a `say` line: `"click"` (wait for the player, `[w]`), a number of seconds (`[w=1.5]`), or `"next"` (`[nw]`, always last: continue to the next line without waiting for the player). Lines with pauses always carry `spans`. A runtime that ignores pauses still shows the right text.
 
 ## Screens
-`screens` (absent when the game has none) maps a screen name to `{ items: Item[] }`. Names `title` and `menu` replace the built-in title menu and the in-game menu; other names are opened by `open`. An item:
+`screens` (absent when the game has none) maps a screen name to `{ items: Item[], transition?: "fade" | "dissolve", duration?: number }` (with a transition, the screen fades in over `duration` seconds, 0.3 by default, when it opens). Names `title` and `menu` replace the built-in title menu and the in-game menu, `textbox` the text box; other names are opened by `open`. An item:
 
 ```
 { "kind": "image" | "text" | "button" | "row" | "column" | "box"
-         | "slots" | "thumbnail" | "gallery" | "endings" | "achievements" | "slider" | "toggle" | "choice",
+         | "slots" | "thumbnail" | "gallery" | "endings" | "achievements" | "slider" | "toggle" | "choice"
+         | "dialogue" | "speaker" | "side",
   "id"?: "screen.title.1f3a",           // translation id of text (and "<id>.alt" of alt)
   "text"?: "New Game", "spans"?: [...],  // text / button label, as in say
   "image"?: "ui/new.png", "hover"?: "ui/new_on.png", "alt"?: "...",
+  "pressed"?, "selected"?, "disabled"?: "ui/...",  // buttons and slots: pictures for those states
+  "knob"?: "ui/knob.png",                // a slider with an image (its gauge) and this knob
   "x"?, "y"?: number,                    // percent of the screen's width / height; absent: flows in its parent
   "w"?, "h"?: number,                    // percent of the screen's width / height
   "anchor"?: [ax, ay],                   // the point of the element at x, y, as fractions of its size; default [0, 0]
@@ -83,9 +86,9 @@ A span with empty `text` and a `pause` marks a pause at that point in a `say` li
   "children"?: Item[] }                  // row, column, box
 ```
 
-Actions: `{do:"start", label?}`, `{do:"continue"}`, `{do:"open", screen}`, `{do:"close"}`, `{do:"title"}`, `{do:"quit"}`, `{do:"jump", label}`, `{do:"set", name, op:"="|"+="|"-=", value: Expr}`, `{do:"page", to:"next"|"previous"|number}`, `{do:"return", value?: Expr}` (on a screen the story called: go on with the story, with the value; elsewhere like `close`); on `slots` only, `{do:"load"}` or `{do:"save"}` (what clicking a slot does).
+Actions: `{do:"start", label?}`, `{do:"continue"}`, `{do:"open", screen}`, `{do:"close"}`, `{do:"title"}`, `{do:"quit"}`, `{do:"jump", label}`, `{do:"set", name, op:"="|"+="|"-=", value: Expr}`, `{do:"page", to:"next"|"previous"|number}`, `{do:"return", value?: Expr}` (on a screen the story called: go on with the story, with the value; elsewhere like `close`), `{do:"switch", screen}` (show it in place of the current screen), `{do:"setting", name, value}` (set a player setting; a button with it is selected while the setting holds the value), `{do:"back"}`, `{do:"auto"}`, `{do:"skip"}`, `{do:"hide"}`, `{do:"quicksave"}`, `{do:"quickload"}`, `{do:"voice"}`; on `slots` only, `{do:"load"}` or `{do:"save"}` (what clicking a slot does).
 
-`slots` shows `count` save slots of the current page (`meta.save_slots` in all, default 3); its `children`, if any, are drawn in each slot with the variables `slot_number`, `slot_empty`, `slot_date` and `slot_text` added, and `thumbnail` (only inside `slots`) is the slot's saved scene redrawn. `gallery` shows `count` of `gallery` images per page. Every screen also sees `page` and `pages` for the first `slots` or `gallery` it has. Names `save`, `load`, `settings` and `extras` replace those built-in screens. An `image` with no `x`, `w` or `h` covers the screen; a placed image without a size is drawn at its natural size relative to `meta.canvas` (default 1920 wide). Pixel values in the script are converted to percentages at compile time.
+`slots` shows `count` save slots of the current page (`meta.save_slots` in all, default 3); its `children`, if any, are drawn in each slot with the variables `slot_number`, `slot_cell` (its place on the page, from 1), `slot_empty`, `slot_date` and `slot_text` added (picture paths of `slots` can use `{slot_cell}` and `{slot_number}`), and `thumbnail` (only inside `slots`) is the slot's saved scene redrawn. `gallery` shows `count` of `gallery` images per page. Every screen also sees `page` and `pages` for the first `slots` or `gallery` it has. Names `save`, `load`, `settings` and `extras` replace those built-in screens. In `textbox`, `dialogue`, `speaker` and `side` mark where the line, the speaker's name and the side image go, and the variable `speaker` is the speaker's name (`""` for narration); buttons on it replace the quick menu. `meta.click_sound` and `meta.hover_sound` play for screen buttons. An `image` with no `x`, `w` or `h` covers the screen; a placed image without a size is drawn at its natural size relative to `meta.canvas` (default 1920 wide). Pixel values in the script are converted to percentages at compile time.
 
 ## Expressions
 JSON trees, `k` = kind:

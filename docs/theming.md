@@ -62,7 +62,7 @@ Each line is one element: `kind ["text"] [options] [-> actions] [if condition]`.
 |---|---|
 | `image "ui/bg.png"` (or a declared image's name) | A picture. With no `at` or `size` it covers the whole screen (a background); placed with `at`, it keeps the size it was drawn at on your canvas. `alt "..."` describes it for screen readers. |
 | `text "Version 1.0"` | Text, with the same `*styling*` and `{variables}` as dialogue. |
-| `button "New Game" -> start` | A button. With `image "..."` (and `hover "..."` for when it's pointed at or focused) it's a picture; the label is still required: it's what screen readers say, and what translators translate. |
+| `button "New Game" -> start` | A button. With `image "..."` it's a picture; the label is still required: it's what screen readers say, and what translators translate. Pictures for its other states are optional: `hover` (pointed at or focused), `pressed`, `selected` (its action is in effect: auto is on, the setting it sets holds, it's the page or tab shown) and `disabled` (it can't be used now; without one it's dimmed). |
 | `row:` / `column:` | Lines elements up across or down, `gap 2%` apart. The lines indented under it are its elements. |
 | `box:` | A group with its own place and size (a panel), its elements stacked inside. |
 
@@ -81,10 +81,38 @@ Each line is one element: `kind ["text"] [options] [-> actions] [if condition]`.
 | `jump label` | Continues the story at a label, keeping the variables. |
 | `set visits += 1` | Changes a variable; the screen redraws. A `global var` changed this way is remembered. |
 | `return` / `return "beach"` | On a screen the story called (`call screen map -> place`), goes on with the story, putting the value in the call's variable. Elsewhere it's the same as `close`. |
+| `switch load` | Shows another screen in this one's place, for tabs (Save and Load, pages of settings): `close` then goes back to what was under both. |
+| `setting skip_unread on`, `setting language ja` | Sets a player setting, for settings drawn as picture buttons (one per option). The button shows as selected while the setting holds that value. Toggles take `on`/`off`, sliders a number, choices one of their options. |
+| `back`, `auto`, `skip`, `hide` | The story's own controls, for a text box or menu of yours: go back a line, auto-play, skip, hide the interface until the next click. `auto` and `skip` buttons show as selected while on. |
+| `quicksave`, `quickload` | Save to, and load from, one quick slot (Quick load is greyed out until there's a quick save). |
+| `voice` | Plays the line's voice again. |
 
 `if condition` at the end of a line shows the element only while the condition holds, which is how unlockable extras work.
 
 **Which screens you can replace.** `screen title` replaces the title menu (the header's `title_music` still plays, and a `label title` still plays behind it). `screen menu` is what the quick menu's **Menu** button opens during the story; without it, Menu goes back to the title. `screen save`, `screen load`, `screen settings` and `screen extras` replace those built-in screens everywhere they open (the quick menu, the title, `open load`). Any other name is a screen of your own, opened with `open name`.
+
+**Screens that fade in.** `screen settings with fade 0.3:` fades the screen in when it opens (0.3 seconds by default); redrawing it, or turning its pages, doesn't. Players who ask for less motion get no fade.
+
+**Interface sounds.** `click_sound: sound/ui/click.ogg` and `hover_sound: sound/ui/hover.ogg` in the header play on every button of your screens, at the sound effects volume.
+
+**Gamepads.** Every screen works with a gamepad, with no setup: the d-pad or left stick moves to the nearest button in that direction (so any layout works), A presses it, or goes on with the story when nothing is chosen; B closes the screen on top, Start opens the menu, LB goes back a line and RB goes on. Left and right move sliders.
+
+**Editing them.** In the editor, put the cursor inside a `screen` and the game shows that screen, redrawn as you type.
+
+### The text box
+```
+screen textbox:
+  image "ui/window.png" at 0px 829px
+  image "ui/nameplate.png" at 57px 786px if speaker
+  speaker at 215px 756px
+  dialogue at 220px 855px size 1522px 210px
+  side at 0px 600px
+  button "Auto" image "ui/auto.png" hover "ui/auto_on.png" selected "ui/auto_lit.png" at 1172px 777px -> auto
+  button "Save" image "ui/save.png" at 780px 776px -> open save
+  button "Hide" image "ui/hide.png" at 1762px 776px -> hide
+```
+
+`screen textbox` replaces the text box. `dialogue` is where the line appears (it types out, pauses and waits as usual), `speaker` the speaker's name and `side` their side image; place them like any element. The screen also sees `speaker`, the name of who is talking (`""` for narration), so a name plate can show only when someone speaks. Buttons on it replace the quick menu; a text box without buttons keeps it. Style the words with `.textbox .text` and `.namebox`, and the ▾ "click to continue" mark with `.next-indicator`, in your theme.css. NVL pages are unchanged.
 
 ### Save and load screens
 ```
@@ -111,6 +139,7 @@ screen save:
 
 - `slots 6 -> load` (or `-> save`) is a grid of six save slots; each is a button that loads or saves that slot. `columns 3` sets how many across.
 - The lines indented under `slots` are what each slot shows; leave them out for a picture, the date and the line it was saved at. Inside, `{slot_number}`, `{slot_date}`, `{slot_text}` (the line it was saved at) and `slot_empty` describe that slot, and `thumbnail` is the saved scene, drawn small (background, characters and tone, restyled by your theme.css like the real stage). Slots can't hold buttons, since each slot is one.
+- Slots can be pictures too: `slots 8 columns 2 image "ui/slot{slot_cell}.png" hover "ui/slot{slot_cell}_on.png" -> save`, where `{slot_cell}` is the slot's place on the page (1 to 8 here), for art that differs by place. Elements inside a picture slot are placed from the slot's top-left corner.
 - `save_slots: 60` in the header sets how many save slots the game has (3 by default); the built-in save screen shows them all. `-> page next`, `-> page previous` and `-> page 2` turn the page, and `{page}` and `{pages}` show where you are. The page is remembered while the game is open.
 
 ### Settings screen
@@ -132,6 +161,8 @@ screen settings:
 | `choice "Label" name` | `font`, `language`, `animations` (as the device says, full, reduced), `skip` (read text, all text) |
 
 Changes apply at once and are remembered, exactly as in the built-in screen. The label is what the control is called on screen and for screen readers.
+
+A slider can be a picture: `slider "Music" music_volume image "ui/gauge.png" knob "ui/knob.png" at 919px 214px size 400px 18px`. The `image` fills the slider from the left up to its value (draw the empty track in the screen's background), and the `knob` rides on it; without a knob the gauge alone shows the value. Its label is then only for screen readers. For on/off and multiple-choice settings drawn as pictures, use one button per option with `-> setting name value` and a `selected` picture.
 
 ### Screens during the story
 Your own screens can also appear while the story plays: a status bar, a phone, a map to pick a place from.
@@ -205,6 +236,8 @@ These class names are kept stable between versions:
 | `.nvl-page`, `.nvl-line`, `.nvl-name`, `.nvl-text` | NVL mode pages (`.nvl-line[data-speaker="mira"]` for one character's lines). |
 | `.toast` | Short notices (achievements, "Saved"). |
 | `.overlay.screen`, `.screen-root`, `.screen-<name>` | One of your own screens (`.screen-title`, `.screen-menu`). |
+| `.picture`, `.selected`, `.screen-slot.picture`, `.screen-slider.picture .fill` | Picture buttons, slots and sliders, and buttons whose action is in effect. |
+| `.stage.own-textbox`, `.screen-part` | A game with `screen textbox`, and the line, name and side image it places. |
 | `.screen-layer`, `.screen-root.shown`, `.screen-root.called` | Screens over the story (`show screen`, `call screen`) and the layer that holds them. |
 | `.screen-text`, `.screen-image`, `.screen-button`, `.screen-button.picture`, `.screen-row`, `.screen-column`, `.screen-box` | Their elements; add your own class with `class=name`. |
 | `.screen-slots`, `.screen-slot`, `.screen-slot.empty`, `.screen-slot-caption`, `.screen-slot-text`, `.thumb` | Save slots and their pictures. |

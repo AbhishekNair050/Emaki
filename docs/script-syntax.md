@@ -50,6 +50,7 @@ Between `---` lines at the very top: `key: value` pairs.
 - `steam_app_id`: your game's Steam App ID; the desktop build then talks to Steam (achievements, overlay).
 - `canvas`: the size your UI art is drawn at, like `1920x1080`, so [screens](theming.md#3-your-own-screens-screen-title) can place things in pixels.
 - `save_slots`: how many save slots the game has (3 by default).
+- `click_sound`, `hover_sound`: sounds for clicking and pointing at the buttons of your screens.
 
 ## Declarations (top level, no indentation)
 | Line | Meaning |
