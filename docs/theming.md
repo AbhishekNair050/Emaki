@@ -85,11 +85,16 @@ Each line is one element: `kind ["text"] [options] [-> actions] [if condition]`.
 | `setting skip_unread on`, `setting language ja` | Sets a player setting, for settings drawn as picture buttons (one per option). The button shows as selected while the setting holds that value. Toggles take `on`/`off`, sliders a number, choices one of their options. |
 | `back`, `auto`, `skip`, `hide` | The story's own controls, for a text box or menu of yours: go back a line, auto-play, skip, hide the interface until the next click. `auto` and `skip` buttons show as selected while on. |
 | `quicksave`, `quickload` | Save to, and load from, one quick slot (Quick load is greyed out until there's a quick save). |
-| `voice` | Plays the line's voice again. |
+| `voice` | Plays the line's voice again (in a `log` entry, that line's voice). |
+| `next_choice`, `previous_choice` | Skip ahead to the next choice (through unread text too), or go back to the previous one. |
+| `reset` | Puts every setting back as it was (the language stays). |
+| `sample sound "se/test.ogg"`, `sample voice "voice/rin_test.ogg" rin` | Plays a sample at that volume (a character's voice volume, with their id): the "test" button by a slider. |
+| `yes`, `no` | The answers on `screen confirm`. |
+| `scroll up`, `scroll down`, and in a `log` entry `rewind` | Move a `log` by one line; go back in the story to that entry's line. `page next` / `page previous` move it by a whole window. |
 
 `if condition` at the end of a line shows the element only while the condition holds, which is how unlockable extras work.
 
-**Which screens you can replace.** `screen title` replaces the title menu (the header's `title_music` still plays, and a `label title` still plays behind it). `screen menu` is what the quick menu's **Menu** button opens during the story; without it, Menu goes back to the title. `screen save`, `screen load`, `screen settings` and `screen extras` replace those built-in screens everywhere they open (the quick menu, the title, `open load`). Any other name is a screen of your own, opened with `open name`.
+**Which screens you can replace.** `screen title` replaces the title menu (the header's `title_music` still plays, and a `label title` still plays behind it). `screen menu` is what the quick menu's **Menu** button opens during the story; without it, Menu goes back to the title. `screen save`, `screen load`, `screen settings` and `screen extras` replace those built-in screens everywhere they open (the quick menu, the title, `open load`); `screen history` replaces the log, and `screen confirm` the questions the player asks ("Return to the title?"). Any other name is a screen of your own, opened with `open name`.
 
 **Screens that fade in.** `screen settings with fade 0.3:` fades the screen in when it opens (0.3 seconds by default); redrawing it, or turning its pages, doesn't. Players who ask for less motion get no fade.
 
@@ -156,8 +161,8 @@ screen settings:
 
 | Control | Settings it can show |
 |---|---|
-| `slider "Label" name` | `text_speed`, `auto_wait`, `music_volume`, `sound_volume`, `voice_volume`, `text_size`, `box_opacity` |
-| `toggle "Label" name` | `skip_unread`, `animations`, `fullscreen` (desktop apps) |
+| `slider "Label" name` | `text_speed`, `auto_wait`, `master_volume`, `music_volume`, `sound_volume`, `voice_volume`, `text_size`, `box_opacity` |
+| `toggle "Label" name` | `skip_unread`, `animations`, `fullscreen` (desktop apps); `master_mute`, `music_mute`, `sound_mute`, `voice_mute`; which questions to ask: `confirm_title`, `confirm_quit`, `confirm_overwrite`, `confirm_load`, `confirm_quicksave`, `confirm_quickload`, `confirm_reset`, `confirm_next_choice`, `confirm_previous_choice`, `confirm_rewind` |
 | `choice "Label" name` | `font`, `language`, `animations` (as the device says, full, reduced), `skip` (read text, all text) |
 
 Changes apply at once and are remembered, exactly as in the built-in screen. The label is what the control is called on screen and for screen readers.
@@ -195,6 +200,33 @@ label start:
 - These screens are drawn under the quick menu and above the text box, so a full-screen map covers the text box but the player can still save, load or open the settings. They're hidden with the rest of the interface when the player hides it (the H key); a called screen isn't, since it's waiting for an answer.
 - The screens the player opens themselves (`title`, `menu`, `save`, `load`, `settings`, `extras`) can't be shown or called. The compiler warns when a called screen has no button that returns, since the story would wait forever.
 - Style them with `.screen-layer .screen-hud`, `.screen-root.shown` and `.screen-root.called`.
+
+**Each character's voice.** `slider "Rin" voice_volume rin` and `toggle "Mute Rin" voice_mute rin` set one character's voice (on top of the voice volume), by the id from `define`. The master volume scales music, sounds and voices together, and muting a channel keeps its volume for when it's switched back on. A toggle can be a picture too (`image`, `hover`, and `selected` for on), for check boxes drawn in your art.
+
+### The history screen
+```
+screen history:
+  image "ui/backlog.png"
+  log 3 at 136px 181px size 1700px 310px:
+    button "Replay this line" image "ui/entry.png" at 80px 42px -> voice
+    button "Go back to this line" image "ui/jump.png" at 45px 0px -> rewind
+    text "{log_name}" at 310px -8px class=name
+    text "{log_text}" at 310px 72px size 1250px auto
+  button "Up" -> scroll up
+  button "Down" -> scroll down
+  button "Close" -> close
+```
+`log 3` shows three lines of the history at a time, newest at the bottom; `size` is the size of one entry, and the entries stack down from `at`. The lines under it are drawn in each entry, measured from its top-left corner, with `{log_name}`, `{log_text}`, `{log_number}` and `log_voice` (whether the line has a voice) for that line. A button in an entry acts on its line: `voice` replays it, `rewind` goes back in the story to it. The mouse wheel scrolls it too.
+
+### Questions
+```
+screen confirm:
+  image "ui/dialog_bg.png"
+  image "ui/question_{confirm}.png" at 609px 501px alt "{message}"
+  button "Yes" image "ui/yes.png" at 742px 593px -> yes
+  button "No" image "ui/no.png" at 982px 594px -> no
+```
+Before something that can't be undone, the player asks first: returning to the title (`title`), quitting (`quit`), saving over a save (`overwrite`), loading during a game (`load`), replacing the quick save (`quicksave`), quick loading (`quickload`), resetting settings (`reset`), skipping to the next choice or back to the previous one (`next_choice`, `previous_choice`) and going back to a line of the history (`rewind`). `screen confirm` asks them in your art, over whatever is open, so No returns to it. `{confirm}` is which question it is (pictures with the question drawn in can be picked by it), and `{message}` its text in the player's language. Players can stop any question with the `confirm_...` toggles.
 
 ### Extras screen
 `gallery 12 columns 4` is a page of gallery images (pictures seen so far, ??? for the rest; click one to see it full size, with the same `page` actions as slots). `endings` and `achievements` list the endings reached and achievements earned. Style them with `.screen-gallery-item`, `.screen-endings li.done` / `.locked` and so on.
@@ -236,6 +268,8 @@ These class names are kept stable between versions:
 | `.nvl-page`, `.nvl-line`, `.nvl-name`, `.nvl-text` | NVL mode pages (`.nvl-line[data-speaker="mira"]` for one character's lines). |
 | `.toast` | Short notices (achievements, "Saved"). |
 | `.overlay.screen`, `.screen-root`, `.screen-<name>` | One of your own screens (`.screen-title`, `.screen-menu`). |
+| `.screen-log`, `.screen-log-entry` | A `log` and its entries. |
+| `.confirm-panel` | The built-in question (without `screen confirm`). |
 | `.picture`, `.selected`, `.screen-slot.picture`, `.screen-slider.picture .fill` | Picture buttons, slots and sliders, and buttons whose action is in effect. |
 | `.stage.own-textbox`, `.screen-part` | A game with `screen textbox`, and the line, name and side image it places. |
 | `.screen-layer`, `.screen-root.shown`, `.screen-root.called` | Screens over the story (`show screen`, `call screen`) and the layer that holds them. |

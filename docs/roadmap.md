@@ -70,6 +70,13 @@ A game can replace any built-in screen with its own, written in the script and s
 - [x] Polish (D-053): pressed, selected and disabled pictures, settings as picture buttons, picture sliders, tabs (`switch`), click and hover sounds, fading screens, gamepad navigation, live preview in the editor
 - [x] Proof: the port's title, text box, save, load and settings pages, generated from the original layout tables
 
+## ✅ Milestone 7 — Finishing touches for commercial UIs
+What the port still drew as dead art, made real.
+- [x] The history screen of your own: `screen history`, `log` with replay and go back to a line (D-054)
+- [x] Questions in your own art: `screen confirm`, and a setting per question to stop asking
+- [x] Master volume, mutes, and each character's voice volume and mute; sample buttons
+- [x] Reset settings; skip to the next choice and back to the previous one
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 - Plugin API v1
