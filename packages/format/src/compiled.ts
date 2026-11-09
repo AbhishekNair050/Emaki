@@ -63,6 +63,13 @@ export type Instr =
    * into the variable `into`, when given.
    */
   | { op: 'screen'; mode: 'show' | 'hide' | 'call'; name: string; into?: string; src: SrcRef }
+  /**
+   * A plugin's command with its arguments. `waits`: the story blocks until the
+   * plugin finishes, putting its result in `into`. `lasting`: the command is
+   * kept in the state under that slot (`ends` clears it) so it can be redone
+   * after a load or rollback.
+   */
+  | { op: 'plugin'; plugin: string; command: string; args: Record<string, Expr>; waits?: true; lasting?: string; ends?: true; into?: string; src: SrcRef }
   | { op: 'flash'; color: string; duration?: number; src: SrcRef }
   /**
    * Zoom the picture (backgrounds and characters, not the text) by `zoom` (1 =

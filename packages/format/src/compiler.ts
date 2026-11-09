@@ -13,6 +13,7 @@ import {
   type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
+import { checkPluginCall, type PluginCommandSpec, type PluginManifest } from './plugins.ts';
 import { REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse } from './parser.ts';
@@ -55,8 +56,18 @@ export interface SourceString {
 }
 
 /** Parse + compile in one go. */
-export function compile(source: string): CompileResult {
-  return compileFiles(source);
+/** What the compiler knows about the game beyond its script. */
+export interface CompileOptions {
+  /**
+   * The game's plugins by name (from plugins/<name>/plugin.json). Absent: not
+   * known here, so `@` lines aren't checked (an editor showing one file);
+   * the CLI, dev server and exports always pass them.
+   */
+  plugins?: Record<string, PluginManifest>;
+}
+
+export function compile(source: string, opts: CompileOptions = {}): CompileResult {
+  return compileFiles(source, [], opts);
 }
 
 /** One more file of a story; `path` is relative to the game folder, e.g. `chapters/ch2.vn`. */
@@ -72,7 +83,7 @@ export interface StoryFile {
  * and variables can be declared in any file. Locations in the parts carry
  * their `file`; locations in story.vn have none.
  */
-export function compileFiles(main: string, parts: StoryFile[] = []): CompileResult {
+export function compileFiles(main: string, parts: StoryFile[] = [], opts: CompileOptions = {}): CompileResult {
   const { program, diagnostics } = parse(main);
   const all: Diagnostic[] = [...diagnostics];
   for (const part of parts) {
@@ -92,7 +103,7 @@ export function compileFiles(main: string, parts: StoryFile[] = []): CompileResu
     program.endings.push(...r.program.endings);
     program.labels.push(...r.program.labels);
   }
-  const res = compileProgram(program);
+  const res = compileProgram(program, opts);
   all.push(...res.diagnostics);
   // story.vn first, then the parts in order; by line within a file.
   const order = new Map(parts.map((p, i) => [p.path, i + 1]));
@@ -111,7 +122,7 @@ function tagFile(node: unknown, file: string): void {
   }
 }
 
-export function compileProgram(program: Program): { story: CompiledStory; diagnostics: Diagnostic[]; strings: SourceString[] } {
+export function compileProgram(program: Program, opts: CompileOptions = {}): { story: CompiledStory; diagnostics: Diagnostic[]; strings: SourceString[] } {
   const diagnostics: Diagnostic[] = [];
   const strings: SourceString[] = [];
   const at = (where: number | Loc) => (typeof where === 'number' ? { line: where } : where.file ? { line: where.line, file: where.file } : { line: where.line });
@@ -390,6 +401,20 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
       case 'movie':
         code.push({ op: 'movie', path: s.path, src });
         return;
+      case 'plugin': {
+        const spec = checkPluginCall(s.call, 'command', opts.plugins, (n) => Object.prototype.hasOwnProperty.call(vars, n), (code, message) => error(s.loc, code, message)) as PluginCommandSpec | null;
+        if (s.into) {
+          if (!Object.prototype.hasOwnProperty.call(vars, s.into)) error(s.loc, 'unknown-variable', `Unknown variable '${s.into}'. Declare it at the top: var ${s.into} = 0`);
+          if (spec && !spec.waits) error(s.loc, 'bad-plugin', `@${s.call.plugin} ${s.call.name} doesn't wait for a result, so it has nothing to put in '${s.into}'`);
+        }
+        const waits = spec ? spec.waits : !!s.into;
+        code.push({
+          op: 'plugin', plugin: s.call.plugin, command: s.call.name, args: s.call.args,
+          ...(waits ? { waits: true as const } : {}), ...(spec?.lasting ? { lasting: spec.lasting } : {}), ...(spec?.ends ? { ends: true as const } : {}),
+          ...(s.into ? { into: s.into } : {}), src,
+        });
+        return;
+      }
       case 'screen': {
         const def = program.screens.find((d) => d.name === s.name);
         if ((REPLACEABLE_SCREENS as readonly string[]).includes(s.name)) {
@@ -519,6 +544,7 @@ export function compileProgram(program: Program): { story: CompiledStory; diagno
   const screenStrings: SourceString[] = [];
   const screens = compileScreens(program.screens, {
     images, labels: new Set(Object.keys(labels)), vars, canvas, saveSlots: saveSlotCount(meta.save_slots), characters: new Set(Object.keys(characters)),
+    ...(opts.plugins ? { plugins: opts.plugins } : {}),
     error: (loc, code, message) => error(loc, code, message),
     warn: (loc, code, message) => warn(loc, code, message),
     textId: (screen, text) => `screen.${screen}.${fnv1a(text)}`,

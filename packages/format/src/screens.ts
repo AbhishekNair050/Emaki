@@ -20,6 +20,7 @@
 import type { AssetRef, AssignOp, Diagnostic, Loc, Trivia } from './ast.ts';
 import { freeVars, parseExpr, printExpr, readQuoted, type Expr } from './expr.ts';
 import { parseMarkup, type Span } from './markup.ts';
+import { checkPluginCall, parsePluginCall, printPluginCall, type PluginCall, type PluginManifest } from './plugins.ts';
 
 // ------------------------------------------------------------------ syntax tree
 
@@ -28,12 +29,14 @@ export type ScreenKind =
   | 'slots' | 'thumbnail' | 'gallery' | 'endings' | 'achievements'
   | 'slider' | 'toggle' | 'choice'
   | 'dialogue' | 'speaker' | 'side'
-  | 'log';
+  | 'log'
+  | 'plugin';
 export const SCREEN_KINDS: readonly ScreenKind[] = [
   'image', 'text', 'button', 'row', 'column', 'box',
   'slots', 'thumbnail', 'gallery', 'endings', 'achievements', 'slider', 'toggle', 'choice',
   'dialogue', 'speaker', 'side', 'log',
 ];
+// `plugin` elements are written `@clock face ...`, not with a kind word.
 /** Parts of the text box, only in `screen textbox`: the line being said, who says it, their side image. */
 const TEXTBOX_PARTS: ReadonlySet<ScreenKind> = new Set(['dialogue', 'speaker', 'side']);
 /** Variables `screen textbox` sees: who is speaking ("" for narration). */
@@ -149,6 +152,8 @@ export interface ScreenItem extends Trivia {
   setting?: string;
   /** For a per-character setting (`slider "Rin" voice_volume rin`): whose. */
   character?: string;
+  /** A plugin's element: `@clock face style="digital"`. */
+  call?: PluginCall;
   actions?: ScreenAction[];
   cond?: Expr;
   children?: ScreenItem[];
@@ -321,10 +326,21 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     src = src.slice(0, arrow).trimEnd();
   }
 
+  let call: PluginCall | null = null;
+  if (src.startsWith('@')) {
+    // A plugin's element: `@clock face style="digital" at 90% 4%`.
+    if (container) return { error: `A plugin's element can't hold other elements` };
+    if (item.actions) return { error: `A plugin's element has no actions ('->'); the plugin decides what it does` };
+    const r = parsePluginCall(src);
+    if ('error' in r) return { error: r.error };
+    call = r.call;
+    src = `plugin ${r.rest}`;
+  }
   const tokens = tokenize(src);
   if (typeof tokens === 'string') return { error: tokens };
-  const kind = tokens.shift()?.text as ScreenKind;
-  if (!SCREEN_KINDS.includes(kind)) return { error: `Unknown screen element '${kind}' (use ${SCREEN_KINDS.join(', ')})` };
+  const kind = (call ? (tokens.shift(), 'plugin') : tokens.shift()?.text) as ScreenKind;
+  if (call) item.call = call;
+  if (!SCREEN_KINDS.includes(kind) && kind !== 'plugin') return { error: `Unknown screen element '${kind}' (use ${SCREEN_KINDS.join(', ')})` };
   item.kind = kind;
   if (kind === 'log' && !container) return { error: `'log' needs a ':' and what each entry shows, indented under it` };
   if (kind !== 'slots' && kind !== 'log' && CONTAINERS.has(kind) !== container) {
@@ -447,7 +463,7 @@ function actionText(a: ScreenAction): string {
 
 /** One element's line, in canonical form. */
 export function printScreenLine(it: ScreenItem): string {
-  const parts: string[] = [it.kind];
+  const parts: string[] = [it.call ? printPluginCall(it.call) : it.kind];
   if (it.kind === 'image' && it.image) parts.push(assetText(it.image));
   if (it.count !== undefined) parts.push(String(it.count));
   if (it.columns !== undefined) parts.push('columns', String(it.columns));
@@ -499,6 +515,10 @@ export interface CompiledScreenItem {
   columns?: number;
   setting?: string;
   character?: string;
+  /** A plugin element: whose, which, and its arguments. */
+  plugin?: string;
+  element?: string;
+  args?: Record<string, Expr>;
   cond?: Expr;
   actions?: ScreenAction[];
   children?: CompiledScreenItem[];
@@ -523,6 +543,8 @@ export interface ScreenContext {
   saveSlots: number;
   /** Character ids (`define`), for per-character settings. */
   characters?: ReadonlySet<string>;
+  /** The game's plugins, for their elements (absent: not checked). */
+  plugins?: Readonly<Record<string, PluginManifest>>;
   /** Ids from the compiler's id scheme for translatable text. */
   textId: (screen: string, text: string) => string;
   /** Record a translatable string. */
@@ -598,6 +620,12 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
       if (it.character) {
         c.character = it.character;
         if (ctx.characters && !ctx.characters.has(it.character)) ctx.error(it.loc, 'unknown-character', `No character '${it.character}' (define it: define ${it.character} "Name")`);
+      }
+      if (it.call) {
+        checkPluginCall(it.call, 'element', ctx.plugins, known, (code, message) => ctx.error(it.loc, code, message));
+        c.plugin = it.call.plugin;
+        c.element = it.call.name;
+        c.args = it.call.args;
       }
       if (it.kind === 'log' && inLog) ctx.error(it.loc, 'bad-screen', `A log can't hold another log`);
       if (it.kind === 'thumbnail' && !inSlot) ctx.error(it.loc, 'bad-screen', `A thumbnail shows a save, so it goes inside 'slots'`);

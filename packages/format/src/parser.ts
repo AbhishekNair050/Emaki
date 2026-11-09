@@ -13,6 +13,7 @@ import type {
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
 import { TONES } from './ast.ts';
 import { SCREEN_TRANSITIONS, parseScreenLine, type ScreenDef, type ScreenItem } from './screens.ts';
+import { parsePluginCall } from './plugins.ts';
 
 interface Line {
   indent: number;
@@ -276,6 +277,13 @@ export function parse(source: string): ParseResult {
       return { type: 'say', who: null, attrs: [], text: q.value, loc };
     }
 
+    if (t.startsWith('@')) {
+      const r = parsePluginCall(t);
+      if ('error' in r) { err(ln.line, 'bad-plugin', r.error); return null; }
+      const into = /^->\s*([A-Za-z_]\w*)$/.exec(r.rest);
+      if (r.rest && !into) { err(ln.line, 'bad-plugin', `Unexpected '${r.rest}': arguments are written name=value, and '-> variable' keeps a result`); return null; }
+      return { type: 'plugin', call: r.call, ...(into ? { into: into[1]! } : {}), loc };
+    }
     if (word && KEYWORDS.has(word)) return parseCommand(word, t, ln);
     // Screen effects aren't reserved words, so a character may still be called `flash`.
     if (word && EFFECTS.has(word) && !/^\w+(\s+\w+)*\s*:/.test(t)) return parseEffect(word, t.slice(word.length).trim(), ln);

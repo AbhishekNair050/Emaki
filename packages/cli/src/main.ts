@@ -24,7 +24,7 @@ import {
   buildGraph, catalogStats, compileFiles, compileTranslation, parse, parseCatalog, print, toMermaid, updateCatalog, voicePath, writeCsv, writePo,
   type Diagnostic, type StoryFile,
 } from '@emaki/format';
-import { addVoices, MAIN_FILE, storyParts } from '@emaki/format/files';
+import { addVoices, MAIN_FILE, pluginManifests, readPlugins, storyParts } from '@emaki/format/files';
 import { uiSourceStrings } from '@emaki/player-web/ui-strings';
 import { runExport, TARGETS, type Target } from './export.ts';
 
@@ -59,9 +59,13 @@ const parts: StoryFile[] = basename(file) === MAIN_FILE
   : [];
 /** The story; for a game's story.vn, with the voice files found in its assets/. */
 const compileStory = () => {
-  const r = compileFiles(source, parts);
-  if (r.story && basename(file!) === MAIN_FILE) addVoices(r.story, dirname(file!));
-  return r;
+  if (basename(file!) !== MAIN_FILE) return compileFiles(source, parts);
+  // A game: its plugins are checked too, and their uses in the script against them.
+  const { plugins, diagnostics } = readPlugins(dirname(file!));
+  const r = compileFiles(source, parts, { plugins: pluginManifests(plugins) });
+  if (r.story) addVoices(r.story, dirname(file!));
+  const all = [...diagnostics, ...r.diagnostics];
+  return { ...r, diagnostics: all, story: all.some((d) => d.severity === 'error') ? null : r.story };
 };
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;

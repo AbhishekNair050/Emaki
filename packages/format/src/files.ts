@@ -7,11 +7,48 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import type { Diagnostic } from './ast.ts';
 import type { CompiledStory } from './compiled.ts';
 import { compileFiles, voiceMap, type CompileResult, type StoryFile } from './compiler.ts';
+import { parseManifest, type PluginManifest } from './plugins.ts';
+
+/** A plugin in the game folder: its manifest and the absolute path of its code. */
+export interface GamePlugin { manifest: PluginManifest; main: string }
+
+/**
+ * The game's plugins: every plugins/<name>/ with a plugin.json. Problems
+ * (bad JSON, a missing index.js) come back as diagnostics on that file.
+ */
+export function readPlugins(gameDir: string): { plugins: Record<string, GamePlugin>; diagnostics: Diagnostic[] } {
+  const dir = join(gameDir, 'plugins');
+  const plugins: Record<string, GamePlugin> = {};
+  const diagnostics: Diagnostic[] = [];
+  if (!existsSync(dir)) return { plugins, diagnostics };
+  for (const name of readdirSync(dir).sort()) {
+    const folder = join(dir, name);
+    if (name.startsWith('.') || !statSync(folder).isDirectory()) continue;
+    const file = `plugins/${name}/plugin.json`;
+    const fail = (message: string) => diagnostics.push({ severity: 'error', line: 1, file, code: 'bad-plugin', message });
+    if (!existsSync(join(folder, 'plugin.json'))) { fail(`plugins/${name}/ has no plugin.json describing it`); continue; }
+    let raw: unknown;
+    try { raw = JSON.parse(readFileSync(join(folder, 'plugin.json'), 'utf8')); } catch (e) { fail(`plugin.json isn't valid JSON: ${(e as Error).message}`); continue; }
+    const r = parseManifest(raw, name);
+    for (const m of r.errors) fail(m);
+    if (!r.manifest) continue;
+    const main = join(folder, r.manifest.main ?? 'index.js');
+    if (!existsSync(main)) { fail(`The plugin's code, ${r.manifest.main ?? 'index.js'}, is missing`); continue; }
+    plugins[name] = { manifest: r.manifest, main };
+  }
+  return { plugins, diagnostics };
+}
+
+/** Just the manifests, for the compiler. */
+export function pluginManifests(plugins: Record<string, GamePlugin>): Record<string, PluginManifest> {
+  return Object.fromEntries(Object.entries(plugins).map(([k, v]) => [k, v.manifest]));
+}
 
 export const MAIN_FILE = 'story.vn';
-const SKIP_DIRS = new Set(['assets', 'lang', 'dist', 'export', 'node_modules', 'tools']);
+const SKIP_DIRS = new Set(['assets', 'lang', 'dist', 'export', 'node_modules', 'tools', 'plugins']);
 
 /** The game folder for a path to its story.vn (or the folder itself). */
 export function gameDirOf(path: string): string {
@@ -47,11 +84,13 @@ export function readStory(gameDir: string): { main: string; parts: StoryFile[] }
 }
 
 /** Compile the whole game in a folder (with its voice files). */
-export function compileGame(gameDir: string): CompileResult & { parts: StoryFile[]; main: string } {
+export function compileGame(gameDir: string): CompileResult & { parts: StoryFile[]; main: string; plugins: Record<string, GamePlugin> } {
   const { main, parts } = readStory(gameDir);
-  const r = compileFiles(main, parts);
+  const { plugins, diagnostics } = readPlugins(gameDir);
+  const r = compileFiles(main, parts, { plugins: pluginManifests(plugins) });
   if (r.story) addVoices(r.story, gameDir);
-  return { ...r, main, parts };
+  const all = [...diagnostics, ...r.diagnostics];
+  return { ...r, story: all.some((d) => d.severity === 'error') ? null : r.story, diagnostics: all, main, parts, plugins };
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { ScreenDef } from './screens.ts';
 import type { Expr } from './expr.ts';
+import type { PluginCall } from './plugins.ts';
 
 /** 1-based source line. Every node carries one so tools can jump to source. */
 export interface Loc {
@@ -123,6 +124,8 @@ export type Stmt = Trivia & (
    * its buttons to `return` (a value, put in the variable `into`).
    */
   | { type: 'screen'; mode: ScreenMode; name: string; into?: string; loc: Loc }
+  /** `@petals on amount=40`, `@cards play -> score`: a plugin's command (see plugins.ts). */
+  | { type: 'plugin'; call: PluginCall; into?: string; loc: Loc }
   /** `flash`, `flash red`, `flash #fff 0.3`: the screen flashes a colour (white by default). */
   | { type: 'flash'; color: string | null; duration?: number; loc: Loc }
   /**

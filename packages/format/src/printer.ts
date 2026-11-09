@@ -16,6 +16,7 @@
 import type { AssetRef, Program, Stmt, Trivia } from './ast.ts';
 import { printExpr } from './expr.ts';
 import { printScreenLine, type ScreenItem } from './screens.ts';
+import { printPluginCall } from './plugins.ts';
 
 const INDENT = '  ';
 
@@ -176,6 +177,9 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         break;
       case 'screen':
         out.push(`${pad}${s.mode} screen ${s.name}${s.into ? ` -> ${s.into}` : ''}`);
+        break;
+      case 'plugin':
+        out.push(`${pad}${printPluginCall(s.call)}${s.into ? ` -> ${s.into}` : ''}`);
         break;
       case 'flash':
         out.push(pad + ['flash', s.color, s.duration].filter((x) => x !== undefined && x !== null).join(' '));
