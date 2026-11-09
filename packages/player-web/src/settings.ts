@@ -27,7 +27,21 @@ export interface Settings {
   language: string;
   /** What Skip fast-forwards through: only lines read before (stopping at new text), or everything. */
   skipMode: 'read' | 'all';
+  /** 0..1, scales music, sounds and voices together. */
+  masterVolume: number;
+  /** Channels switched off (their volume is kept for when they're switched back on). */
+  muted: { master: boolean; music: boolean; sound: boolean; voice: boolean };
+  /** Each character's voice volume, 0..1 (1 when absent), by character id. */
+  voiceVolumes: Record<string, number>;
+  /** Characters whose voices are switched off. */
+  voiceMuted: string[];
+  /** Which questions to ask before doing something that can't be undone; false skips the question. */
+  confirm: Record<ConfirmKind, boolean>;
 }
+
+/** The questions the player asks first ("Return to the title?"), each of which can be switched off. */
+export const CONFIRM_KINDS = ['title', 'quit', 'overwrite', 'load', 'quicksave', 'quickload', 'reset', 'next_choice', 'previous_choice', 'rewind'] as const;
+export type ConfirmKind = (typeof CONFIRM_KINDS)[number];
 
 export const INSTANT_SPEED = 200;
 
@@ -56,6 +70,11 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   motion: 'system',
   language: 'auto',
   skipMode: 'read',
+  masterVolume: 1,
+  muted: Object.freeze({ master: false, music: false, sound: false, voice: false }),
+  voiceVolumes: Object.freeze({}),
+  voiceMuted: Object.freeze([]) as unknown as string[],
+  confirm: Object.freeze(Object.fromEntries(CONFIRM_KINDS.map((k) => [k, true]))) as Record<ConfirmKind, boolean>,
 });
 
 /** Allowed ranges, shared by validation and the settings screen. */
@@ -65,12 +84,16 @@ export const RANGES = {
   musicVolume: { min: 0, max: 1, step: 0.05 },
   soundVolume: { min: 0, max: 1, step: 0.05 },
   voiceVolume: { min: 0, max: 1, step: 0.05 },
+  masterVolume: { min: 0, max: 1, step: 0.05 },
   textScale: { min: 0.8, max: 1.6, step: 0.1 },
   boxOpacity: { min: 0.4, max: 1, step: 0.05 },
 } as const;
 
 /** 'auto', or a BCP 47 language tag such as "fr", "pt-BR" or "zh-Hant". */
 const LANGUAGE_CODE = /^(auto|[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3})$/;
+
+const ID = /^[A-Za-z_]\w*$/;
+const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {});
 
 export function sanitizeSettings(raw: unknown): Settings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -95,6 +118,11 @@ export function sanitizeSettings(raw: unknown): Settings {
     motion: pick('motion', ['system', 'full', 'reduced'] as const),
     skipMode: pick('skipMode', ['read', 'all'] as const),
     language: typeof r.language === 'string' && LANGUAGE_CODE.test(r.language) ? r.language : DEFAULT_SETTINGS.language,
+    masterVolume: num('masterVolume'),
+    muted: Object.fromEntries((['master', 'music', 'sound', 'voice'] as const).map((k) => [k, obj(r.muted)[k] === true])) as Settings['muted'],
+    voiceVolumes: Object.fromEntries(Object.entries(obj(r.voiceVolumes)).filter(([k, v]) => ID.test(k) && typeof v === 'number' && Number.isFinite(v)).map(([k, v]) => [k, Math.min(1, Math.max(0, v as number))])),
+    voiceMuted: Array.isArray(r.voiceMuted) ? [...new Set(r.voiceMuted.filter((x): x is string => typeof x === 'string' && ID.test(x)))] : [],
+    confirm: Object.fromEntries(CONFIRM_KINDS.map((k) => [k, obj(r.confirm)[k] !== false])) as Record<ConfirmKind, boolean>,
   };
 }
 

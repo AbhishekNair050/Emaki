@@ -23,8 +23,9 @@ export interface ScreenHost {
   /** The canvas the screens are drawn on (`canvas:` in the header), for an image's natural size. */
   canvas: [number, number] | null;
   /** Whether a button with these actions can do anything now (Continue with no saves can't). */
-  enabled(actions: readonly ScreenAction[]): boolean;
-  run(actions: readonly ScreenAction[]): void;
+  /** `entry`: the log entry the button is in, for `voice` and `rewind` there. */
+  enabled(actions: readonly ScreenAction[], at?: { entry?: number }): boolean;
+  run(actions: readonly ScreenAction[], at?: { entry?: number }): void;
   /** The page of this screen's slots or gallery, from 0. */
   page: number;
   /** Save slots: how many there are, what's in one (null: empty), its picture, and whether saving is possible now. */
@@ -43,8 +44,8 @@ export interface ScreenHost {
   /** Player settings by their script name (music_volume, skip_unread, font, ...). */
   settings: {
     /** A toggle asks for on/off, a slider for a number, a choice for one of its options. */
-    get(name: string, as: 'slider' | 'toggle' | 'choice'): number | boolean | string;
-    set(name: string, value: number | boolean | string): void;
+    get(name: string, as: 'slider' | 'toggle' | 'choice', character?: string): number | boolean | string;
+    set(name: string, value: number | boolean | string, character?: string): void;
     range(name: string): { min: number; max: number; step: number };
     options(name: string): ReadonlyArray<readonly [string, string]>;
     show(name: string, value: number): string;
@@ -57,6 +58,8 @@ export interface ScreenHost {
   selected?(actions: readonly ScreenAction[]): boolean;
   /** Play the interface sound for pointing at or clicking a button, if the game has one. */
   sound?(kind: 'hover' | 'click'): void;
+  /** The lines said so far (oldest first) and the first one a `log` shows. */
+  log?: { entries: ReadonlyArray<{ name: string; text: string; voice: boolean }>; first: number };
 }
 
 export function renderScreen(name: string, screen: CompiledScreen, host: ScreenHost): HTMLElement {
@@ -167,9 +170,34 @@ function wire(b: HTMLButtonElement, actions: readonly ScreenAction[], host: Scre
 
 let controlIds = 0;
 
-function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Record<string, Value>>, slot?: number): HTMLElement | null {
+function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Record<string, Value>>, slot?: number, entry?: number): HTMLElement | null {
   if (!visible(it, vars)) return null;
   switch (it.kind) {
+    case 'log': {
+      // A window of `count` lines of the log, each laid out by the lines under it (`size` is one entry's size).
+      const div = document.createElement('div');
+      div.className = 'screen-log';
+      const log = host.log ?? { entries: [], first: 0 };
+      for (let k = 0; k < it.count!; k++) {
+        const i = log.first + k;
+        const e = log.entries[i];
+        if (!e) break;
+        const cell = document.createElement('div');
+        cell.className = 'screen-log-entry';
+        if (it.w !== undefined) cell.style.width = `${it.w}cqw`;
+        if (it.h !== undefined) cell.style.height = `${it.h}cqh`;
+        const cellVars = { ...vars, log_number: i + 1, log_name: e.name, log_text: e.text, log_voice: e.voice };
+        for (const c of it.children ?? []) { const n = renderItem(c, host, cellVars, undefined, i); if (n) cell.append(n); }
+        div.append(cell);
+      }
+      div.addEventListener('wheel', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        host.run([{ do: 'scroll', to: ev.deltaY > 0 ? 'down' : 'up' }]);
+      }, { passive: false });
+      place(div, { ...it, w: undefined, h: undefined });
+      return div;
+    }
     case 'slots': {
       const div = grid(it, 'screen-slots');
       const action = it.actions![0]!.do as 'load' | 'save';
@@ -256,11 +284,11 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       input.min = String(r.min);
       input.max = String(r.max);
       input.step = String(r.step);
-      input.value = String(host.settings.get(it.setting!, 'slider'));
+      input.value = String(host.settings.get(it.setting!, 'slider', it.character));
       const out = document.createElement('output');
       out.textContent = host.settings.show(it.setting!, Number(input.value));
       input.addEventListener('input', () => {
-        host.settings.set(it.setting!, Number(input.value));
+        host.settings.set(it.setting!, Number(input.value), it.character);
         out.textContent = host.settings.show(it.setting!, Number(input.value));
       });
       const field = document.createElement('span');
@@ -295,11 +323,32 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       return wrap;
     }
     case 'toggle': {
+      if (it.image) {
+        // A picture toggle (a check box drawn by the game): a button that's selected while on.
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'screen-toggle screen-button';
+        pictureStates(b, it, host, textOf(it, host, vars).text, vars);
+        const on = host.settings.get(it.setting!, 'toggle', it.character) === true;
+        b.classList.toggle('selected', on);
+        b.setAttribute('aria-pressed', String(on));
+        b.addEventListener('pointerenter', () => host.sound?.('hover'));
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          host.sound?.('click');
+          const now = !(host.settings.get(it.setting!, 'toggle', it.character) === true);
+          host.settings.set(it.setting!, now, it.character);
+          b.classList.toggle('selected', now);
+          b.setAttribute('aria-pressed', String(now));
+        });
+        place(b, it);
+        return b;
+      }
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.role = 'switch';
-      input.checked = host.settings.get(it.setting!, 'toggle') === true;
-      input.addEventListener('change', () => host.settings.set(it.setting!, input.checked));
+      input.checked = host.settings.get(it.setting!, 'toggle', it.character) === true;
+      input.addEventListener('change', () => host.settings.set(it.setting!, input.checked, it.character));
       return control(it, host, vars, input);
     }
     case 'choice': {
@@ -328,10 +377,10 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
     }
     case 'image': {
       const fill = slot === undefined && it.x === undefined && it.w === undefined && it.h === undefined;
-      const img = picture(host.url(it.image ?? ''), fill ? { ...it, w: 100, h: 100 } : it, host);
+      const img = picture(host.url(interpolate(it.image ?? '', vars)), fill ? { ...it, w: 100, h: 100 } : it, host);
       img.className = fill ? 'screen-image screen-fill' : 'screen-image';
       const alt = it.alt !== undefined ? (it.id && host.translated(`${it.id}.alt`)?.text) || it.alt : '';
-      img.alt = alt;
+      img.alt = interpolate(alt, vars);
       if (!alt) img.setAttribute('aria-hidden', 'true');
       if (!fill) place(img, it);
       else if (it.className) img.classList.add(it.className);
@@ -351,14 +400,15 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       b.type = 'button';
       b.className = 'screen-button';
       // A picture button: the label is its accessible name, the pictures what's seen.
-      if (it.image) pictureStates(b, it, host, t.text);
+      if (it.image) pictureStates(b, it, host, t.text, vars);
       else b.append(...host.nodes(t.text, t.spans));
       const actions = it.actions ?? [];
-      b.disabled = !host.enabled(actions);
+      const at = entry !== undefined ? { entry } : undefined;
+      b.disabled = !host.enabled(actions, at);
       wire(b, actions, host);
       b.addEventListener('click', (e) => {
         e.stopPropagation();
-        host.run(actions);
+        host.run(actions, at);
       });
       place(b, it);
       return b;
@@ -369,7 +419,7 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       const div = document.createElement('div');
       div.className = `screen-${it.kind}`;
       for (const c of it.children ?? []) {
-        const n = renderItem(c, host, vars, slot);
+        const n = renderItem(c, host, vars, slot, entry);
         if (n) div.append(n);
       }
       place(div, it);

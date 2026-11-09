@@ -24,4 +24,18 @@ describe('player settings', () => {
     expect(s.motion).toBe('reduced');
     expect(s.soundVolume).toBe(DEFAULT_SETTINGS.soundVolume);
   });
+
+  it('keeps master volume, mutes, voices per character and which questions to ask', () => {
+    const s = sanitizeSettings({
+      masterVolume: 2, muted: { music: true, sound: 'yes' }, voiceVolumes: { rin: 0.4, 'bad id': 1, kei: 'loud' },
+      voiceMuted: ['rin', 'rin', 3], confirm: { quit: false, nonsense: false },
+    });
+    expect(s.masterVolume).toBe(1);
+    expect(s.muted).toEqual({ master: false, music: true, sound: false, voice: false });
+    expect(s.voiceVolumes).toEqual({ rin: 0.4 });
+    expect(s.voiceMuted).toEqual(['rin']);
+    expect(s.confirm.quit).toBe(false);
+    expect(s.confirm.title).toBe(true);
+    expect(sanitizeSettings({}).confirm).toEqual(DEFAULT_SETTINGS.confirm);
+  });
 });

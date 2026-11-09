@@ -14,7 +14,7 @@ import {
   type Block, type CameraState, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
 } from '@emaki/runtime';
 import {
-  DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type Settings,
+  DEFAULT_SETTINGS, FONTS, INSTANT_SPEED, RANGES, loadSettings, saveSettings, sanitizeSettings, type ConfirmKind, type Settings,
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
 import { watchGamepads } from './gamepad.ts';
@@ -450,6 +450,7 @@ export class Player {
     this.busy = true;
     try {
       // Hold the step (briefly) until its pictures are ready, so nothing fades in half-loaded.
+      this.stepSpeaker = step.block.type === 'say' ? step.block.who?.id ?? null : null;
       const needed = step.effects.flatMap((fx) => fx.type === 'show' ? fx.layers.map(this.assetUrl) : fx.type === 'scene' && fx.path ? [this.assetUrl(fx.path)] : []);
       this.images.want(needed);
       this.preloadAhead();
@@ -490,7 +491,7 @@ export class Player {
     switch (b.type) {
       case 'say':
         if (page) { this.showPage(page, b, instant || this.skip); this.read.add(b.id); break; }
-        if (this.skip && this.settings.skipMode === 'read' && !this.read.has(b.id)) {
+        if (this.skip && !this.skipToChoice && this.settings.skipMode === 'read' && !this.read.has(b.id)) {
           this.skip = false;
           this.updateToggles();
           this.toast(this.t('ui.skip_stopped'));
@@ -754,6 +755,7 @@ export class Player {
   }
 
   private updateToggles(): void {
+    if (!this.skip) this.skipToChoice = false;
     this.autoBtn.setAttribute('aria-pressed', String(this.auto));
     this.skipBtn.setAttribute('aria-pressed', String(this.skip));
     if (this.story.screens?.textbox) this.drawTextbox();
@@ -949,7 +951,7 @@ export class Player {
       const video = el('video', 'movie') as HTMLVideoElement;
       video.src = this.assetUrl(path);
       video.playsInline = true;
-      video.volume = Math.min(1, Math.max(0, this.settings.musicVolume));
+      video.volume = Math.min(1, Math.max(0, this.vol('music')));
       video.setAttribute('aria-label', this.t('ui.skip'));
       const onKey = (e: KeyboardEvent) => {
         if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Escape') return;
@@ -1085,7 +1087,7 @@ export class Player {
   private playMusic(path: string, loop: boolean, fadeMs = 0): void {
     if (this.music?.path === path) return;
     this.stopMusic(fadeMs);
-    this.music = this.loops.play(path, asset(path), loop, this.settings.musicVolume, fadeMs);
+    this.music = this.loops.play(path, asset(path), loop, this.vol('music'), fadeMs);
   }
 
   private stopMusic(fadeMs = 0): void {
@@ -1097,7 +1099,7 @@ export class Player {
   private playAmbience(path: string, loop: boolean, fadeMs = 0): void {
     if (this.ambience?.path === path) return;
     this.stopAmbience(fadeMs);
-    this.ambience = this.loops.play(path, asset(path), loop, this.settings.soundVolume, fadeMs);
+    this.ambience = this.loops.play(path, asset(path), loop, this.vol('sound'), fadeMs);
   }
 
   private stopAmbience(fadeMs = 0): void {
@@ -1119,10 +1121,25 @@ export class Player {
     else this.stopSounds();
   }
 
-  private playVoice(path: string): void {
+  /** A volume as heard: the channel's, times the master volume (and the character's, for a voice); 0 when muted. */
+  private vol(ch: 'music' | 'sound' | 'voice', who: string | null = null): number {
+    const s = this.settings;
+    if (s.muted.master || s.muted[ch]) return 0;
+    const v = s.masterVolume * (ch === 'music' ? s.musicVolume : ch === 'sound' ? s.soundVolume : s.voiceVolume);
+    if (ch !== 'voice' || !who) return v;
+    return s.voiceMuted.includes(who) ? 0 : v * (s.voiceVolumes[who] ?? 1);
+  }
+
+  /** Whose voice is playing (for their own volume), and whose line the step being shown is. */
+  private voiceWho: string | null = null;
+  private stepSpeaker: string | null = null;
+
+  /** `who`: the character speaking (the next line's speaker when not given). */
+  private playVoice(path: string, who: string | null = this.stepSpeaker): void {
     this.stopVoice();
     const a = new Audio(asset(path));
-    a.volume = this.settings.voiceVolume;
+    this.voiceWho = who;
+    a.volume = this.vol('voice', who);
     a.addEventListener('ended', () => {
       if (this.voice !== a) return;
       this.voice = null;
@@ -1140,7 +1157,7 @@ export class Player {
 
   private playSound(path: string): void {
     const a = new Audio(asset(path));
-    a.volume = this.settings.soundVolume;
+    a.volume = this.vol('sound');
     this.sounds.add(a);
     a.addEventListener('ended', () => this.sounds.delete(a));
     a.play().catch(() => this.sounds.delete(a));
@@ -1149,7 +1166,7 @@ export class Player {
   private playLoopSound(path: string, fadeMs = 0): void {
     if (this.loopSound?.path === path) return;
     this.stopLoopSound(fadeMs);
-    this.loopSound = this.loops.play(path, asset(path), true, this.settings.soundVolume, fadeMs);
+    this.loopSound = this.loops.play(path, asset(path), true, this.vol('sound'), fadeMs);
   }
 
   private stopLoopSound(fadeMs = 0): void {
@@ -1316,18 +1333,45 @@ export class Player {
    * Show the game's own version of a built-in screen, if it has one: over the
    * screen that's showing (so `close` returns to it), or on its own.
    */
-  private openOwn(name: 'save' | 'load' | 'settings' | 'extras'): boolean {
+  private openOwn(name: 'save' | 'load' | 'settings' | 'extras' | 'history'): boolean {
     if (!this.story.screens?.[name]) return false;
     const over = this.overlayOpen && this.overlay.classList.contains('screen') && this.screenStack.length > 0;
     this.openScreen(name, !over);
     return true;
   }
 
+  /** The log lines a screen's `log` shows: all of them, and where its window starts (the newest at the bottom until scrolled). */
+  private logWindow(name: string): ScreenHost['log'] {
+    const item = this.findItem(name, 'log');
+    if (!item) return undefined;
+    const entries = this.runner.log.map((b) => ({ name: b.who?.name ?? '', text: b.text, voice: !!b.voice }));
+    const last = Math.max(0, entries.length - item.count!);
+    const first = Math.min(last, Math.max(0, this.logFirst[name] ?? last));
+    return { entries, first };
+  }
+
+  /** Where each screen's `log` window starts (absent: at the newest lines). */
+  private logFirst: Record<string, number> = {};
+
+  /** The first element of a kind in one of the game's screens. */
+  private findItem(name: string, kind: CompiledScreenItem['kind']): CompiledScreenItem | null {
+    const find = (items: readonly CompiledScreenItem[]): CompiledScreenItem | null => {
+      for (const it of items) {
+        if (it.kind === kind) return it;
+        const inner = it.children ? find(it.children) : null;
+        if (inner) return inner;
+      }
+      return null;
+    };
+    return find(this.story.screens?.[name]?.items ?? []);
+  }
+
   /** Variables a screen sees: the story's (on the title, between games, their starting values and the globals), and its page. */
   private screenVars(name?: string): Readonly<Record<string, Value>> {
     const story = this.mode === 'title' ? { ...this.story.vars, ...this.runner.globals } : this.runner.vars;
     if (!name) return story;
-    return { page: (this.screenPages[name] ?? 0) + 1, pages: this.screenPageCount(name), ...(name === 'textbox' ? { speaker: this.speaking } : {}), ...story };
+    const asking: Record<string, Value> = name === 'confirm' && this.asking ? { confirm: this.asking.kind, message: this.t(`ui.confirm_${this.asking.kind}`) } : {};
+    return { page: (this.screenPages[name] ?? 0) + 1, pages: this.screenPageCount(name), ...(name === 'textbox' ? { speaker: this.speaking } : {}), ...asking, ...story };
   }
 
   /** Pages of a screen's slots or gallery (the first one it has). */
@@ -1352,12 +1396,17 @@ export class Player {
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     const SLIDERS: Record<string, keyof typeof RANGES> = {
       text_speed: 'textSpeed', auto_wait: 'autoDelay', music_volume: 'musicVolume', sound_volume: 'soundVolume',
-      voice_volume: 'voiceVolume', text_size: 'textScale', box_opacity: 'boxOpacity',
+      voice_volume: 'voiceVolume', text_size: 'textScale', box_opacity: 'boxOpacity', master_volume: 'masterVolume',
     };
+    const MUTES: Record<string, keyof Settings['muted']> = { master_mute: 'master', music_mute: 'music', sound_mute: 'sound', voice_mute: 'voice' };
     return {
-      get: (setting, as) => {
+      get: (setting, as, who) => {
         const st = this.settings;
+        if (setting === 'voice_volume' && who) return st.voiceVolumes[who] ?? 1;
+        if (setting === 'voice_mute' && who) return st.voiceMuted.includes(who);
         if (SLIDERS[setting]) return st[SLIDERS[setting]!];
+        if (MUTES[setting]) return st.muted[MUTES[setting]!];
+        if (setting.startsWith('confirm_')) return st.confirm[setting.slice(8) as ConfirmKind] !== false;
         switch (setting) {
           case 'skip_unread': return st.skipMode === 'all';
           case 'animations': return as === 'toggle' ? !this.reducedMotion : st.motion;
@@ -1368,8 +1417,13 @@ export class Player {
           default: return '';
         }
       },
-      set: (setting, value) => {
+      set: (setting, value, who) => {
+        const st = this.settings;
+        if (setting === 'voice_volume' && who) { this.updateSettings({ voiceVolumes: { ...st.voiceVolumes, [who]: Number(value) } }); return; }
+        if (setting === 'voice_mute' && who) { this.updateSettings({ voiceMuted: value === true ? [...st.voiceMuted, who] : st.voiceMuted.filter((x) => x !== who) }); return; }
         if (SLIDERS[setting]) { this.updateSettings({ [SLIDERS[setting]!]: Number(value) }); return; }
+        if (MUTES[setting]) { this.updateSettings({ muted: { ...st.muted, [MUTES[setting]!]: value === true } }); return; }
+        if (setting.startsWith('confirm_')) { this.updateSettings({ confirm: { ...st.confirm, [setting.slice(8)]: value === true } }); return; }
         switch (setting) {
           case 'skip_unread': this.updateSettings({ skipMode: value === true ? 'all' : 'read' }); return;
           case 'animations':
@@ -1409,49 +1463,55 @@ export class Player {
         return pct(v);
       },
     };
-    }
+  }
 
-    /** What a screen needs from the player: text, pictures, saves, extras and settings. */
-    private screenHost(name: string, onStory = false): ScreenHost {
-      const saved = this.slots();
-      const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
-      const named = (id: string, table: Record<string, { name: string }> | undefined, kind: string) =>
-        this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
-      return {
-        vars: () => this.screenVars(name),
-        translated: (id) => this.translation?.strings[id] ?? null,
-        nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
-        url: this.assetUrl,
-        canvas: parseCanvas(this.story.meta.canvas),
-        enabled: (actions) => actions.every((a) => this.canRun(a, name)),
-        run: (actions) => this.runActions(actions, name, onStory),
-        page: this.screenPages[name] ?? 0,
-        slots: {
-          count: saved.length,
-          info: (i) => (saved[i] ? { date: new Date(saved[i]!.savedAt).toLocaleString(this.stage.lang || undefined), text: saved[i]!.preview } : null),
-          thumbnail: (i) => (saved[i] ? this.thumbnail(saved[i]!) : null),
-          canSave: () => this.mode === 'playing' && this.runner.block !== null,
-          use: (kind, i) => {
+  /** What a screen needs from the player: text, pictures, saves, extras and settings. */
+  private screenHost(name: string, onStory = false): ScreenHost {
+    const saved = this.slots();
+    const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
+    const named = (id: string, table: Record<string, { name: string }> | undefined, kind: string) =>
+      this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
+    return {
+      vars: () => this.screenVars(name),
+      translated: (id) => this.translation?.strings[id] ?? null,
+      nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
+      url: this.assetUrl,
+      canvas: parseCanvas(this.story.meta.canvas),
+      enabled: (actions, at) => actions.every((a) => this.canRun(a, name, at?.entry)),
+      run: (actions, at) => this.runActions(actions, name, onStory, at?.entry),
+      log: this.logWindow(name),
+      page: this.screenPages[name] ?? 0,
+      slots: {
+        count: saved.length,
+        info: (i) => (saved[i] ? { date: new Date(saved[i]!.savedAt).toLocaleString(this.stage.lang || undefined), text: saved[i]!.preview } : null),
+        thumbnail: (i) => (saved[i] ? this.thumbnail(saved[i]!) : null),
+        canSave: () => this.mode === 'playing' && this.runner.block !== null,
+        use: (kind, i) => {
+          const go = () => {
             this.screenStack = [];
             if (kind === 'save') this.saveTo(i);
             else if (saved[i]) this.loadFrom(saved[i]!);
-          },
+          };
+          if (kind === 'save' && saved[i]) this.ask('overwrite', go);
+          else if (kind === 'load' && this.mode === 'playing') this.ask('load', go);
+          else go();
         },
-        gallery: () => (this.story.gallery ?? []).map((image) => ({ name: image, url: this.assetUrl(this.story.images[image]!), seen: this.progress.hasSeen(image) })),
-        view: (image) => {
-          const seen = (this.story.gallery ?? []).filter((i) => this.progress.hasSeen(i));
-          this.viewImage(seen, Math.max(0, seen.indexOf(image)));
-        },
-        endings: () => Object.keys(this.story.endings ?? {}).map((id) => ({ name: named(id, this.story.endings, 'ending'), reached: this.progress.hasReached(id) })),
-        achievements: () => Object.keys(this.story.achievements ?? {}).map((id) => ({ name: named(id, this.story.achievements, 'achievement'), earned: this.achievements().includes(id) })),
-        settings: this.screenSettings(),
+      },
+      gallery: () => (this.story.gallery ?? []).map((image) => ({ name: image, url: this.assetUrl(this.story.images[image]!), seen: this.progress.hasSeen(image) })),
+      view: (image) => {
+        const seen = (this.story.gallery ?? []).filter((i) => this.progress.hasSeen(i));
+        this.viewImage(seen, Math.max(0, seen.indexOf(image)));
+      },
+      endings: () => Object.keys(this.story.endings ?? {}).map((id) => ({ name: named(id, this.story.endings, 'ending'), reached: this.progress.hasReached(id) })),
+      achievements: () => Object.keys(this.story.achievements ?? {}).map((id) => ({ name: named(id, this.story.achievements, 'achievement'), earned: this.achievements().includes(id) })),
+      settings: this.screenSettings(),
       part: (kind) => (kind === 'dialogue' ? this.textEl : kind === 'speaker' ? this.namebox : this.sideEl),
       selected: (actions) => actions.length > 0 && actions.every((a) => this.isSelected(a, name)),
       sound: (kind) => {
         const path = this.story.meta[`${kind}_sound`];
         if (path) this.playSound(path);
       },
-        ui: (key, vars) => t(`ui.${key}`, vars),
+      ui: (key, vars) => t(`ui.${key}`, vars),
     };
   }
 
@@ -1483,10 +1543,15 @@ export class Player {
   }
 
   /** Whether an action can do anything now: there must be a save to continue or load, a way to quit, something to save. */
-  private canRun(a: ScreenAction, screen?: string): boolean {
+  private canRun(a: ScreenAction, screen?: string, entry?: number): boolean {
     switch (a.do) {
       case 'page': {
         if (!screen) return true;
+        const log = this.logWindow(screen);
+        if (log) {
+          const n = this.findItem(screen, 'log')!.count!;
+          return a.to === 'previous' ? log.first > 0 : a.to === 'next' ? log.first + n < log.entries.length : true;
+        }
         const page = this.screenPages[screen] ?? 0;
         const last = this.screenPageCount(screen) - 1;
         return a.to === 'next' ? page < last : a.to === 'previous' ? page > 0 : a.to - 1 <= last && a.to - 1 !== page;
@@ -1503,7 +1568,19 @@ export class Player {
       case 'auto': case 'skip': case 'hide': return this.mode === 'playing';
       case 'quicksave': return this.mode === 'playing' && this.runner.block !== null;
       case 'quickload': return storage.get(`${this.storeKey}:quick`) !== null;
-      case 'voice': { const b = this.runner.block; return this.mode === 'playing' && !!(b?.type === 'say' ? b.voice : this.runner.lastSay?.voice); }
+      case 'voice': {
+        if (entry !== undefined) return !!this.runner.log[entry]?.voice;
+        const b = this.runner.block;
+        return this.mode === 'playing' && !!(b?.type === 'say' ? b.voice : this.runner.lastSay?.voice);
+      }
+      case 'rewind': return entry !== undefined && entry < this.runner.log.length - 1;
+      case 'scroll': {
+        const log = screen ? this.logWindow(screen) : undefined;
+        if (!log) return false;
+        return a.to === 'up' ? log.first > 0 : log.first + this.findItem(screen!, 'log')!.count! < log.entries.length;
+      }
+      case 'next_choice': return this.mode === 'playing' && this.runner.block?.type !== 'menu' && this.runner.block?.type !== 'end';
+      case 'previous_choice': return this.mode === 'playing' && this.runner.canGoBackToChoice;
       default: return true;
     }
   }
@@ -1523,13 +1600,22 @@ export class Player {
     }
   }
 
-  private runActions(actions: readonly ScreenAction[], screen?: string, onStory = false): void {
+  private runActions(actions: readonly ScreenAction[], screen?: string, onStory = false, entry?: number): void {
     let redraw = false;
     const called = onStory && this.runner.block?.type === 'screen' && this.runner.block.name === screen;
     for (const a of actions) {
       switch (a.do) {
         case 'page': {
           if (!screen) break;
+          const logWin = this.logWindow(screen);
+          if (logWin) {
+            const n = this.findItem(screen, 'log')!.count!;
+            const lastFirst = Math.max(0, logWin.entries.length - n);
+            const to = a.to === 'next' ? logWin.first + n : a.to === 'previous' ? logWin.first - n : (a.to - 1) * n;
+            this.logFirst[screen] = Math.min(lastFirst, Math.max(0, to));
+            redraw = true;
+            break;
+          }
           const last = this.screenPageCount(screen) - 1;
           const page = this.screenPages[screen] ?? 0;
           this.screenPages[screen] = Math.min(last, Math.max(0, a.to === 'next' ? page + 1 : a.to === 'previous' ? page - 1 : a.to - 1));
@@ -1562,7 +1648,61 @@ export class Player {
         case 'auto': this.toggleAuto(); return;
         case 'skip': this.toggleSkip(); return;
         case 'hide': this.stage.classList.add('hide-ui'); return;
+        case 'scroll': {
+          const logWin = screen ? this.logWindow(screen) : undefined;
+          if (!logWin) break;
+          const n = this.findItem(screen!, 'log')!.count!;
+          this.logFirst[screen!] = Math.min(Math.max(0, logWin.entries.length - n), Math.max(0, logWin.first + (a.to === 'up' ? -1 : 1)));
+          redraw = true;
+          break;
+        }
+        case 'yes': {
+          const ask = this.asking;
+          this.asking = null;
+          if (this.screenStack[this.screenStack.length - 1] === 'confirm') this.screenStack.pop();
+          if (ask) ask.yes(); else this.runActions([{ do: 'close' }]);
+          return;
+        }
+        case 'no': {
+          const ask = this.asking;
+          this.asking = null;
+          if (ask?.no) { if (this.screenStack[this.screenStack.length - 1] === 'confirm') this.screenStack.pop(); ask.no(); }
+          else this.runActions([{ do: 'close' }]);
+          return;
+        }
+        case 'reset':
+          this.ask('reset', () => {
+            this.updateSettings({ ...DEFAULT_SETTINGS, language: this.settings.language });
+            this.reopenTop();
+          });
+          return;
+        case 'next_choice':
+          this.ask('next_choice', () => {
+            this.screenStack = [];
+            this.closeOverlay();
+            this.skipToChoice = true;
+            if (!this.skip) this.toggleSkip(); else this.updateToggles();
+          });
+          return;
+        case 'previous_choice':
+          this.ask('previous_choice', () => { this.screenStack = []; this.closeOverlay(); this.rewind(this.runner.backToChoice()); });
+          return;
+        case 'rewind':
+          if (entry === undefined) return;
+          this.ask('rewind', () => { this.screenStack = []; this.closeOverlay(); this.rewind(this.runner.rewindTo(entry)); });
+          return;
+        case 'sample': {
+          const a2 = new Audio(asset(a.path));
+          a2.volume = a.channel === 'voice' ? this.vol('voice', a.character ?? null) : this.vol('sound');
+          void a2.play().catch(() => {});
+          return;
+        }
         case 'voice': {
+          if (entry !== undefined) {
+            const line = this.runner.log[entry];
+            if (line?.voice) this.playVoice(line.voice, line.who?.id ?? null);
+            return;
+          }
           const b = this.runner.block;
           const v = b?.type === 'say' ? b.voice : this.runner.lastSay?.voice;
           if (v) this.playVoice(v);
@@ -1570,15 +1710,22 @@ export class Player {
         }
         case 'quicksave': {
           if (!this.runner.block) return;
-          const ok = storage.set(`${this.storeKey}:quick`, JSON.stringify(this.runner.save()));
-          this.toast(ok ? this.t('ui.quick_saved') : this.t('ui.could_not_save'));
-          if (this.story.screens?.textbox) this.drawTextbox();
+          const save = () => {
+            const ok = storage.set(`${this.storeKey}:quick`, JSON.stringify(this.runner.save()));
+            this.closeConfirm();
+            this.toast(ok ? this.t('ui.quick_saved') : this.t('ui.could_not_save'));
+            if (this.story.screens?.textbox) this.drawTextbox();
+          };
+          if (storage.get(`${this.storeKey}:quick`) !== null) this.ask('quicksave', save); else save();
           return;
         }
         case 'quickload': {
           const raw = storage.get(`${this.storeKey}:quick`);
-          this.screenStack = [];
-          try { if (raw) this.loadFrom(JSON.parse(raw)); } catch { this.toast(this.t('ui.could_not_load')); }
+          const load = () => {
+            this.screenStack = [];
+            try { if (raw) this.loadFrom(JSON.parse(raw)); } catch { this.toast(this.t('ui.could_not_load')); }
+          };
+          if (this.mode === 'playing') this.ask('quickload', load); else load();
           return;
         }
         case 'switch':
@@ -1622,6 +1769,8 @@ export class Player {
           return;
         }
         case 'close':
+          if (!this.screenStack.length && this.overlay.classList.contains('confirm-panel')) { this.closeOverlay(); return; }
+          if (!this.screenStack.length && this.overlay.classList.contains('panel') && this.mode === 'playing' && !onStory) { this.closeOverlay(); return; }
           if (onStory) {
             // A called screen goes on with the story; a shown one goes away (`hide screen`).
             if (called) { this.runActions([{ do: 'return' }], screen, onStory); return; }
@@ -1635,11 +1784,12 @@ export class Player {
           else this.closeOverlay();
           return;
         case 'title':
-          this.screenStack = [];
-          if (this.mode === 'playing') this.confirmTitle(); else this.showTitle();
+          // The question goes over the screen the button is on, so No comes back to it.
+          if (this.mode === 'playing') this.ask('title', () => { this.screenStack = []; this.showTitle(); });
+          else { this.screenStack = []; this.showTitle(); }
           return;
         case 'quit':
-          this.host.quit?.();
+          if (this.mode === 'playing') this.ask('quit', () => this.host.quit?.()); else this.host.quit?.();
           return;
       }
     }
@@ -1812,14 +1962,72 @@ export class Player {
   }
 
   private confirmTitle(): void {
-    this.openOverlay('panel',
-      el('h2', '', this.t('ui.return_to_title_question')),
-      el('p', '', this.t('ui.unsaved_progress_lost')),
-      row(button(this.t('ui.return_to_title'), () => this.showTitle()), button(this.t('ui.keep_playing'), () => this.closeOverlay())),
-    );
+    this.ask('title', () => this.showTitle());
   }
 
+  /** The question being asked, and what to do on each answer (`no` absent: go back to what was open). */
+  private asking: { kind: ConfirmKind; yes: () => void; no?: () => void } | null = null;
+
+  /**
+   * Ask before doing something that can't be undone (unless the player
+   * switched that question off): with the game's `screen confirm` over what's
+   * open, or the built-in question.
+   */
+  private ask(kind: ConfirmKind, yes: () => void, no?: () => void): void {
+    if (!this.settings.confirm[kind]) { yes(); return; }
+    this.asking = { kind, yes, ...(no ? { no } : {}) };
+    if (this.story.screens?.confirm) {
+      const over = this.overlayOpen && this.overlay.classList.contains('screen') && this.screenStack.length > 0;
+      this.openScreen('confirm', !over);
+      return;
+    }
+    if (kind === 'title') {
+      this.openOverlay('panel',
+        el('h2', '', this.t('ui.return_to_title_question')),
+        el('p', '', this.t('ui.unsaved_progress_lost')),
+        row(button(this.t('ui.return_to_title'), () => this.runActions([{ do: 'yes' }])), button(this.t('ui.keep_playing'), () => this.runActions([{ do: 'no' }]))),
+      );
+      return;
+    }
+    this.openOverlay('panel confirm-panel', el('h2', '', this.t(`ui.confirm_${kind}`)),
+      row(button(this.t('ui.yes'), () => this.runActions([{ do: 'yes' }])), button(this.t('ui.no'), () => this.runActions([{ do: 'no' }]))));
+  }
+
+  /** After a confirmed action that stays where it was: take the question away. */
+  private closeConfirm(): void {
+    if (this.screenStack[this.screenStack.length - 1] === 'confirm') { this.screenStack.pop(); this.reopenTop(); }
+    else if (this.overlay.classList.contains('confirm-panel')) this.closeOverlay();
+  }
+
+  /** Show the screen on top of the stack again (or nothing, when there's none). */
+  private reopenTop(): void {
+    const top = this.screenStack[this.screenStack.length - 1];
+    if (top) this.openScreen(top);
+    else if (this.overlay.classList.contains('confirm-panel') || this.overlay.classList.contains('screen-confirm')) {
+      if (this.mode === 'title') this.showTitleMenu(); else this.closeOverlay();
+    } else if (this.overlay.classList.contains('settings-panel')) this.showSettings();
+  }
+
+  /** Show the story after going back to an earlier point (a choice, a line of the log). */
+  private rewind(r: { block: Block; scene: SceneState } | null): void {
+    if (!r) return;
+    this.auto = this.skip = false;
+    this.updateToggles();
+    this.nextEpoch();
+    this.syncScene(r.scene);
+    this.syncAudio();
+    this.renderBlock(r.block, true);
+  }
+
+  /** Skip is running to the next choice: it doesn't stop at unread lines. */
+  private skipToChoice = false;
+
   private showLog(): void {
+    if (this.story.screens?.history) {
+      delete this.logFirst.history; // open at the newest lines
+      this.openOwn('history');
+      return;
+    }
     const list = el('ol', 'log');
     for (const b of this.runner.log) {
       const li = el('li', b.who ? '' : 'narration');
@@ -1834,7 +2042,8 @@ export class Player {
       li.append(line);
       if (b.voice) {
         const voice = b.voice;
-        const play = button('▶', () => this.playVoice(voice), this.t('ui.replay_voice'));
+        const who = b.who?.id ?? null;
+        const play = button('▶', () => this.playVoice(voice, who), this.t('ui.replay_voice'));
         play.className = 'log-voice';
         play.setAttribute('aria-label', this.t('ui.replay_voice'));
         li.append(play);
@@ -1936,10 +2145,10 @@ export class Player {
     for (const [id] of FONTS) this.stage.classList.toggle(`font-${id}`, s.font === id);
     this.stage.classList.toggle('reduced-motion', this.reducedMotion);
     this.stage.classList.toggle('full-motion', s.motion === 'full');
-    void this.music?.fadeTo(s.musicVolume, 0);
-    void this.loopSound?.fadeTo(s.soundVolume, 0);
-    void this.ambience?.fadeTo(s.soundVolume, 0);
-    if (this.voice) this.voice.volume = s.voiceVolume;
+    void this.music?.fadeTo(this.vol('music'), 0);
+    void this.loopSound?.fadeTo(this.vol('sound'), 0);
+    void this.ambience?.fadeTo(this.vol('sound'), 0);
+    if (this.voice) this.voice.volume = this.vol('voice', this.voiceWho);
   }
 
   private updateSettings(patch: Partial<Settings>): void {
@@ -2028,6 +2237,7 @@ export class Player {
     }
     slider('textSpeed', t('ui.text_speed'), (v) => (v >= INSTANT_SPEED ? t('ui.instant') : t('ui.letters_per_second', { n: v })));
     slider('autoDelay', t('ui.auto_wait'), (v) => t('ui.seconds', { n: v.toFixed(2).replace(/0$/, '') }));
+    slider('masterVolume', t('ui.master_volume'), pct);
     slider('musicVolume', t('ui.music_volume'), pct);
     slider('soundVolume', t('ui.sound_volume'), pct);
     slider('voiceVolume', t('ui.voice_volume'), pct);
@@ -2039,10 +2249,10 @@ export class Player {
 
     const preview = el('p', 'settings-preview', t('ui.settings_preview'));
     const done = () => (fromTitle ? this.showTitleMenu() : this.closeOverlay());
-    const reset = button(t('ui.reset_settings'), () => {
+    const reset = button(t('ui.reset_settings'), () => this.ask('reset', () => {
       this.updateSettings({ ...DEFAULT_SETTINGS, language: this.settings.language });
       this.showSettings();
-    });
+    }, () => this.showSettings()));
     this.openOverlay('panel settings-panel', el('h2', '', t('ui.settings')), form, preview, row(reset, button(t('ui.done'), done)));
   }
 
@@ -2055,8 +2265,9 @@ export class Player {
         ? `${new Date(s.savedAt).toLocaleString()} — ${truncate(s.preview, 60)}`
         : this.t('ui.empty');
       const b = button(this.t('ui.slot', { n: i + 1, label }), () => {
-        if (kind === 'save') this.saveTo(i);
-        else if (s) this.loadFrom(s);
+        const again = () => this.showSlots(kind);
+        if (kind === 'save') { if (s) this.ask('overwrite', () => this.saveTo(i), again); else this.saveTo(i); }
+        else if (s) { if (this.mode === 'playing') this.ask('load', () => this.loadFrom(s), again); else this.loadFrom(s); }
       });
       b.disabled = kind === 'save' ? !canSave : !s;
       grid.append(b);

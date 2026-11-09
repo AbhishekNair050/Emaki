@@ -314,6 +314,10 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
   background: var(--knob, none) center / contain no-repeat;
 }
 .screen-slider input.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+/* `log`: a window of the history, one box per line; what's placed in an entry is placed from its top-left. */
+.screen-log { display: flex; flex-direction: column; }
+.screen-log-entry { position: relative; flex: none; }
+.screen-log-entry .screen-text { text-align: left; }
 /* `screen name with fade:` */
 @keyframes screen-in { from { opacity: 0; } }
 /* `screen textbox`: the game's own text box, laid out over the whole stage. */
