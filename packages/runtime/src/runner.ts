@@ -70,7 +70,12 @@ export interface RunState {
   faces?: Record<string, string[]>;
   /** The game's screens shown over the story (`show screen hud`), bottom first. Absent when none. */
   screens?: string[];
+  /** Plugin commands whose effect lasts (`@petals on`), by `plugin.slot`, to redo after a load or rollback. Absent when none. */
+  plugins?: Record<string, PluginCommand>;
 }
+
+/** A plugin command with its arguments worked out. */
+export interface PluginCommand { plugin: string; command: string; args: Record<string, Value> }
 
 /** `label` is the story label the line belongs to (for maps, analytics, debugging). */
 export type SayBlock = {
@@ -117,6 +122,8 @@ export type Effect =
   | { type: 'movie'; path: string }
   /** The screens shown over the story changed (`show screen`, `hide screen`): all of them now, bottom first. */
   | { type: 'screens'; screens: string[] }
+  /** Run a plugin's command (that the story doesn't wait on). */
+  | ({ type: 'plugin' } & PluginCommand)
   /** Move the camera to `camera` (null: the whole picture) over `duration` seconds (instant when absent). */
   | { type: 'camera'; camera: CameraState | null; duration?: number };
 
@@ -132,6 +139,8 @@ export type Block =
   | { type: 'wait'; seconds: number; line: number; label: string; file?: string }
   /** `call screen map`: the story waits for one of the screen's buttons to return (see Runner.returnFromScreen). */
   | { type: 'screen'; name: string; line: number; label: string; file?: string }
+  /** A plugin command the story waits on (a minigame); see Runner.resumeFromPlugin. */
+  | ({ type: 'plugin'; line: number; label: string; file?: string } & PluginCommand)
   | { type: 'end' };
 
 export interface Step {
@@ -201,7 +210,7 @@ export class Runner {
    * Pass `scene` to keep what's currently on screen, since a label that
    * doesn't open with `scene` would otherwise start on black.
    */
-  startAt(label: string, opts: { vars?: Record<string, Value>; scene?: SceneState; screens?: string[] } = {}): Step {
+  startAt(label: string, opts: { vars?: Record<string, Value>; scene?: SceneState; screens?: string[]; plugins?: Record<string, PluginCommand> } = {}): Step {
     const pc = this.story.labels[label];
     if (pc === undefined) throw new StoryError(`No label named '${label}'`, null);
     this.state = this.initialState();
@@ -211,6 +220,7 @@ export class Runner {
     }
     if (opts.scene) this.state.scene = clone(opts.scene);
     if (opts.screens?.length) this.state.screens = [...opts.screens];
+    if (opts.plugins && Object.keys(opts.plugins).length) this.state.plugins = clone(opts.plugins);
     this.applyGlobals();
     this.history = [];
     return this.run();
@@ -281,6 +291,8 @@ export class Runner {
         if (ins.tone === 'none') delete scene.tone; else scene.tone = ins.tone;
       } else if (ins.op === 'screen' && ins.mode !== 'call') {
         showScreen(this.state, ins.name, ins.mode === 'show');
+      } else if (ins.op === 'plugin' && ins.lasting) {
+        try { keepPlugin(this.state, ins, this.pluginArgs(ins)); } catch { /* a variable it needs isn't set yet */ }
       }
     }
     this.state.pc = pc;
@@ -327,6 +339,7 @@ export class Runner {
     if (!b) throw new StoryError('Story has not started', null);
     if (b.type === 'menu') throw new StoryError('A choice must be made before continuing', b.line);
     if (b.type === 'screen') throw new StoryError(`The screen '${b.name}' must return before the story goes on`, b.line);
+    if (b.type === 'plugin') throw new StoryError(`@${b.plugin} ${b.command} must finish before the story goes on`, b.line);
     if (b.type === 'end') return { effects: [], block: b };
     return this.run();
   }
@@ -363,6 +376,33 @@ export class Runner {
     this.state.pc++;
     const step = this.run();
     return { effects: [...effects, ...step.effects], block: step.block };
+  }
+
+  /**
+   * The plugin command the story is waiting on finished: put `value` in its
+   * variable (when it has one and a value came back) and go on.
+   */
+  resumeFromPlugin(value?: Value): Step {
+    const b = this.current;
+    if (!b || b.type !== 'plugin') throw new StoryError('No plugin command is running', null);
+    const ins = this.story.code[this.state.pc];
+    if (ins?.op !== 'plugin') throw new StoryError('Internal error: plugin state out of sync', b.line);
+    const effects: Effect[] = [];
+    if (ins.into && value !== undefined) {
+      this.state.vars[ins.into] = value;
+      if (this.story.globals?.includes(ins.into)) {
+        this.globalValues[ins.into] = value;
+        effects.push({ type: 'globals', values: this.globals });
+      }
+    }
+    this.state.pc++;
+    const step = this.run();
+    return { effects: [...effects, ...step.effects], block: step.block };
+  }
+
+  /** Plugin commands whose effect lasts now, to redo after a load or rollback. */
+  get pluginState(): PluginCommand[] {
+    return Object.values(clone(this.state.plugins ?? {}));
   }
 
   /** The screens shown over the story, bottom first. */
@@ -763,6 +803,16 @@ export class Runner {
           s.pc++;
           effects.push({ type: 'movie', path: ins.path });
           break;
+        case 'plugin': {
+          const args = this.pluginArgs(ins);
+          if (ins.waits) {
+            return this.blockOn({ type: 'plugin', plugin: ins.plugin, command: ins.command, args, line: ins.src.line, label: ins.src.label, ...fileOf(ins) }, effects);
+          }
+          s.pc++;
+          if (ins.lasting) keepPlugin(s, ins, args);
+          effects.push({ type: 'plugin', plugin: ins.plugin, command: ins.command, args });
+          break;
+        }
         case 'screen':
           if (ins.mode === 'call') {
             return this.blockOn({ type: 'screen', name: ins.name, line: ins.src.line, label: ins.src.label, ...fileOf(ins) }, effects);
@@ -963,6 +1013,11 @@ export class Runner {
   }
 
   /** Redo a block's text in the current language (after switching language, rolling back or loading). */
+  /** A plugin command's arguments, worked out from the story's variables. */
+  private pluginArgs(ins: Extract<Instr, { op: 'plugin' }>): Record<string, Value> {
+    return Object.fromEntries(Object.entries(ins.args).map(([k, e]) => [k, this.eval(e, ins)]));
+  }
+
   private localize(b: Block, vars: Record<string, Value> = this.state.vars): Block {
     if (b.type !== 'say' && b.type !== 'menu') return b;
     this.textInstrs ??= new Map(this.story.code.flatMap((i) => (i.op === 'say' || i.op === 'menu' ? [[i.id, i] as const] : [])));
@@ -1023,6 +1078,16 @@ function cameraOf(ins: Extract<Instr, { op: 'camera' }>): CameraState | null {
 
 function durationOf(ins: Instr): { duration?: number } {
   return 'duration' in ins && ins.duration !== undefined ? { duration: ins.duration } : {};
+}
+
+/** Remember (or, for an `ends` command, forget) a lasting plugin command in its slot. */
+function keepPlugin(s: RunState, ins: Extract<Instr, { op: 'plugin' }>, args: Record<string, Value>): void {
+  const slot = `${ins.plugin}.${ins.lasting}`;
+  const all = { ...(s.plugins ?? {}) };
+  if (ins.ends) delete all[slot];
+  else all[slot] = { plugin: ins.plugin, command: ins.command, args };
+  if (Object.keys(all).length) s.plugins = all;
+  else delete s.plugins;
 }
 
 /** Put a screen over the story (on top) or take it off. */
