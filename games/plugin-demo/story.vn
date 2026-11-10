@@ -1,0 +1,43 @@
+---
+title: Plugin Demo
+start: start
+---
+
+# A small game using three example plugins (see docs/plugins.md):
+# weather (a lasting effect), memory (a minigame the story waits on) and
+# meter (an element for screens).
+
+define mira "Mira"
+
+image cliff = "bg/cliff_road_dusk.svg"
+image shore = "bg/shore_dawn.svg"
+image mira = "sprites/mira_smile.svg"
+
+var trust = 3
+var turns = 0
+
+screen hud:
+  text "Trust" at 3% 3%
+  @meter bar value=trust max=10 label="Trust" at 3% 8% size 20% 2%
+
+label start:
+  scene cliff with fade
+  show screen hud
+  @weather start kind="petals" amount=60
+  show mira
+  mira: The petals are early this year.
+  mira: Want to play a game while we wait for the ferry?
+  @memory play pairs=4 -> turns
+  if turns <= 6:
+    set trust += 3
+    mira: {turns} turns! You've got a good memory.
+  else:
+    set trust += 1
+    mira: {turns} turns. Not bad.
+  @weather start kind="rain" amount=200
+  mira: And there's the rain.
+  @weather stop
+  scene shore with dissolve
+  mira: Clear skies again.
+  hide screen hud
+  "The end."

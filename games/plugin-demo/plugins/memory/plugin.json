@@ -1,0 +1,10 @@
+{
+  "description": "A card-matching minigame; the story waits until every pair is found.",
+  "commands": {
+    "play": {
+      "description": "Play a round; the result is how many turns it took.",
+      "args": { "pairs": "number?" },
+      "waits": true
+    }
+  }
+}

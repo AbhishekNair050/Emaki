@@ -1,0 +1,15 @@
+{
+  "description": "Falling snow, rain or petals over the scene, until it's stopped.",
+  "commands": {
+    "start": {
+      "description": "Start the weather (replacing any already falling).",
+      "args": { "kind": ["snow", "rain", "petals"], "amount": "number?" },
+      "lasting": "sky"
+    },
+    "stop": {
+      "description": "Clear the sky.",
+      "lasting": "sky",
+      "ends": true
+    }
+  }
+}

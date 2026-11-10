@@ -1,0 +1,9 @@
+{
+  "description": "A bar showing a number (affection, energy, time left) for screens.",
+  "elements": {
+    "bar": {
+      "description": "A horizontal bar filled to value out of max.",
+      "args": { "value": "number", "max": "number?", "label": "string?", "color": "string?" }
+    }
+  }
+}
