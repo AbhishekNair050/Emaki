@@ -111,6 +111,10 @@ export interface CompiledStory {
   vars: Record<string, Value>;
   /** Images for the Extras gallery, in the order they're declared (`image ... gallery`). */
   gallery?: string[];
+  /** The music room's tracks (`audio ... music "Title"`), in order: audio name, title and file. */
+  music?: Array<{ name: string; title: string; path: string }>;
+  /** Replayable scenes (`replay label "Name"`), in order; `image` is a picture path. */
+  replays?: Array<{ label: string; name: string; image?: string; until?: string }>;
   /** Endings (`ending id "Name"`), reached with `end id`. */
   endings?: Record<string, { name: string }>;
   /**

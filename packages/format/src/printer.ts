@@ -35,10 +35,11 @@ export function print(program: Program): string {
   const sections: Array<Array<Trivia & { text: string }>> = [
     program.characters.map((c) => ({ leading: c.leading, text: `define ${c.id} ${q(c.name)}${c.color ? ` color=${c.color}` : ''}` })),
     program.images.map((i) => ({ leading: i.leading, text: `image ${i.name} = ${q(i.path)}${i.gallery ? ' gallery' : ''}` })),
-    program.audio.map((a) => ({ leading: a.leading, text: `audio ${a.name} = ${q(a.path)}` })),
+    program.audio.map((a) => ({ leading: a.leading, text: `audio ${a.name} = ${q(a.path)}${a.music !== undefined ? ` music ${q(a.music)}` : ''}` })),
     program.vars.map((v) => ({ leading: v.leading, text: `${v.global ? 'global ' : ''}var ${v.name} = ${printExpr(v.init)}` })),
     program.achievements.map((a) => ({ leading: a.leading, text: `achievement ${a.id} ${q(a.name)}` })),
     program.endings.map((e) => ({ leading: e.leading, text: `ending ${e.id} ${q(e.name)}` })),
+    (program.replays ?? []).map((r) => ({ leading: r.leading, text: [`replay ${r.label} ${q(r.name)}`, r.image ? `image ${r.image}` : '', r.until ? `until ${r.until}` : ''].filter(Boolean).join(' ') })),
   ];
   for (const section of sections) {
     if (!section.length) continue;

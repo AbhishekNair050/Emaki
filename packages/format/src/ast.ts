@@ -26,7 +26,19 @@ export interface ImageDef extends Trivia {
   gallery?: boolean;
   loc: Loc;
 }
-export interface AudioDef extends Trivia { name: string; path: string; loc: Loc }
+export interface AudioDef extends Trivia {
+  name: string;
+  path: string;
+  /** `audio theme = "music/theme.ogg" music "Forget-Me-Not"`: in the Extras music room (with this title) once heard. */
+  music?: string;
+  loc: Loc;
+}
+/**
+ * `replay beach_date "At the Beach" image cg_beach until beach_after`: the
+ * scene at a label, replayable from Extras once reached. It plays until the
+ * story leaves the label (or reaches `until`).
+ */
+export interface ReplayDef extends Trivia { label: string; name: string; image?: string; until?: string; loc: Loc }
 /** One option of a layer group: `smile "sprites/mira/smile.png"`. */
 export interface LayerOption extends Trivia { attr: string; path: string; loc: Loc }
 /** A layer of a `layered` character: drawn always, or one option of a group at a time. */
@@ -60,6 +72,8 @@ export interface Program {
   screens: ScreenDef[];
   vars: VarDef[];
   achievements: AchievementDef[];
+  /** `replay` declarations: scenes for the Extras replay list, in order. */
+  replays?: ReplayDef[];
   endings: EndingDef[];
   labels: LabelDef[];
   /** Comments after the last line of the file. */

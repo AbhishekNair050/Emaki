@@ -43,7 +43,7 @@ export interface CompileResult {
  */
 export interface SourceString {
   id: string;
-  kind: 'line' | 'choice' | 'name' | 'meta' | 'achievement' | 'ending' | 'ui' | 'screen';
+  kind: 'line' | 'choice' | 'name' | 'meta' | 'achievement' | 'ending' | 'ui' | 'screen' | 'replay' | 'music';
   /** Character id for dialogue, null for narration and everything else. */
   speaker: string | null;
   /** Source text, with its markup and {variables}. */
@@ -101,6 +101,7 @@ export function compileFiles(main: string, parts: StoryFile[] = [], opts: Compil
     program.vars.push(...r.program.vars);
     program.achievements.push(...r.program.achievements);
     program.endings.push(...r.program.endings);
+    if (r.program.replays?.length) (program.replays ??= []).push(...r.program.replays);
     program.labels.push(...r.program.labels);
   }
   const res = compileProgram(program, opts);
@@ -537,6 +538,16 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     warn(1, 'bad-aspect', `'aspect: ${meta.aspect}' isn't a shape the player understands; use width:height, like 16:9 or 4:3`);
   }
 
+  // --- Extras: replayable scenes -----------------------------------------
+  const replays: NonNullable<CompiledStory['replays']> = [];
+  for (const r of program.replays ?? []) {
+    if (labels[r.label] === undefined) error(r.loc, 'unknown-label', didYouMean(r.label, Object.keys(labels)) ?? `No label named '${r.label}' to replay`);
+    if (r.until && labels[r.until] === undefined) error(r.loc, 'unknown-label', `No label named '${r.until}' (where the replay stops)`);
+    if (r.image && !images[r.image]) error(r.loc, 'unknown-image', `No image named '${r.image}'`);
+    if (replays.some((x) => x.label === r.label)) error(r.loc, 'duplicate', `The scene at '${r.label}' is already a replay`);
+    replays.push({ label: r.label, name: r.name, ...(r.image && images[r.image] ? { image: images[r.image]! } : {}), ...(r.until ? { until: r.until } : {}) });
+  }
+
   // --- Screens ----------------------------------------------------------
   const canvas = parseCanvas(meta.canvas);
   if (meta.save_slots !== undefined && !/^\d+$/.test(meta.save_slots)) warn(1, 'bad-save-slots', `'save_slots: ${meta.save_slots}' should be a number of save slots, like 60`);
@@ -578,6 +589,8 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     ...(Object.keys(achievements).length ? { achievements } : {}),
     ...(Object.keys(endings).length ? { endings } : {}),
     ...(program.images.some((i) => i.gallery) ? { gallery: program.images.filter((i) => i.gallery).map((i) => i.name) } : {}),
+    ...(program.audio.some((a) => a.music !== undefined) ? { music: program.audio.filter((a) => a.music !== undefined).map((a) => ({ name: a.name, title: a.music!, path: a.path })) } : {}),
+    ...(replays.length ? { replays } : {}),
     vars,
     ...(program.vars.some((v) => v.global) ? { globals: program.vars.filter((v) => v.global).map((v) => v.name) } : {}),
     labels, code,
@@ -590,6 +603,8 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     ...program.characters.map((c): SourceString => ({ id: `name.${c.id}`, kind: 'name', speaker: c.id, text: c.name, label: null, ...lineOf(c.loc) })),
     ...program.achievements.map((a): SourceString => ({ id: `achievement.${a.id}`, kind: 'achievement', speaker: null, text: a.name, label: null, ...lineOf(a.loc) })),
     ...program.endings.map((e): SourceString => ({ id: `ending.${e.id}`, kind: 'ending', speaker: null, text: e.name, label: null, ...lineOf(e.loc) })),
+    ...(program.replays ?? []).map((r): SourceString => ({ id: `replay.${r.label}`, kind: 'replay', speaker: null, text: r.name, label: null, ...lineOf(r.loc) })),
+    ...program.audio.filter((a) => a.music !== undefined).map((a): SourceString => ({ id: `music.${a.name}`, kind: 'music', speaker: null, text: a.music!, label: null, ...lineOf(a.loc) })),
   ];
   return { story, diagnostics, strings: [...header, ...strings, ...screenStrings] };
 }

@@ -298,6 +298,8 @@ function describe(e: CatalogEntry): string {
     case 'ending': return 'Name of an ending';
     case 'ui': return 'Game interface';
     case 'screen': return 'Text on a screen of the game (title, menus)';
+    case 'replay': return 'Name of a scene in the Extras replay list';
+    case 'music': return 'Title of a music track in the Extras music room';
   }
 }
 
@@ -388,6 +390,8 @@ function kindOf(id: string): CatalogEntry['kind'] {
   if (id.startsWith('ui.')) return 'ui';
   if (id.startsWith('achievement.')) return 'achievement';
   if (id.startsWith('ending.')) return 'ending';
+  if (id.startsWith('replay.')) return 'replay';
+  if (id.startsWith('music.')) return 'music';
   if (id.startsWith('screen.')) return 'screen';
   return 'line'; // lines and choices are told apart by the script on the next update
 }

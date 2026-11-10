@@ -30,11 +30,12 @@ export type ScreenKind =
   | 'slider' | 'toggle' | 'choice'
   | 'dialogue' | 'speaker' | 'side'
   | 'log'
-  | 'plugin';
+  | 'plugin'
+  | 'scenes' | 'music';
 export const SCREEN_KINDS: readonly ScreenKind[] = [
   'image', 'text', 'button', 'row', 'column', 'box',
   'slots', 'thumbnail', 'gallery', 'endings', 'achievements', 'slider', 'toggle', 'choice',
-  'dialogue', 'speaker', 'side', 'log',
+  'dialogue', 'speaker', 'side', 'log', 'scenes', 'music',
 ];
 // `plugin` elements are written `@clock face ...`, not with a kind word.
 /** Parts of the text box, only in `screen textbox`: the line being said, who says it, their side image. */
@@ -362,7 +363,7 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     const t = tokens.shift();
     if (!t?.quoted) return { error: kind === 'text' ? `Expected 'text "What it says"'` : `A button needs its label first: 'button "New Game" -> start' (also when it's a picture: it's what screen readers say)` };
     item.text = t.text;
-  } else if (kind === 'slots' || kind === 'gallery' || kind === 'log') {
+  } else if (kind === 'slots' || kind === 'gallery' || kind === 'log' || kind === 'scenes' || kind === 'music') {
     const n = tokens.shift()?.text;
     if (!n || !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > MAX_CELLS) return { error: `Expected how many to show at once, like '${kind} 6' (1 to ${MAX_CELLS})` };
     item.count = Number(n);
@@ -408,7 +409,7 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
     } else if (opt === 'gap') {
       const g = parseLen(tokens.shift()?.text);
       if (!g) return { error: `'gap' needs a length, like 'gap 2%' or 'gap 24px'` };
-      if (kind !== 'row' && kind !== 'column' && kind !== 'slots' && kind !== 'gallery') return { error: `Only rows, columns, slots and galleries have a gap between their elements` };
+      if (!['row', 'column', 'slots', 'gallery', 'scenes', 'music'].includes(kind)) return { error: `Only rows, columns, slots, galleries, scenes and music have a gap between their elements` };
       item.gap = g;
     } else if (/^class=/.test(opt)) {
       const c = opt.slice('class='.length);
@@ -422,7 +423,7 @@ export function parseScreenLine(text: string, loc: Loc): { item: ScreenItem; con
       item[opt] = asset(p);
     } else if (opt === 'columns') {
       const n = tokens.shift()?.text;
-      if (kind !== 'slots' && kind !== 'gallery') return { error: `'columns' is for slots and gallery` };
+      if (kind !== 'slots' && kind !== 'gallery' && kind !== 'scenes' && kind !== 'music') return { error: `'columns' is for slots, gallery, scenes and music` };
       if (!n || !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > item.count!) return { error: `'columns' needs how many across, from 1 to ${item.count}` };
       item.columns = Number(n);
     } else if (opt === 'alt') {

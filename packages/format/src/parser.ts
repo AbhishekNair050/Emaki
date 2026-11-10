@@ -7,7 +7,7 @@
  */
 import type {
   AchievementDef, EndingDef,
-  AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, ScreenMode, Stmt,
+  AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, ReplayDef, ScreenMode, Stmt,
   Motion, Tone, Trivia, VarDef,
 } from './ast.ts';
 import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
@@ -151,14 +151,21 @@ export function parse(source: string): ParseResult {
       const q = safeQuoted(m[2], ln.line);
       if (!q) return;
       const gallery = word === 'image' && q.rest === 'gallery';
-      if (q.rest && !gallery) err(ln.line, `bad-${word}`, word === 'image' ? `Unexpected text after path: '${q.rest}' (only 'gallery' can follow)` : `Unexpected text after path: '${q.rest}'`);
+      // `audio theme = "..." music "Title"` puts the track in the music room.
+      let music: string | undefined;
+      if (word === 'audio' && /^music\b/.test(q.rest)) {
+        const t2 = q.rest.slice('music'.length).trim();
+        const mq = t2.startsWith('"') ? safeQuoted(t2, ln.line) : null;
+        if (!mq || mq.rest) { err(ln.line, 'bad-audio', `Expected 'audio name = "path" music "Its Title"'`); return; }
+        music = mq.value;
+      } else if (q.rest && !gallery) err(ln.line, `bad-${word}`, word === 'image' ? `Unexpected text after path: '${q.rest}' (only 'gallery' can follow)` : `Unexpected text after path: '${q.rest}' (only 'music "Title"' can follow)`);
       const name = m[1].trim().split(/\s+/).join(' ');
       if (!name.split(' ').every((p) => IDENT.test(p))) {
         err(ln.line, `bad-${word}`, `Names may only use letters, digits and _`);
         return;
       }
       const list = word === 'image' ? program.images : program.audio;
-      list.push(attach<ImageDef | AudioDef>({ name, path: q.value, ...(gallery ? { gallery: true } : {}), loc: { line: ln.line } }, ln, list.length === 0));
+      list.push(attach<ImageDef | AudioDef>({ name, path: q.value, ...(gallery ? { gallery: true } : {}), ...(music !== undefined ? { music } : {}), loc: { line: ln.line } }, ln, list.length === 0));
       return;
     }
 
@@ -182,6 +189,23 @@ export function parse(source: string): ParseResult {
       return;
     }
 
+    if (word === 'replay') {
+      const m = /^replay\s+([A-Za-z_]\w*)\s+(".*)$/.exec(t);
+      const usage = `Expected 'replay label "Its Name"', with 'image name' and 'until label' after it if needed`;
+      if (!m) { err(ln.line, 'bad-replay', usage); return; }
+      const q = safeQuoted(m[2], ln.line);
+      if (!q) return;
+      const def: ReplayDef = { label: m[1], name: q.value, loc: { line: ln.line } };
+      const words = q.rest ? q.rest.split(/\s+/) : [];
+      while (words.length) {
+        const [k, v] = words.splice(0, 2);
+        if ((k === 'image' || k === 'until') && v && IDENT.test(v)) def[k] = v;
+        else { err(ln.line, 'bad-replay', usage); return; }
+      }
+      (program.replays ??= []).push(attach<ReplayDef>(def, ln, program.replays.length === 0));
+      return;
+    }
+
     if (word === 'achievement') {
       const m = /^achievement\s+([A-Za-z_]\w*)\s+(".*)$/.exec(t);
       if (!m) { err(ln.line, 'bad-achievement', `Expected 'achievement id "Name"', e.g. achievement first_light "First Light"`); return; }
@@ -194,7 +218,7 @@ export function parse(source: string): ParseResult {
     }
 
     err(ln.line, 'bad-toplevel',
-      `Only define, image, audio, var, achievement and label can appear at the top level. Indent story lines under a label.`);
+      `Only define, image, audio, var, achievement, ending, replay, screen and label can appear at the top level. Indent story lines under a label.`);
   }
 
   function parseBlock(lines: Line[]): Stmt[] {
