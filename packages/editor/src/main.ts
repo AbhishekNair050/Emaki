@@ -19,6 +19,7 @@ import '@emaki/player-web/style.css';
 import '@emaki/player-web/fonts';
 // The game's own theme.css, after the player's styles, as in the game.
 import 'virtual:emaki-theme';
+import { manifests as pluginManifests, plugins } from 'virtual:emaki-plugins';
 import { AssetPanel, type AssetInfo } from './assets.ts';
 import { Flowchart } from './flowchart.ts';
 import { ScriptPane } from './script/script-pane.ts';
@@ -313,7 +314,7 @@ async function main(): Promise<void> {
     compileTimer = 0;
     doc().text = script.text;
     const parts = [...docs.values()].filter((d) => d.path !== MAIN).map((d) => ({ path: d.path, source: d.text }));
-    const r = compileFiles(doc(MAIN).text, parts);
+    const r = compileFiles(doc(MAIN).text, parts, { plugins: pluginManifests });
     const hadErrors = new Set(lastDiagnostics.filter((d) => d.severity === 'error').map((d) => d.file ?? MAIN)).size;
     lastDiagnostics = r.diagnostics;
     const nowErrors = new Set(r.diagnostics.filter((d) => d.severity === 'error').map((d) => d.file ?? MAIN)).size;
@@ -362,6 +363,7 @@ async function main(): Promise<void> {
   function startPlayer(s: CompiledStory): void {
     player?.destroy();
     player = new Player(playerHost, s, {
+      plugins,
       onUpdate: (block) => {
         playing = block && 'line' in block ? { line: block.line, ...(block.file ? { file: block.file } : {}) } : null;
         script.setPlayLine(playing && (playing.file ?? MAIN) === active ? playing.line : null);

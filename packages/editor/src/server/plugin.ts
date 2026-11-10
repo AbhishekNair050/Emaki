@@ -18,7 +18,8 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { MAIN_FILE, storyParts } from '@emaki/format/files';
+import { MAIN_FILE, readPlugins, storyParts } from '@emaki/format/files';
+import { pluginModule } from '@emaki/player-web/plugin';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { AssetError, AssetStore, MAX_ASSET_BYTES } from './asset-store.ts';
@@ -27,6 +28,9 @@ import { StoryFile } from './story-file.ts';
 const MAX_BODY = 10 * 1024 * 1024;
 const THEME = 'virtual:emaki-theme';
 const RESOLVED_THEME = '\0' + THEME;
+/** The game's plugins (code and manifests), as the player's dev server gives them. */
+const PLUGINS = 'virtual:emaki-plugins';
+const RESOLVED_PLUGINS = '\0' + PLUGINS;
 
 export function emakiEditor(gameDir: string): Plugin {
   gameDir = resolve(gameDir);
@@ -43,9 +47,13 @@ export function emakiEditor(gameDir: string): Plugin {
   return {
     name: 'emaki-editor',
     resolveId(id) {
-      return id === THEME ? RESOLVED_THEME : null;
+      return id === THEME ? RESOLVED_THEME : id === PLUGINS ? RESOLVED_PLUGINS : null;
     },
     load(id) {
+      if (id === RESOLVED_PLUGINS) {
+        for (const p of Object.values(readPlugins(gameDir).plugins)) this.addWatchFile(join(p.main, '..', 'plugin.json'));
+        return pluginModule(gameDir);
+      }
       if (id !== RESOLVED_THEME) return null;
       return existsSync(themePath) ? `import ${JSON.stringify(themePath.replace(/\\/g, '/'))};` : '';
     },

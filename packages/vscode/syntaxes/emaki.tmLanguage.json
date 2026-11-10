@@ -10,6 +10,18 @@
       "include": "#comment"
     },
     {
+      "comment": "A plugin's command or screen element: @petals on amount=40 -> var",
+      "match": "^\\s+(@[A-Za-z_][A-Za-z0-9_]*)(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+      "captures": {
+        "1": {
+          "name": "keyword.other.plugin.emaki"
+        },
+        "2": {
+          "name": "entity.name.function.plugin.emaki"
+        }
+      }
+    },
+    {
       "include": "#define"
     },
     {

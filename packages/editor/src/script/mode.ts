@@ -60,6 +60,8 @@ const parser: StreamParser<State> = {
 
     // First word of an indented line: a statement, narration, or `speaker attrs:`.
     if (isLineStart(stream)) {
+      // A plugin's command or screen element: `@petals on amount=40`.
+      if (stream.match(/^@[A-Za-z_]\w*/)) return 'keyword';
       const stmt = stream.match(STATEMENT) as RegExpMatchArray | null;
       if (stmt) {
         const k = stmt[1];
