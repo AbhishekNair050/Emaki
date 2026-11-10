@@ -12,6 +12,7 @@
     "./style.css": "./src/style.css",
     "./ui-strings": "./src/ui-strings.ts",
     "./plugin": "./src/emaki-plugin.ts",
+    "./plugins": "./src/plugins.ts",
     "./host": "./src/host.ts",
     "./build": "./src/build.ts"
   },

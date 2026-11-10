@@ -58,6 +58,8 @@ export interface ScreenHost {
   selected?(actions: readonly ScreenAction[]): boolean;
   /** Play the interface sound for pointing at or clicking a button, if the game has one. */
   sound?(kind: 'hover' | 'click'): void;
+  /** A plugin's element for a screen (`@clock face`), or null when it can't make one. */
+  pluginElement?(plugin: string, element: string, args: Readonly<Record<string, Value>>): HTMLElement | null;
   /** The lines said so far (oldest first) and the first one a `log` shows. */
   log?: { entries: ReadonlyArray<{ name: string; text: string; voice: boolean }>; first: number };
 }
@@ -364,6 +366,19 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
       }
       select.addEventListener('change', () => host.settings.set(it.setting!, select.value));
       return control(it, host, vars, select);
+    }
+    case 'plugin': {
+      let args: Record<string, Value>;
+      try {
+        args = Object.fromEntries(Object.entries(it.args ?? {}).map(([k, e]) => [k, evaluate(e, vars)]));
+      } catch {
+        return null;
+      }
+      const node = host.pluginElement?.(it.plugin!, it.element!, args) ?? null;
+      if (!node) return null;
+      node.classList.add('screen-plugin', `plugin-${it.plugin}`);
+      place(node, it);
+      return node;
     }
     case 'dialogue':
     case 'speaker':

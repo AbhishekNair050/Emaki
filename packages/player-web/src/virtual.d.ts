@@ -1,3 +1,11 @@
+declare module 'virtual:emaki-plugins' {
+  import type { PluginManifest } from '@emaki/format';
+  import type { PluginSetup } from './plugins.ts';
+  /** The game's plugins' code, by name. */
+  export const plugins: Record<string, PluginSetup>;
+  export const manifests: Record<string, PluginManifest>;
+}
+
 declare module 'virtual:emaki-game' {
   import type { CompiledStory, CompiledTranslation, Diagnostic, StoryGraph } from '@emaki/format';
   export const story: CompiledStory | null;

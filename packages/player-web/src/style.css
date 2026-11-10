@@ -318,6 +318,10 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .screen-log { display: flex; flex-direction: column; }
 .screen-log-entry { position: relative; flex: none; }
 .screen-log-entry .screen-text { text-align: left; }
+/* Plugins: each draws in its own layer over the characters (clicks pass through), and a command the
+   story waits on can open a modal over the story that takes them. */
+.plugin-layer { pointer-events: none; overflow: hidden; }
+.plugin-modal { position: absolute; inset: 0; pointer-events: auto; }
 /* `screen name with fade:` */
 @keyframes screen-in { from { opacity: 0; } }
 /* `screen textbox`: the game's own text box, laid out over the whole stage. */

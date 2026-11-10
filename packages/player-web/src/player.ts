@@ -18,6 +18,7 @@ import {
 } from './settings.ts';
 import { ImagePreloader } from './preload.ts';
 import { watchGamepads } from './gamepad.ts';
+import { PluginManager, type PluginSetup } from './plugins.ts';
 import { renderScreen, type ScreenHost } from './screens.ts';
 import { fadeVolume, LoopAudio, type Track } from './loop-audio.ts';
 import { Progress } from './progress.ts';
@@ -56,6 +57,8 @@ export interface PlayerOptions {
   ownsDocument?: boolean;
   /** The app around the game (desktop, phone, browser). Detected when not given. */
   host?: EmakiHost;
+  /** The game's plugins (plugins/<name>/index.js default exports), by name. */
+  plugins?: Readonly<Record<string, PluginSetup>>;
 }
 
 export class Player {
@@ -216,6 +219,17 @@ export class Player {
     this.stage.append(this.bgLayer, this.spriteLayer, this.fader, this.nvlEl, this.textbox, this.flashEl, this.screenLayer, this.choicesEl, this.quickMenu, this.overlay, this.toastEl);
     root.classList.add('stage-host');
     root.replaceChildren(this.stage);
+    this.plugins = new PluginManager(opts.plugins ?? {}, {
+      stage: this.stage,
+      before: this.fader,
+      modalParent: this.screenLayer,
+      asset: this.assetUrl,
+      vars: () => this.runner.vars,
+      reducedMotion: () => this.reducedMotion,
+      volume: (ch) => this.vol(ch),
+      playSound: (path) => this.playSound(path),
+      language: () => this.runner.language,
+    });
     this.applySettings();
     this.applyLanguage();
     this.drawTextbox();
@@ -249,6 +263,10 @@ export class Player {
   }
 
   private readonly stopGamepads: () => void;
+  /** The game's plugins (see plugins.ts). */
+  private readonly plugins: PluginManager;
+  /** The waiting plugin command running now, so a redraw doesn't start it twice. */
+  private pluginRunning: Block | null = null;
   private readonly keyListener = (e: KeyboardEvent) => this.onKey(e);
   private readonly unloadListener = () => { this.read.flush(); this.devStash(); };
 
@@ -264,6 +282,7 @@ export class Player {
     window.removeEventListener('keydown', this.keyListener);
     window.removeEventListener('beforeunload', this.unloadListener);
     this.stopGamepads();
+    this.plugins.destroy();
     this.stage.remove();
   }
 
@@ -290,6 +309,7 @@ export class Player {
     this.nextEpoch();
     this.busy = false;
     this.syncScene(this.runner.scene());
+    this.plugins.restore(this.runner.pluginState);
     this.syncAudio();
     this.guard(() => this.present(step, true));
     return true;
@@ -307,6 +327,7 @@ export class Player {
           if (step) {
             this.enterPlaying();
             this.syncScene(this.runner.scene());
+            this.plugins.restore(this.runner.pluginState);
             void this.present(step, true);
             this.toast('Reloaded — resumed at the same line');
             return;
@@ -343,7 +364,8 @@ export class Player {
     this.busy = false;
     this.syncScene(scene ?? { bg: null, sprites: [] });
     const screens = this.mode === 'title' ? [] : this.runner.screens;
-    this.guard(() => this.present(this.runner.startAt(label, { vars, scene, screens })));
+    const plugins = this.mode === 'title' ? {} : Object.fromEntries(this.runner.pluginState.map((c, i) => [`${c.plugin}.${i}`, c]));
+    this.guard(() => this.present(this.runner.startAt(label, { vars, scene, screens, plugins })));
   }
 
   /**
@@ -360,6 +382,7 @@ export class Player {
     this.guard(() => {
       const step = this.runner.startAtLine(line, { vars: keep, ...(file ? { file } : {}) });
       this.syncScene(this.runner.scene());
+      this.plugins.restore(this.runner.pluginState);
       this.syncAudio();
       return this.present(step, true);
     });
@@ -392,6 +415,8 @@ export class Player {
 
   private start(): void {
     this.endingName = null;
+    this.plugins.restore([]);
+    this.plugins.emit('start');
     this.enterPlaying();
     this.syncScene({ bg: null, sprites: [] });
     this.stopMusic();
@@ -426,6 +451,9 @@ export class Player {
     if (performance.now() - this.menuShownAt < CHOICE_GUARD_MS) return;
     this.skip = false;
     this.updateToggles();
+    const b = this.runner.block;
+    const c = b?.type === 'menu' ? b.choices.find((x) => x.index === index) : undefined;
+    if (c) this.plugins.emit('choice', { id: c.id, text: c.text });
     this.guard(() => this.present(this.runner.choose(index)));
   }
 
@@ -437,6 +465,7 @@ export class Player {
     this.updateToggles();
     this.nextEpoch();
     this.syncScene(r.scene);
+    this.plugins.restore(this.runner.pluginState);
     this.syncAudio();
     this.renderBlock(r.block, true);
   }
@@ -465,6 +494,8 @@ export class Player {
       if (my === this.epoch) this.busy = false;
     }
     this.renderBlock(step.block, instant);
+    const b = step.block;
+    if (b.type === 'say') this.plugins.emit('line', { id: b.id, speaker: b.who?.id ?? null, text: b.text, label: b.label });
   }
 
   /** Start loading the images the next few lines might show, down every branch. */
@@ -520,6 +551,25 @@ export class Player {
           this.choicesEl.append(btn);
         });
         this.claimFocus(this.choicesEl.firstElementChild as HTMLElement | null);
+        break;
+      }
+      case 'plugin': {
+        // The story waits on the plugin (a minigame), with the last line still showing.
+        this.auto = this.skip = false;
+        this.updateToggles();
+        const prompt = this.runner.lastSay;
+        if (page) this.showPage(page, null, true);
+        else if (prompt) this.showLine(prompt, true, false);
+        else this.textbox.hidden = true;
+        this.textbox.classList.remove('waiting');
+        if (this.pluginRunning === b) break;
+        this.pluginRunning = b;
+        const my = this.epoch;
+        void Promise.resolve(this.plugins.run(b, { instant: false, restoring: false })).then((value) => {
+          if (this.pluginRunning === b) this.pluginRunning = null;
+          if (my !== this.epoch || this.runner.block !== b) return; // the player went back or loaded meanwhile
+          this.guard(() => this.present(this.runner.resumeFromPlugin(value ?? undefined)));
+        });
         break;
       }
       case 'screen': {
@@ -866,6 +916,10 @@ export class Player {
       }
       case 'achieve':
         this.unlockAchievement(fx.id, fx.name);
+        this.plugins.emit('achievement', { id: fx.id, name: fx.name });
+        return;
+      case 'plugin':
+        void this.plugins.run(fx, { instant, restoring: false });
         return;
       case 'globals':
         storage.set(`${this.storeKey}:globals`, JSON.stringify(fx.values));
@@ -873,6 +927,7 @@ export class Player {
       case 'ending':
         this.progress.reachEnding(fx.id);
         this.endingName = fx.name;
+        this.plugins.emit('ending', { id: fx.id, name: fx.name });
         return;
       case 'shake':
         if (!instant && !this.reducedMotion) this.shake((fx.duration ?? 0.5) * 1000);
@@ -1241,6 +1296,8 @@ export class Player {
     this.updateToggles();
     this.stage.classList.remove('playing');
     this.screenLayer.replaceChildren();
+    this.plugins.restore([]);
+    this.plugins.emit('title');
     if (this.story.screens?.textbox) this.drawTextbox();
     this.textbox.hidden = true;
     this.choicesEl.replaceChildren();
@@ -1506,6 +1563,7 @@ export class Player {
       achievements: () => Object.keys(this.story.achievements ?? {}).map((id) => ({ name: named(id, this.story.achievements, 'achievement'), earned: this.achievements().includes(id) })),
       settings: this.screenSettings(),
       part: (kind) => (kind === 'dialogue' ? this.textEl : kind === 'speaker' ? this.namebox : this.sideEl),
+      pluginElement: (plugin, element, args) => this.plugins.element(plugin, element, args),
       selected: (actions) => actions.length > 0 && actions.every((a) => this.isSelected(a, name)),
       sound: (kind) => {
         const path = this.story.meta[`${kind}_sound`];
@@ -1712,6 +1770,7 @@ export class Player {
           if (!this.runner.block) return;
           const save = () => {
             const ok = storage.set(`${this.storeKey}:quick`, JSON.stringify(this.runner.save()));
+            this.plugins.emit('save');
             this.closeConfirm();
             this.toast(ok ? this.t('ui.quick_saved') : this.t('ui.could_not_save'));
             if (this.story.screens?.textbox) this.drawTextbox();
@@ -1829,6 +1888,8 @@ export class Player {
   /** A new game from a label (a title screen's "Epilogue" button). Variables start fresh, globals kept. */
   private startAtLabel(label: string): void {
     this.endingName = null;
+    this.plugins.restore([]);
+    this.plugins.emit('start');
     this.enterPlaying();
     this.syncScene({ bg: null, sprites: [] });
     this.stopMusic();
@@ -2015,6 +2076,7 @@ export class Player {
     this.updateToggles();
     this.nextEpoch();
     this.syncScene(r.scene);
+    this.plugins.restore(this.runner.pluginState);
     this.syncAudio();
     this.renderBlock(r.block, true);
   }
@@ -2278,6 +2340,7 @@ export class Player {
 
   private saveTo(i: number): void {
     const data = this.runner.save();
+    this.plugins.emit('save');
     const b = data.block;
     const preview = b.type === 'say' ? (b.who ? `${b.who.name}: ${b.text}` : b.text) : this.t('ui.at_a_choice');
     const ok = storage.set(`${this.storeKey}:slot${i}`, JSON.stringify({ ...data, preview }));
@@ -2288,9 +2351,11 @@ export class Player {
   private loadFrom(data: SaveData): void {
     const r = this.runner.load(data);
     if (!r.ok) { this.toast(this.t('ui.could_not_load')); return; }
+    this.plugins.emit('load');
     this.enterPlaying();
     this.nextEpoch();
     this.syncScene(this.runner.scene());
+    this.plugins.restore(this.runner.pluginState);
     this.syncAudio();
     this.renderBlock(this.runner.block!, true);
     this.toast(this.t(r.mismatch ? 'ui.loaded_changed' : 'ui.loaded'));
