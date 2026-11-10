@@ -20,6 +20,7 @@ packages/editor      web editor: script pane (CodeMirror) + game + flowchart; sr
 packages/language    editor features (problems, symbols, definition, references, hover, completion, formatting) and structural edits (src/edits.ts) over plain text
 packages/vscode      VS Code extension: a thin adapter over @emaki/language + TextMate grammar; bundled by esbuild
 games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ + tools/gen-art.mjs)
+games/plugin-demo    a small game using the example plugins (plugins/weather, memory, meter; see docs/plugins.md)
 ```
 
 ## Commands (run from the repo root)

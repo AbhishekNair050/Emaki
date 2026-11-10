@@ -77,9 +77,12 @@ What the port still drew as dead art, made real.
 - [x] Master volume, mutes, and each character's voice volume and mute; sample buttons
 - [x] Reset settings; skip to the next choice and back to the previous one
 
+## ✅ Milestone 8 — Plugins
+- [x] Plugin API v1 (D-055): `plugins/<name>/` with plugin.json + index.js; `@name command key=value [-> var]` commands (effects, lasting, waiting with a result) and `@name element` in screens, checked by the compiler; events; bundled into exports. Example plugins in games/plugin-demo: weather, a memory minigame, a meter
+- [ ] Later: functions in expressions, VS Code checks against the game's manifests, completion of plugin commands and arguments
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
-- Plugin API v1
 
 ## Later
 Live2D/Spine plugins, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles, plural forms in translations, explicit line ids, inline (end-of-line) comments.

@@ -238,6 +238,13 @@ label opening:
 
 `movie` plays a video over the whole screen; the story goes on when it ends. Players skip it with a click, Enter, Space or Escape, and skipping mode leaves it out. It plays at the music volume. MP4 (H.264 video, AAC sound) works in every browser and on phones; WebM works everywhere except older iPhones. A movie can have a version per language, like pictures (see [Translations](#translations)): `movie/opening.ja.mp4`.
 
+## Plugins
+```
+  @weather start kind="petals" amount=60
+  @memory play pairs=4 -> turns
+```
+A line starting with `@` runs a command from one of the game's [plugins](plugins.md) (in `plugins/<name>/`), with named arguments (`name=value`: a number, a quoted string, `true`/`false`, a variable, or an expression without spaces). `-> variable` keeps the result of a command the story waits on, like a minigame's score. The compiler checks each line against the plugin's `plugin.json`.
+
 ## Screens during the story
 ```
   show screen hud
@@ -357,4 +364,4 @@ Everything is shared: a label in one file can `jump` to a label in another, and 
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Plural forms in translations, explicit line ids, inline (end-of-line) comments, plugins.
+Plural forms in translations, explicit line ids, inline (end-of-line) comments, functions from plugins in expressions.
