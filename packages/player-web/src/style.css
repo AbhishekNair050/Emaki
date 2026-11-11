@@ -335,7 +335,13 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .stage.own-textbox .side-image.screen-part { height: auto; }
 .stage.own-quickmenu .quickmenu { display: none; }
 :is(.overlay, .screen-layer, .own-textbox .textbox) .screen-button.picture:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.screen-slots, .screen-gallery { display: grid; gap: calc(1.6 * var(--u)); justify-content: center; }
+.screen-slots, .screen-gallery, .screen-scenes, .screen-music { display: grid; gap: calc(1.6 * var(--u)); justify-content: center; }
+/* Extras: replayable scenes (picture and name) and the music room's tracks. */
+:is(.overlay, .screen-layer) .screen-scene { display: flex; flex-direction: column; gap: calc(0.6 * var(--u)); min-width: 0; width: 18cqw; padding: calc(0.6 * var(--u)); }
+.screen-scene img { width: 100%; aspect-ratio: var(--aspect, 16 / 9); object-fit: cover; display: block; }
+.screen-scene-name { font-size: max(12px, calc(2.2 * var(--u))); }
+:is(.overlay, .screen-layer) .screen-track { min-width: 30cqw; text-align: left; }
+:is(.overlay, .screen-layer) .screen-track.selected, .extras-list button.playing { border-color: var(--accent); }
 :is(.overlay, .screen-layer, .own-textbox .textbox) .screen-slot {
   display: flex; flex-direction: column; align-items: stretch; gap: calc(0.6 * var(--u));
   min-width: 0; width: 22cqw; padding: calc(0.8 * var(--u)); text-align: left;

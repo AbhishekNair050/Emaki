@@ -58,6 +58,12 @@ export interface ScreenHost {
   selected?(actions: readonly ScreenAction[]): boolean;
   /** Play the interface sound for pointing at or clicking a button, if the game has one. */
   sound?(kind: 'hover' | 'click'): void;
+  /** Replayable scenes (unlocked once reached) and playing one. */
+  replays?(): Array<{ label: string; name: string; image: string | null; unlocked: boolean }>;
+  playReplay?(label: string): void;
+  /** The music room's tracks (unlocked once heard), and playing (or stopping) one. */
+  tracks?(): Array<{ name: string; title: string; unlocked: boolean; playing: boolean }>;
+  playTrack?(name: string): void;
   /** A plugin's element for a screen (`@clock face`), or null when it can't make one. */
   pluginElement?(plugin: string, element: string, args: Readonly<Record<string, Value>>): HTMLElement | null;
   /** The lines said so far (oldest first) and the first one a `log` shows. */
@@ -261,6 +267,50 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
           b.textContent = host.ui('locked');
           b.disabled = true;
         }
+        div.append(b);
+      }
+      return div;
+    }
+    case 'scenes': {
+      // Replayable scenes: a picture (when declared) and the name; ??? until reached.
+      const div = grid(it, 'screen-scenes');
+      const first = host.page * it.count!;
+      for (const r of (host.replays?.() ?? []).slice(first, first + it.count!)) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = r.unlocked ? 'screen-scene' : 'screen-scene locked';
+        if (r.unlocked) {
+          if (r.image) {
+            const img = document.createElement('img');
+            img.src = r.image;
+            img.alt = '';
+            b.append(img);
+          }
+          const name = document.createElement('span');
+          name.className = 'screen-scene-name';
+          name.textContent = r.name;
+          b.append(name);
+          b.addEventListener('click', (e) => { e.stopPropagation(); host.sound?.('click'); host.playReplay?.(r.label); });
+        } else {
+          b.textContent = host.ui('locked');
+          b.disabled = true;
+        }
+        div.append(b);
+      }
+      return div;
+    }
+    case 'music': {
+      // The music room: a button per track (??? until heard); the one playing is selected, and stops when pressed again.
+      const div = grid({ ...it, columns: it.columns ?? 1 }, 'screen-music');
+      const first = host.page * it.count!;
+      for (const t of (host.tracks?.() ?? []).slice(first, first + it.count!)) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = `screen-track${t.unlocked ? '' : ' locked'}${t.playing ? ' selected' : ''}`;
+        b.textContent = t.unlocked ? t.title : host.ui('locked');
+        b.disabled = !t.unlocked;
+        if (t.unlocked) b.setAttribute('aria-pressed', String(t.playing));
+        b.addEventListener('click', (e) => { e.stopPropagation(); host.playTrack?.(t.name); });
         div.append(b);
       }
       return div;

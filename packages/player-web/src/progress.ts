@@ -10,13 +10,23 @@ export class Progress {
   private readonly store: KeyValueStore;
   private readonly images: Set<string>;
   private readonly endings: Set<string>;
+  private readonly replays: Set<string>;
+  private readonly music: Set<string>;
 
   constructor(key: string, store: KeyValueStore) {
     this.key = key;
     this.store = store;
     this.images = new Set(this.read('gallery'));
     this.endings = new Set(this.read('endings'));
+    this.replays = new Set(this.read('replays'));
+    this.music = new Set(this.read('music'));
   }
+
+  /** A replayable scene reached (by its label), and a music room track heard (by its audio name). */
+  hasReplay(label: string): boolean { return this.replays.has(label); }
+  hasHeard(track: string): boolean { return this.music.has(track); }
+  unlockReplay(label: string): boolean { return this.add(this.replays, 'replays', label); }
+  hearTrack(track: string): boolean { return this.add(this.music, 'music', track); }
 
   hasSeen(image: string): boolean {
     return this.images.has(image);

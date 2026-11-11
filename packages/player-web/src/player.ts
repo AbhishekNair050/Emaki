@@ -415,6 +415,8 @@ export class Player {
 
   private start(): void {
     this.endingName = null;
+    this.roomTrack = null;
+    this.replayReturn = null;
     this.plugins.restore([]);
     this.plugins.emit('start');
     this.enterPlaying();
@@ -495,6 +497,7 @@ export class Player {
     }
     this.renderBlock(step.block, instant);
     const b = step.block;
+    if ((b.type === 'say' || b.type === 'menu') && !this.runner.inReplay && this.story.replays?.some((r) => r.label === b.label)) this.progress.unlockReplay(b.label);
     if (b.type === 'say') this.plugins.emit('line', { id: b.id, speaker: b.who?.id ?? null, text: b.text, label: b.label });
   }
 
@@ -590,6 +593,7 @@ export class Player {
         break;
       case 'end':
         if (this.mode === 'intro') this.showTitleMenu();
+        else if (this.runner.inReplay) this.endReplay();
         else this.showEnd();
         break;
     }
@@ -1140,6 +1144,8 @@ export class Player {
 
   /** Start a music track; with `fadeMs`, the old track fades out while the new one fades in. */
   private playMusic(path: string, loop: boolean, fadeMs = 0): void {
+    const track = this.story.music?.find((t) => t.path === path);
+    if (track) this.progress.hearTrack(track.name);
     if (this.music?.path === path) return;
     this.stopMusic(fadeMs);
     this.music = this.loops.play(path, asset(path), loop, this.vol('music'), fadeMs);
@@ -1313,6 +1319,7 @@ export class Player {
     }
     const meta = this.story.meta;
     void this.setBackground(meta.title_image ? this.imageAsset(meta.title_image) : null, 0);
+    this.roomTrack = null;
     if (meta.title_music) this.playMusic(this.story.audio[meta.title_music] ?? meta.title_music, true);
     this.images.want(new Runner(this.story).upcomingImages().map(asset)); // the opening scene
     this.showTitleMenu();
@@ -1435,7 +1442,7 @@ export class Player {
   private screenPageCount(name: string): number {
     const find = (items: readonly CompiledScreenItem[]): CompiledScreenItem | null => {
       for (const it of items) {
-        if (it.kind === 'slots' || it.kind === 'gallery') return it;
+        if (it.kind === 'slots' || it.kind === 'gallery' || it.kind === 'scenes' || it.kind === 'music') return it;
         const inner = it.children ? find(it.children) : null;
         if (inner) return inner;
       }
@@ -1443,7 +1450,10 @@ export class Player {
     };
     const paged = find(this.story.screens?.[name]?.items ?? []);
     if (!paged) return 1;
-    const total = paged.kind === 'slots' ? saveSlotCount(this.story.meta.save_slots) : (this.story.gallery ?? []).length;
+    const total = paged.kind === 'slots' ? saveSlotCount(this.story.meta.save_slots)
+      : paged.kind === 'scenes' ? (this.story.replays ?? []).length
+      : paged.kind === 'music' ? (this.story.music ?? []).length
+      : (this.story.gallery ?? []).length;
     return Math.max(1, Math.ceil(total / paged.count!));
   }
 
@@ -1564,6 +1574,10 @@ export class Player {
       settings: this.screenSettings(),
       part: (kind) => (kind === 'dialogue' ? this.textEl : kind === 'speaker' ? this.namebox : this.sideEl),
       pluginElement: (plugin, element, args) => this.plugins.element(plugin, element, args),
+      replays: () => (this.story.replays ?? []).map((r) => ({ label: r.label, name: this.replayName(r.label), image: r.image ? this.assetUrl(r.image) : null, unlocked: this.progress.hasReplay(r.label) })),
+      playReplay: (label) => this.playReplay(label),
+      tracks: () => (this.story.music ?? []).map((t) => ({ name: t.name, title: this.trackTitle(t.name), unlocked: this.progress.hasHeard(t.name), playing: this.roomTrack === t.name })),
+      playTrack: (track) => { this.playTrack(track); this.openScreen(name); },
       selected: (actions) => actions.length > 0 && actions.every((a) => this.isSelected(a, name)),
       sound: (kind) => {
         const path = this.story.meta[`${kind}_sound`];
@@ -1617,14 +1631,14 @@ export class Player {
       case 'continue': return this.latestSave() !== null;
       case 'open':
         if (a.screen === 'load') return this.slots().some(Boolean);
-        if (a.screen === 'save') return this.mode === 'playing' && this.runner.block !== null;
+        if (a.screen === 'save') return this.mode === 'playing' && this.runner.block !== null && !this.runner.inReplay;
         if (a.screen === 'extras') return this.extrasTabs().length > 0;
         return true;
       case 'quit': return !!this.host.quit && !!this.opts.ownsDocument;
       case 'switch': return this.screenStack[this.screenStack.length - 1] !== a.screen;
       case 'back': return this.mode === 'playing' && this.runner.canGoBack;
       case 'auto': case 'skip': case 'hide': return this.mode === 'playing';
-      case 'quicksave': return this.mode === 'playing' && this.runner.block !== null;
+      case 'quicksave': return this.mode === 'playing' && this.runner.block !== null && !this.runner.inReplay;
       case 'quickload': return storage.get(`${this.storeKey}:quick`) !== null;
       case 'voice': {
         if (entry !== undefined) return !!this.runner.log[entry]?.voice;
@@ -1828,6 +1842,7 @@ export class Player {
           return;
         }
         case 'close':
+          if (screen && this.findItem(screen, 'music')) this.leaveMusicRoom();
           if (!this.screenStack.length && this.overlay.classList.contains('confirm-panel')) { this.closeOverlay(); return; }
           if (!this.screenStack.length && this.overlay.classList.contains('panel') && this.mode === 'playing' && !onStory) { this.closeOverlay(); return; }
           if (onStory) {
@@ -1907,10 +1922,12 @@ export class Player {
   }
 
   /** The Extras tabs this story has something for. */
-  private extrasTabs(): Array<'gallery' | 'endings' | 'achievements'> {
+  private extrasTabs(): Array<'gallery' | 'scenes' | 'music' | 'endings' | 'achievements'> {
     const s = this.story;
     return [
       ...(s.gallery?.length ? ['gallery' as const] : []),
+      ...(s.replays?.length ? ['scenes' as const] : []),
+      ...(s.music?.length ? ['music' as const] : []),
       ...(s.endings && Object.keys(s.endings).length ? ['endings' as const] : []),
       ...(s.achievements && Object.keys(s.achievements).length ? ['achievements' as const] : []),
     ];
@@ -1933,7 +1950,23 @@ export class Player {
       this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
     let body: HTMLElement;
     let count: string;
-    if (tab === 'gallery') {
+    if (tab !== 'music') this.leaveMusicRoom();
+    if (tab === 'scenes' || tab === 'music') {
+      const list = tab === 'scenes'
+        ? (this.story.replays ?? []).map((r) => ({ id: r.label, name: this.replayName(r.label), on: this.progress.hasReplay(r.label), go: () => this.playReplay(r.label) }))
+        : (this.story.music ?? []).map((m) => ({ id: m.name, name: this.trackTitle(m.name), on: this.progress.hasHeard(m.name), go: () => { this.playTrack(m.name); this.showExtras('music'); } }));
+      count = this.t('ui.count', { n: list.filter((x) => x.on).length, total: list.length });
+      body = el('ol', 'extras-list');
+      for (const x of list) {
+        const li = el('li', x.on ? 'unlocked' : 'locked');
+        if (x.on) {
+          const b = button(x.name, x.go);
+          if (tab === 'music') { b.setAttribute('aria-pressed', String(this.roomTrack === x.id)); b.classList.toggle('playing', this.roomTrack === x.id); }
+          li.append(b);
+        } else li.textContent = this.t('ui.locked');
+        body.append(li);
+      }
+    } else if (tab === 'gallery') {
       const images = this.story.gallery ?? [];
       const seen = images.filter((i) => this.progress.hasSeen(i));
       count = this.t('ui.count', { n: seen.length, total: images.length });
@@ -1961,7 +1994,69 @@ export class Player {
       }
     }
     this.openOverlay('panel extras-panel', el('h2', '', this.t('ui.extras')), ...(tabs.length > 1 ? [bar] : []),
-      el('p', 'extras-count', count), body, button(this.t('ui.close'), () => this.showTitleMenu()));
+      el('p', 'extras-count', count), body, button(this.t('ui.close'), () => { this.leaveMusicRoom(); this.showTitleMenu(); }));
+  }
+
+  /** A replayable scene's name / a track's title, in the player's language. */
+  private replayName(label: string): string {
+    return this.translation?.strings[`replay.${label}`]?.text ?? this.story.replays?.find((r) => r.label === label)?.name ?? label;
+  }
+
+  private trackTitle(name: string): string {
+    return this.translation?.strings[`music.${name}`]?.text ?? this.story.music?.find((t) => t.name === name)?.title ?? name;
+  }
+
+  /** The music room's track playing (its audio name), if one is. */
+  private roomTrack: string | null = null;
+
+  /** Play a music room track, or stop it if it's the one playing. */
+  private playTrack(name: string): void {
+    const t = this.story.music?.find((x) => x.name === name);
+    if (!t) return;
+    if (this.roomTrack === name) { this.roomTrack = null; this.stopMusic(400); return; }
+    this.playMusic(t.path, true, 400);
+    this.roomTrack = name;
+  }
+
+  /** Leaving the music room: stop its track and bring back what was playing (the title music, or the story's). */
+  private leaveMusicRoom(): void {
+    if (!this.roomTrack) return;
+    this.roomTrack = null;
+    this.stopMusic(400);
+    if (this.mode === 'title') {
+      const tm = this.story.meta.title_music;
+      if (tm) this.playMusic(this.story.audio[tm] ?? tm, true, 400);
+    } else this.syncAudio();
+  }
+
+  /** Where to go back to when a replay ends: the game's own Extras screen, or the built-in one. */
+  private replayReturn: 'screen' | 'builtin' | null = null;
+
+  /** Replay a scene from Extras: fresh variables, no saving, back to Extras at its end. */
+  private playReplay(label: string): void {
+    const r = this.story.replays?.find((x) => x.label === label);
+    if (!r) return;
+    this.leaveMusicRoom();
+    this.replayReturn = this.screenStack.length ? 'screen' : 'builtin';
+    this.screenStack = [];
+    this.endingName = null;
+    this.plugins.restore([]);
+    this.enterPlaying();
+    this.syncScene({ bg: null, sprites: [] });
+    this.stopMusic();
+    this.stopAmbience();
+    this.stopSounds();
+    this.stopVoice();
+    this.guard(() => this.present(this.runner.startReplay(label, r.until)));
+  }
+
+  /** A replay reached its end: back to the title, with Extras open where it was. */
+  private endReplay(): void {
+    const back = this.replayReturn;
+    this.replayReturn = null;
+    this.showTitle();
+    if (back === 'screen' && this.story.screens?.extras) this.openOwn('extras');
+    else this.showExtras('scenes');
   }
 
   /** One gallery image over the whole screen; click, arrows or Esc. */
@@ -2319,6 +2414,7 @@ export class Player {
   }
 
   private showSlots(kind: 'save' | 'load'): void {
+    if (kind === 'save' && this.runner.inReplay && this.mode === 'playing') { this.toast(this.t('ui.no_saving_in_replay')); return; }
     if (this.openOwn(kind)) return;
     const canSave = kind === 'save' && this.mode === 'playing' && this.runner.block !== null;
     const grid = el('div', 'slots');
