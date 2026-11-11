@@ -161,7 +161,7 @@ describe('completion', () => {
     const start = labels(edit('  '), 27);
     expect(start[0]).toBe('mira');
     expect(start).toContain('menu');
-    expect(labels(edit('lab'), 27)).toEqual(['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'label']);
+    expect(labels(edit('lab'), 27)).toEqual(['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'replay', 'label']);
     expect(labels(src, 1, 0)).toEqual([]); // inside the header
   });
 });

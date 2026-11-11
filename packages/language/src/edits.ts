@@ -96,6 +96,11 @@ export function renameScene(src: string, from: string, to: string, ctx: SceneCon
     });
   }
   for (const m of program.meta) if (m[0] === 'start' && m[1].trim() === from) m[1] = to;
+  // Replays of the scene, and replays that stop at it.
+  for (const r of program.replays ?? []) {
+    if (r.label === from) r.label = to;
+    if (r.until === from) r.until = to;
+  }
   return done(program, (p) => labelLine(to)(p) ?? firstRef(p, to));
 }
 
@@ -114,6 +119,9 @@ export function deleteScene(src: string, name: string, ctx: SceneContext = NO_CO
     walk(l.body, (s) => {
       if ((s.type === 'jump' || s.type === 'call') && s.target === name) refs.push(`${l.name} (line ${s.loc.line})`);
     });
+  }
+  for (const r of program.replays ?? []) {
+    if (r.label === name || r.until === name) refs.push(`the replay "${r.name}" (line ${r.loc.line})`);
   }
   if (refs.length) return fail(`Other scenes still lead to '${name}': ${refs.join(', ')}. Change those first.`);
   // The comments above the scene go with it: they were about that scene.

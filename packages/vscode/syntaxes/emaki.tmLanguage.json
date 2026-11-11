@@ -208,7 +208,7 @@
       }
     },
     "asset": {
-      "match": "^(image|audio)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+[A-Za-z_][A-Za-z0-9_]*)*)\\s*(=)\\s*(\"(?:[^\"\\\\]|\\\\.)*\")",
+      "match": "^(image|audio)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+[A-Za-z_][A-Za-z0-9_]*)*)\\s*(=)\\s*(\"(?:[^\"\\\\]|\\\\.)*\")(?:\\s+(gallery)|\\s+(music)\\s+(\"(?:[^\"\\\\]|\\\\.)*\"))?",
       "captures": {
         "1": {
           "name": "keyword.other.$1.emaki"
@@ -221,6 +221,15 @@
         },
         "4": {
           "name": "string.quoted.double.path.emaki"
+        },
+        "5": {
+          "name": "keyword.other.gallery.emaki"
+        },
+        "6": {
+          "name": "keyword.other.music.emaki"
+        },
+        "7": {
+          "name": "string.quoted.double.emaki"
         }
       }
     },
@@ -775,7 +784,7 @@
       ]
     },
     "achievement": {
-      "match": "^(achievement|ending)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")",
+      "match": "^(achievement|ending|replay)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")(?:\\s+(image)\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+(until)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
       "captures": {
         "1": {
           "name": "storage.type.achievement.emaki"
@@ -785,6 +794,18 @@
         },
         "3": {
           "name": "string.quoted.double.emaki"
+        },
+        "4": {
+          "name": "keyword.other.image.emaki"
+        },
+        "5": {
+          "name": "entity.name.type.asset.emaki"
+        },
+        "6": {
+          "name": "keyword.other.until.emaki"
+        },
+        "7": {
+          "name": "entity.name.function.label.emaki"
         }
       }
     }

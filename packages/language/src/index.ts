@@ -264,7 +264,8 @@ export class Analysis {
 
     if (/\bwith\s+\w*$/.test(before)) return values(TRANSITIONS, 'transition');
     if (/^\s+show\s.*\bat\s+\w*$/.test(before)) return values(POSITIONS, 'position');
-    if (/^\s*(jump|call)\s+\w*$/.test(before) || (/^start\s*:\s*\w*$/.test(before) && this.inHeader(line))) return of('label');
+    if (/^\s*(jump|call)\s+\w*$/.test(before) || /^replay\s+\w*$/.test(before) || /^replay\s.*\buntil\s+\w*$/.test(before)
+      || (/^start\s*:\s*\w*$/.test(before) && this.inHeader(line))) return of('label');
     if (/^\s+scene\s+[\w ]*$/.test(before)) {
       return [...images.filter((s) => !s.name.includes(' ')).map((s): Completion => ({ label: s.name, kind: 'image', detail: s.detail })),
         { label: 'black', kind: 'value', detail: 'empty black screen' }];
@@ -314,7 +315,7 @@ export class Analysis {
   }
 }
 
-const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'label'];
+const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'replay', 'label'];
 const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl', 'shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone'];
 
 /**

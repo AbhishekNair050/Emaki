@@ -17,7 +17,7 @@ interface State {
   dialogue: 'colon' | 'quote' | null;
 }
 
-const TOP_LEVEL = /^(define|image|audio|layered|screen|global\s+var|var|label|achievement|ending)\b/;
+const TOP_LEVEL = /^(define|image|audio|layered|screen|global\s+var|var|label|achievement|ending|replay)\b/;
 // shake/flash/camera/hop/nod/bow/float/still/tone/movie aren't reserved: `flash: Hi!` is a character called flash speaking.
 const STATEMENT = /^(scene|show|hide|play|stop|set|jump|call|return|end|wait|menu|if|elif|else|achieve|nvl|always|group|(?:shake|flash|camera|hop|nod|bow|float|still|tone|movie)(?![\w ]*:))\b/;
 const WORD_KEYWORD = /^(with|at|fade|loop|and|or|not|if|zoom|over|reset|optional)\b/;
