@@ -23,9 +23,9 @@ image mira stern = "sprites/mira_stern.svg"
 image mira sad = "sprites/mira_sad.svg"
 
 # ── Sound (CC0, see assets/audio/CREDITS.md) ────────────────
-audio theme = "audio/theme_forget_me_not.mp3"
-audio storm = "audio/storm_rain.mp3"
-audio shore = "audio/shore_waves.mp3"
+audio theme = "audio/theme_forget_me_not.mp3" music "Forget Me Not"
+audio storm = "audio/storm_rain.mp3" music "The Storm"
+audio shore = "audio/shore_waves.mp3" music "Waves at Dawn"
 audio thunder = "audio/thunder.mp3"
 audio crank = "audio/crank.mp3"
 
@@ -39,6 +39,10 @@ var boat_safe = false
 achievement two_keepers "Two Keepers"
 achievement light_holds "The Light Holds"
 achievement rough_water "Rough Water"
+
+# ── Scenes to replay from Extras ────────────────────────────
+replay kitchen_talk "A Talk in the Kitchen" image kitchen
+replay lamp_room_trouble "Trouble in the Lamp Room" image lamp_room
 
 label arrival:
   scene cliff_road with fade
