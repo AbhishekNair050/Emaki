@@ -196,8 +196,26 @@ export class Runner {
     this.state = this.initialState();
   }
 
+  /** A scene being replayed from Extras: it ends when the story leaves its label (or reaches `until`). */
+  private replaying: { label: string; until?: string } | null = null;
+
+  /**
+   * Replay a scene (`replay label "Name"`): variables start fresh (globals
+   * kept), and the story ends when it leaves the label, or reaches `until`
+   * when given.
+   */
+  startReplay(label: string, until?: string): Step {
+    return this.startAt(label, { replay: { label, ...(until ? { until } : {}) } });
+  }
+
+  /** Whether a replay is playing (see startReplay). */
+  get inReplay(): boolean {
+    return this.replaying !== null;
+  }
+
   /** Begin from the start label. */
   start(): Step {
+    this.replaying = null;
     this.state = this.initialState();
     this.applyGlobals();
     this.history = [];
@@ -210,9 +228,10 @@ export class Runner {
    * Pass `scene` to keep what's currently on screen, since a label that
    * doesn't open with `scene` would otherwise start on black.
    */
-  startAt(label: string, opts: { vars?: Record<string, Value>; scene?: SceneState; screens?: string[]; plugins?: Record<string, PluginCommand> } = {}): Step {
+  startAt(label: string, opts: { vars?: Record<string, Value>; scene?: SceneState; screens?: string[]; plugins?: Record<string, PluginCommand>; replay?: { label: string; until?: string } } = {}): Step {
     const pc = this.story.labels[label];
     if (pc === undefined) throw new StoryError(`No label named '${label}'`, null);
+    this.replaying = opts.replay ?? null;
     this.state = this.initialState();
     this.state.pc = pc;
     for (const [name, v] of Object.entries(opts.vars ?? {})) {
@@ -237,6 +256,7 @@ export class Runner {
    * `vars` are applied; the rest keep their starting values.
    */
   startAtLine(line: number, opts: { vars?: Record<string, Value>; file?: string } = {}): Step {
+    this.replaying = null;
     const code = this.story.code;
     let pc = -1;
     for (let i = 0; i < code.length; i++) {
@@ -611,6 +631,7 @@ export class Runner {
    * position still exists; `mismatch` tells the caller to warn the player.
    */
   load(data: SaveData): { ok: boolean; mismatch: boolean } {
+    this.replaying = null;
     if (data?.format !== 'emaki-save' || !data.state || !data.block) return { ok: false, mismatch: false };
     if (data.state.pc < 0 || data.state.pc > this.story.code.length) return { ok: false, mismatch: false };
     this.state = clone(data.state);
@@ -696,6 +717,11 @@ export class Runner {
       if (s.ended || s.pc >= code.length) return this.blockOn({ type: 'end' }, effects);
 
       const ins = code[s.pc];
+      // A replayed scene ends where it leaves its label (calls into other labels are part of it).
+      if (this.replaying && s.stack.length === 0) {
+        const r = this.replaying;
+        if (r.until ? ins.src.label === r.until : ins.src.label !== r.label) return this.blockOn({ type: 'end' }, effects);
+      }
       switch (ins.op) {
         case 'say': {
           s.pc++;
