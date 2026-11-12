@@ -64,6 +64,8 @@ Between `---` lines at the very top: `key: value` pairs.
 | `global var endings_seen = 0` | A variable that keeps its value across playthroughs on this device (endings seen, unlocked extras). Loading a save or going back never undoes it. |
 | `image side mira smile = "side/mira_smile.png"` | A **side image**: Mira's portrait in the text box while she's smiling. See [Side images](#side-images). |
 | `image beach_kiss = "cg/beach.png" gallery` | An image that appears in the **Extras** gallery once a player has seen it (in any playthrough). |
+| `audio theme = "music/theme.ogg" music "Forget Me Not"` | A track in the **Extras** music room, with its title, once a player has heard it (played as music, in any playthrough). |
+| `replay kitchen_talk "A Talk in the Kitchen" image kitchen` | A scene players can replay from **Extras** once they've reached it: the story from that label, with fresh variables and no saving, until it leaves the label (calls into other labels are part of it), or until `until other_label` when the scene spans several labels. `image` is its picture in the list. |
 | `ending light_holds "The Light Holds"` | An ending, reached with `end light_holds`. Extras lists every ending, with the ones not reached yet as ???. |
 | `achievement first_light "First Light"` | An achievement players can earn. Use the same id as on Steam. |
 | `label name:` | A scene of your story. Everything indented under it runs in order. |

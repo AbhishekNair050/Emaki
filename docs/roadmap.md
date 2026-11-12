@@ -81,6 +81,11 @@ What the port still drew as dead art, made real.
 - [x] Plugin API v1 (D-055): `plugins/<name>/` with plugin.json + index.js; `@name command key=value [-> var]` commands (effects, lasting, waiting with a result) and `@name element` in screens, checked by the compiler; events; bundled into exports. Example plugins in games/plugin-demo: weather, a memory minigame, a meter
 - [ ] Later: functions in expressions, VS Code checks against the game's manifests, completion of plugin commands and arguments
 
+## ✅ Milestone 9 — Scene replay and music room
+- [x] `replay label "Name" [image ...] [until label]`: replay scenes from Extras, unlocked once reached, no saving, back to Extras at the end (D-056)
+- [x] `audio ... music "Title"`: a music room of the tracks heard so far; `scenes` and `music` elements for a game's own Extras screen, Scenes and Music tabs in the built-in one
+- [x] The demo game has two replayable scenes and three tracks; the port has its music room
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 
