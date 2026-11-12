@@ -22,6 +22,27 @@ interface Line {
   children: Line[];
   /** Comments ("# ...") and blank lines ("") directly above this line. */
   leading: string[];
+  /** A comment at the end of the line. */
+  comment?: string;
+}
+
+/**
+ * Split a line into its code and an end-of-line comment: a `#` with a space
+ * before it and a space (or the line's end) after it, outside quotes, starts
+ * a comment. So `mira: Room #4` and `color=#ff0000` are not comments, and
+ * `\#` writes a literal # in text.
+ */
+export function splitComment(text: string): { code: string; comment?: string } {
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '\\') { i++; continue; }
+    if (c === '"') { quoted = !quoted; continue; }
+    if (!quoted && c === '#' && i > 0 && /\s/.test(text[i - 1]!) && (i + 1 === text.length || /\s/.test(text[i + 1]!))) {
+      return { code: text.slice(0, i).trimEnd(), comment: text.slice(i).trimEnd() };
+    }
+  }
+  return { code: text };
 }
 
 export const KEYWORDS = new Set([
@@ -57,13 +78,21 @@ export function parse(source: string): ParseResult {
   while (start < rawLines.length && rawLines[start].trim() === '') start++;
   if (rawLines[start]?.trim() === '---') {
     let i = start + 1;
+    let notes: string[] = [];
     for (; i < rawLines.length && rawLines[i].trim() !== '---'; i++) {
-      const t = rawLines[i].trim();
-      if (!t || t.startsWith('#')) continue;
+      const raw = rawLines[i].trim();
+      if (!raw) continue;
+      if (raw.startsWith('#')) { notes.push(raw); continue; }
+      const { code: t, comment } = splitComment(raw);
       const m = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(t);
-      if (!m) err(i + 1, 'bad-frontmatter', `Expected 'key: value' in the header`);
-      else program.meta.push([m[1], unquote(m[2].trim())]);
+      if (!m) { err(i + 1, 'bad-frontmatter', `Expected 'key: value' in the header`); continue; }
+      if (notes.length || comment) {
+        (program.metaTrivia ??= {})[program.meta.length] = { ...(notes.length ? { leading: notes } : {}), ...(comment ? { comment } : {}) };
+        notes = [];
+      }
+      program.meta.push([m[1], unquote(m[2].trim())]);
     }
+    if (notes.length) program.metaTrailing = notes;
     if (i >= rawLines.length) err(start + 1, 'bad-frontmatter', `Header opened with '---' but never closed`);
     start = i + 1;
   }
@@ -88,7 +117,8 @@ export function parse(source: string): ParseResult {
     const lead = /^[ \t]*/.exec(raw)![0];
     if (lead.includes('\t')) err(i + 1, 'tab-indent', 'Use spaces for indentation, not tabs');
     const indent = lead.replace(/\t/g, '    ').length;
-    const node: Line = { indent, text: trimmed, line: i + 1, children: [], leading: pending };
+    const { code, comment } = splitComment(trimmed);
+    const node: Line = { indent, text: code, line: i + 1, children: [], leading: pending, ...(comment ? { comment } : {}) };
     pending = [];
     while (stack[stack.length - 1].indent >= indent) stack.pop();
     stack[stack.length - 1].children.push(node);
@@ -712,6 +742,7 @@ export function parse(source: string): ParseResult {
 function attach<T extends Trivia>(node: T, ln: Line, firstInBlock: boolean): T {
   const t = firstInBlock && ln.leading[0] === '' ? ln.leading.slice(1) : ln.leading;
   if (t.length) node.leading = t;
+  if (ln.comment) node.comment = ln.comment;
   return node;
 }
 

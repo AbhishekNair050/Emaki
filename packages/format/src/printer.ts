@@ -17,6 +17,7 @@ import type { AssetRef, Program, Stmt, Trivia } from './ast.ts';
 import { printExpr } from './expr.ts';
 import { printScreenLine, type ScreenItem } from './screens.ts';
 import { printPluginCall } from './plugins.ts';
+import { splitComment } from './parser.ts';
 
 const INDENT = '  ';
 
@@ -28,39 +29,44 @@ export function print(program: Program): string {
 
   if (program.meta.length) {
     out.push('---');
-    for (const [k, v] of program.meta) out.push(`${k}: ${v}`);
+    program.meta.forEach(([k, v], i) => {
+      const t = program.metaTrivia?.[i];
+      for (const c of t?.leading ?? []) if (c) out.push(c);
+      out.push(`${k}: ${v}${tail(t)}`);
+    });
+    for (const c of program.metaTrailing ?? []) out.push(c);
     out.push('---');
   }
 
   const sections: Array<Array<Trivia & { text: string }>> = [
-    program.characters.map((c) => ({ leading: c.leading, text: `define ${c.id} ${q(c.name)}${c.color ? ` color=${c.color}` : ''}` })),
-    program.images.map((i) => ({ leading: i.leading, text: `image ${i.name} = ${q(i.path)}${i.gallery ? ' gallery' : ''}` })),
-    program.audio.map((a) => ({ leading: a.leading, text: `audio ${a.name} = ${q(a.path)}${a.music !== undefined ? ` music ${q(a.music)}` : ''}` })),
-    program.vars.map((v) => ({ leading: v.leading, text: `${v.global ? 'global ' : ''}var ${v.name} = ${printExpr(v.init)}` })),
-    program.achievements.map((a) => ({ leading: a.leading, text: `achievement ${a.id} ${q(a.name)}` })),
-    program.endings.map((e) => ({ leading: e.leading, text: `ending ${e.id} ${q(e.name)}` })),
-    (program.replays ?? []).map((r) => ({ leading: r.leading, text: [`replay ${r.label} ${q(r.name)}`, r.image ? `image ${r.image}` : '', r.until ? `until ${r.until}` : ''].filter(Boolean).join(' ') })),
+    program.characters.map((c) => ({ ...c, text: `define ${c.id} ${q(c.name)}${c.color ? ` color=${c.color}` : ''}` })),
+    program.images.map((i) => ({ ...i, text: `image ${i.name} = ${q(i.path)}${i.gallery ? ' gallery' : ''}` })),
+    program.audio.map((a) => ({ ...a, text: `audio ${a.name} = ${q(a.path)}${a.music !== undefined ? ` music ${q(a.music)}` : ''}` })),
+    program.vars.map((v) => ({ ...v, text: `${v.global ? 'global ' : ''}var ${v.name} = ${printExpr(v.init)}` })),
+    program.achievements.map((a) => ({ ...a, text: `achievement ${a.id} ${q(a.name)}` })),
+    program.endings.map((e) => ({ ...e, text: `ending ${e.id} ${q(e.name)}` })),
+    (program.replays ?? []).map((r) => ({ ...r, text: [`replay ${r.label} ${q(r.name)}`, r.image ? `image ${r.image}` : '', r.until ? `until ${r.until}` : ''].filter(Boolean).join(' ') })),
   ];
   for (const section of sections) {
     if (!section.length) continue;
     blank();
     for (const item of section) {
       trivia(item.leading, '', out);
-      out.push(item.text);
+      out.push(item.text + tail(item));
     }
   }
 
   for (const l of program.layered) {
     blank();
     trivia(l.leading, '', out);
-    out.push(`layered ${l.tag}:`);
+    out.push(`layered ${l.tag}:${tail(l)}`);
     for (const layer of l.layers) {
       trivia(layer.leading, INDENT, out);
-      if (layer.kind === 'always') { out.push(`${INDENT}always ${q(layer.path)}`); continue; }
-      out.push(`${INDENT}group ${layer.name}${layer.optional ? ' optional' : ''}:`);
+      if (layer.kind === 'always') { out.push(`${INDENT}always ${q(layer.path)}${tail(layer)}`); continue; }
+      out.push(`${INDENT}group ${layer.name}${layer.optional ? ' optional' : ''}:${tail(layer)}`);
       for (const o of layer.options) {
         trivia(o.leading, INDENT + INDENT, out);
-        out.push(`${INDENT}${INDENT}${o.attr} ${q(o.path)}`);
+        out.push(`${INDENT}${INDENT}${o.attr} ${q(o.path)}${tail(o)}`);
       }
     }
   }
@@ -69,11 +75,11 @@ export function print(program: Program): string {
     blank();
     trivia(sc.leading, '', out);
     const tr = sc.transition ? ` with ${sc.transition.name}${sc.transition.duration !== undefined ? ` ${sc.transition.duration}` : ''}` : '';
-    out.push(`screen ${sc.name}${tr}:`);
+    out.push(`screen ${sc.name}${tr}:${tail(sc)}`);
     const items = (list: ScreenItem[], depth: number) => {
       for (const it of list) {
         trivia(it.leading, INDENT.repeat(depth), out);
-        out.push(INDENT.repeat(depth) + printScreenLine(it));
+        out.push(INDENT.repeat(depth) + printScreenLine(it) + tail(it));
         if (it.children) items(it.children, depth + 1);
       }
     };
@@ -83,7 +89,7 @@ export function print(program: Program): string {
   for (const l of program.labels) {
     blank();
     trivia(l.leading, '', out);
-    out.push(`label ${l.name}:`);
+    out.push(`label ${l.name}:${tail(l)}`);
     printBlock(l.body, 1, out);
   }
 
@@ -95,6 +101,11 @@ export function print(program: Program): string {
   while (out.length && out[0] === '') out.shift();
   while (out.length && out[out.length - 1] === '') out.pop();
   return out.join('\n') + '\n';
+}
+
+/** A node's end-of-line comment, as written after its line. */
+function tail(n: Trivia | undefined): string {
+  return n?.comment ? `  ${n.comment}` : '';
 }
 
 /** Emit comments and blank lines above a node. */
@@ -110,13 +121,16 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
   const pad = INDENT.repeat(depth);
   for (const s of stmts) {
     trivia(s.leading, pad, out);
+    // The statement's own line is the first one it writes (`menu:`, an `if` line).
+    const own = out.length;
     switch (s.type) {
       case 'say': {
         if (s.who === null) out.push(pad + q(s.text));
         else {
           const who = [s.who, ...s.attrs].join(' ');
           // Quote dialogue only when it would otherwise be ambiguous.
-          const needsQuotes = s.text.startsWith('"') || s.text !== s.text.trim() || s.text.includes('\n');
+          const needsQuotes = s.text.startsWith('"') || s.text !== s.text.trim() || s.text.includes('\n')
+            || splitComment(s.text).comment !== undefined; // ` # ` would read back as a comment
           out.push(`${pad}${who}: ${needsQuotes ? q(s.text) : s.text}`);
         }
         break;
@@ -196,19 +210,20 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         out.push(`${pad}menu:`);
         for (const c of s.choices) {
           trivia(c.leading, pad + INDENT, out);
-          out.push(`${pad}${INDENT}${q(c.text)}${c.cond ? ` if ${printExpr(c.cond)}` : ''}:`);
+          out.push(`${pad}${INDENT}${q(c.text)}${c.cond ? ` if ${printExpr(c.cond)}` : ''}:${tail(c)}`);
           printBlock(c.body, depth + 2, out);
         }
         break;
       case 'if':
         s.branches.forEach((b, i) => {
           if (i > 0) trivia(b.leading, pad, out);
-          if (b.cond === null) out.push(`${pad}else:`);
-          else out.push(`${pad}${i === 0 ? 'if' : 'elif'} ${printExpr(b.cond)}:`);
+          if (b.cond === null) out.push(`${pad}else:${i > 0 ? tail(b) : ''}`);
+          else out.push(`${pad}${i === 0 ? 'if' : 'elif'} ${printExpr(b.cond)}:${i > 0 ? tail(b) : ''}`);
           printBlock(b.body, depth + 1, out);
         });
         break;
     }
+    if (s.comment && out[own] !== undefined) out[own] += tail(s);
   }
 }
 

@@ -2,7 +2,7 @@ export * from './ast.ts';
 export * from './expr.ts';
 export * from './compiled.ts';
 export { parseMarkup, MAX_PAUSE, type Span, type MarkupResult } from './markup.ts';
-export { parse, KEYWORDS, EFFECTS, FLASH_COLORS, type ParseResult } from './parser.ts';
+export { parse, splitComment, KEYWORDS, EFFECTS, FLASH_COLORS, type ParseResult } from './parser.ts';
 export {
   compile, compileFiles, compileProgram, reachable, fnv1a, parseAspect,
   TRANSITIONS, POSITIONS, BUILTIN_IMAGES, isPercentPosition, type CompileResult, type SourceString, type StoryFile,

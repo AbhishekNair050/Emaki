@@ -4,7 +4,7 @@
  *   *italic*   **bold**   ***both***   [color=#e8b04b]coloured[/color]
  *   [w] wait for a click   [w=1.5] pause 1.5 s   [nw] (at the end) go on without a click
  *   [ruby=うすくれない]薄紅[/ruby]   a reading (furigana) shown above the text
- *   \*  \[  \]  \\   literal characters
+ *   \*  \[  \]  \\  \#   literal characters (\# where a # would start a comment)
  *
  * Parsed at compile time into styled spans so runtimes never re-parse
  * markup, and so a variable's value (`{name}`) can never be mistaken for
@@ -45,7 +45,7 @@ const RUBY_OPEN = /^\[ruby=([^\]]*)\]/;
 const RUBY_CLOSE = '[/ruby]';
 const PAUSE = /^\[(w|nw)(?:=([^\]]*))?\]/;
 const COLOR_VALUE = /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|[a-zA-Z]{3,20})$/;
-const ESCAPABLE = '*[]\\';
+const ESCAPABLE = '*[]\\#';
 
 export function parseMarkup(src: string): MarkupResult {
   const spans: Span[] = [];

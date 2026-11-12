@@ -16,6 +16,8 @@ export interface Loc {
  */
 export interface Trivia {
   leading?: string[];
+  /** A comment at the end of the node's own line ("# text"). */
+  comment?: string;
 }
 
 export interface CharacterDef extends Trivia { id: string; name: string; color: string | null; loc: Loc }
@@ -64,6 +66,10 @@ export interface LabelDef extends Trivia { name: string; body: Stmt[]; loc: Loc 
 export interface Program {
   /** Frontmatter key/values (title, author, start, ...). Key order preserved. */
   meta: Array<[string, string]>;
+  /** Comments in the header: above an entry and at the end of its line, by the entry's index in `meta`. */
+  metaTrivia?: Record<number, Trivia>;
+  /** Comments after the header's last entry. */
+  metaTrailing?: string[];
   characters: CharacterDef[];
   images: ImageDef[];
   audio: AudioDef[];

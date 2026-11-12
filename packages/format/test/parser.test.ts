@@ -217,3 +217,66 @@ label second:
     expect(commented.code).toEqual(plain.code.map((i, n) => ({ ...i, src: commented.code[n].src })));
   });
 });
+
+describe('end-of-line comments', () => {
+  const canonical = `---
+# The working title
+title: Comments  # for now
+start: start
+# shown in the window
+---
+
+define a "Alice" color=#c33  # red-haired
+
+var n = 0  # times she waved
+
+layered a:  # three layers
+  always "a/body.png"  # never changes
+  group face:
+    smile "a/smile.png"  # the default
+
+screen hud:  # top corner
+  text "Day {n}" at 4% 4%  # the day counter
+
+label start:  # the opening
+  scene black  # nothing yet
+  a: Room #4, please.  # # without a space after is text
+  a: "Quoted # stays text."
+  a: Escaped \\# stays text too.
+  menu:  # the first choice
+    "Wave":  # friendly
+      set n += 1  # count it
+  if n > 0:  # waved
+    "Yes."
+  elif n == 0:  # didn't
+    "No."
+  else:  # can't happen
+    "?"
+`;
+
+  it('keep every comment, byte for byte', () => {
+    const { program, diagnostics } = parse(canonical);
+    expect(diagnostics).toEqual([]);
+    expect(print(program)).toBe(canonical);
+  });
+
+  it('are not part of the line', () => {
+    const { program } = parse(canonical);
+    expect(program.meta).toEqual([['title', 'Comments'], ['start', 'start']]);
+    expect(program.metaTrivia).toEqual({ 0: { leading: ['# The working title'], comment: '# for now' } });
+    expect(program.metaTrailing).toEqual(['# shown in the window']);
+    expect(program.characters[0]).toMatchObject({ color: '#c33', comment: '# red-haired' });
+    const body = program.labels[0]!.body;
+    expect(body.slice(1, 4).map((s) => s.type === 'say' && s.text)).toEqual(['Room #4, please.', 'Quoted # stays text.', 'Escaped \\# stays text too.']);
+    expect(body[1]!.comment).toBe('# # without a space after is text');
+    const story = compile(canonical).story!;
+    expect(story.meta.title).toBe('Comments');
+    const says = story.code.filter((i) => i.op === 'say').map((i) => (i as { text: unknown }).text);
+    expect(JSON.stringify(says)).toContain('Escaped # stays text too.');
+  });
+
+  it('move to the end of the line when formatted', () => {
+    const messy = 'label start:   # opening\n  "Hi."    #  note  \n';
+    expect(print(parse(messy).program)).toBe('label start:  # opening\n  "Hi."  #  note\n');
+  });
+});
