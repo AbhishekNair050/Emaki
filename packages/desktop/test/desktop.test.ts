@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { productName, pruneLocales, semver } from '../src/export.ts';
+import { productName, pruneLocales, semver, win32Metadata } from '../src/export.ts';
 import { pngToIco } from '../src/icon.ts';
 
 /** The smallest valid PNG header for a w×h image (enough for the .ico wrapper). */
@@ -31,6 +31,12 @@ describe('desktop export helpers', () => {
     expect(productName('The Keeper: Part 2/3?')).toBe('The Keeper Part 23');
     expect(productName('   ')).toBe('Emaki Game');
     expect(semver('0.3')).toBe('0.3.0');
+  });
+
+  it('give Windows a company name even without an author', () => {
+    expect(win32Metadata('The Pier: Act 1')).toEqual({ ProductName: 'The Pier Act 1', FileDescription: 'The Pier: Act 1', CompanyName: 'The Pier: Act 1' });
+    expect(win32Metadata('The Pier', 'Gull Games').CompanyName).toBe('Gull Games');
+    expect(win32Metadata('The Pier', '  ').CompanyName).toBe('The Pier');
   });
 
   it('keep English and the game\'s languages from Chromium\'s locales', () => {

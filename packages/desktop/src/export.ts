@@ -104,7 +104,7 @@ export async function exportDesktop(o: DesktopExportOptions): Promise<string> {
     quiet: true,
     // Native modules can't be loaded from inside an asar archive.
     asar: { unpack: '**/*.{node,dll,so,dylib}' },
-    win32metadata: { ProductName: name, FileDescription: o.title, ...(o.author ? { CompanyName: o.author } : {}) },
+    win32metadata: win32Metadata(o.title, o.author),
   });
   rmSync(stage, { recursive: true, force: true });
   if (icon && icon.endsWith('.ico')) rmSync(icon, { force: true });
@@ -128,6 +128,14 @@ export function pruneLocales(appDir: string, languages: string[]): void {
 }
 
 /** A name that is safe as a file and folder name on every OS. */
+/**
+ * The Windows executable's details. The packager needs a company name and
+ * fails without one, so a game with no author uses its title.
+ */
+export function win32Metadata(title: string, author?: string): { ProductName: string; FileDescription: string; CompanyName: string } {
+  return { ProductName: productName(title), FileDescription: title, CompanyName: author?.trim() || title };
+}
+
 export function productName(title: string): string {
   return title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 64) || 'Emaki Game';
 }
