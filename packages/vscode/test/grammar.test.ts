@@ -117,6 +117,29 @@ describe('grammar', () => {
     expect(scopeOf(cond!, 'trust')).toContain('variable.other');
   });
 
+  it('colours end-of-line comments without breaking the line', () => {
+    const [, title, , , label, scene, say, hash, quoted, cond] = tokens([
+      '---', 'title: The Keeper  # working title', 'start: arrival', '---',
+      'label arrival:  # the opening',
+      '  scene kitchen with fade  # morning',
+      '  mira: Hello.  # first words',
+      '  mira: Room #4.',
+      '  mira: "Quoted # text"',
+      '  if trust >= 2:  # trusted',
+    ].join('\n'));
+    expect(scopeOf(title!, '#')).toContain('comment.line');
+    expect(scopeOf(title!, 'The Keeper')).toContain('string.unquoted');
+    expect(scopeOf(label!, 'arrival')).toContain('entity.name.function.label');
+    expect(scopeOf(label!, '#')).toContain('comment.line');
+    expect(scopeOf(scene!, 'kitchen')).toContain('entity.name.type.asset');
+    expect(scopeOf(scene!, '#')).toContain('comment.line');
+    expect(scopeOf(say!, '#')).toContain('comment.line');
+    expect(hash!.every(([, sc]) => !sc.includes('comment'))).toBe(true);
+    expect(quoted!.every(([, sc]) => !sc.includes('comment'))).toBe(true);
+    expect(scopeOf(cond!, 'trust')).toContain('variable.other');
+    expect(scopeOf(cond!, '#')).toContain('comment.line');
+  });
+
   it('tokenizes the whole demo without leaving a line uncoloured', () => {
     const src = readFileSync(here('../../../games/gullwing/story.vn'), 'utf8');
     const lines = tokens(src);

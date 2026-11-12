@@ -10,6 +10,9 @@
       "include": "#comment"
     },
     {
+      "include": "#inline-comment"
+    },
+    {
       "comment": "A plugin's command or screen element: @petals on amount=40 -> var",
       "match": "^\\s+(@[A-Za-z_][A-Za-z0-9_]*)(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?",
       "captures": {
@@ -62,7 +65,7 @@
       }
     },
     {
-      "match": "^\\s+(image|text|button|row|column|box)\\b(?=[^:]*(?:\"|->|\\bat\\b|\\bsize\\b|\\bgap\\b|:\\s*$|$))",
+      "match": "^\\s+(image|text|button|row|column|box)\\b(?=[^:]*(?:\"|->|\\bat\\b|\\bsize\\b|\\bgap\\b|:\\s*(?=$|(?<=\\s)#(?:\\s|$))|$))",
       "captures": {
         "1": {
           "name": "keyword.other.screen-element.emaki"
@@ -81,7 +84,7 @@
       }
     },
     {
-      "match": "^\\s+(always)\\s+(\\\"(?:[^\\\"\\\\]|\\\\.)*\\\")\\s*$",
+      "match": "^\\s+(always)\\s+(\\\"(?:[^\\\"\\\\]|\\\\.)*\\\")\\s*(?=$|(?<=\\s)#(?:\\s|$))",
       "captures": {
         "1": {
           "name": "keyword.other.always.emaki"
@@ -109,7 +112,7 @@
       }
     },
     {
-      "match": "^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\\\"(?:[^\\\"\\\\]|\\\\.)*\\\")\\s*$",
+      "match": "^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(\\\"(?:[^\\\"\\\\]|\\\\.)*\\\")\\s*(?=$|(?<=\\s)#(?:\\s|$))",
       "captures": {
         "1": {
           "name": "entity.name.type.emaki"
@@ -155,7 +158,10 @@
           "include": "#comment"
         },
         {
-          "match": "^\\s*(start)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*$",
+          "include": "#inline-comment"
+        },
+        {
+          "match": "^\\s*(start)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "entity.name.tag.emaki"
@@ -169,7 +175,7 @@
           }
         },
         {
-          "match": "^\\s*([\\w-]+)\\s*(:)\\s*(.*)$",
+          "match": "^\\s*([\\w-]+)\\s*(:)\\s*(.*?)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "entity.name.tag.emaki"
@@ -249,6 +255,9 @@
       },
       "patterns": [
         {
+          "include": "#inline-comment"
+        },
+        {
           "include": "#expression"
         }
       ]
@@ -270,7 +279,7 @@
     "statement": {
       "patterns": [
         {
-          "match": "^\\s+(achieve)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*$",
+          "match": "^\\s+(achieve)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.achieve.emaki"
@@ -284,7 +293,7 @@
           "include": "#comment"
         },
         {
-          "match": "^\\s+(scene)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!with\\b)[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
+          "match": "^\\s+(scene)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!with\\b)[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.scene.emaki"
@@ -301,7 +310,7 @@
           }
         },
         {
-          "match": "^\\s+(show)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!(?:at|with)\\b)-?[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(at)\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
+          "match": "^\\s+(show)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!(?:at|with)\\b)-?[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(at)\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.show.emaki"
@@ -324,7 +333,7 @@
           }
         },
         {
-          "match": "^\\s+(hide)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*$",
+          "match": "^\\s+(hide)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.hide.emaki"
@@ -352,6 +361,9 @@
             }
           },
           "patterns": [
+            {
+              "include": "#inline-comment"
+            },
             {
               "include": "#string"
             },
@@ -384,12 +396,15 @@
           },
           "patterns": [
             {
+              "include": "#inline-comment"
+            },
+            {
               "include": "#expression"
             }
           ]
         },
         {
-          "match": "^\\s+(jump|call)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*$",
+          "match": "^\\s+(jump|call)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.control.flow.$1.emaki"
@@ -400,7 +415,7 @@
           }
         },
         {
-          "match": "^\\s+(return|end)(?:\\s+[A-Za-z_][A-Za-z0-9_]*)?\\s*$",
+          "match": "^\\s+(return|end)(?:\\s+[A-Za-z_][A-Za-z0-9_]*)?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.control.flow.$1.emaki"
@@ -408,7 +423,7 @@
           }
         },
         {
-          "match": "^\\s+(nvl)\\s+(on|off|clear)\\s*$",
+          "match": "^\\s+(nvl)\\s+(on|off|clear)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.nvl.emaki"
@@ -419,7 +434,7 @@
           }
         },
         {
-          "match": "^\\s+(shake)(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "match": "^\\s+(shake)(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.shake.emaki"
@@ -430,7 +445,7 @@
           }
         },
         {
-          "match": "^\\s+(hop|nod|bow|shake|float|still)\\s+([A-Za-z_]\\w*)(?:\\s+(\\d+|forever))?\\s*$",
+          "match": "^\\s+(hop|nod|bow|shake|float|still)\\s+([A-Za-z_]\\w*)(?:\\s+(\\d+|forever))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.motion.emaki"
@@ -444,7 +459,7 @@
           }
         },
         {
-          "match": "^\\s+(movie)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")\\s*$",
+          "match": "^\\s+(movie)\\s+(\"(?:[^\"\\\\]|\\\\.)*\")\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.movie.emaki"
@@ -455,7 +470,7 @@
           }
         },
         {
-          "match": "^\\s+(tone)\\s+(sepia|mono|none)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "match": "^\\s+(tone)\\s+(sepia|mono|none)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.tone.emaki"
@@ -472,7 +487,7 @@
           }
         },
         {
-          "match": "^\\s+(flash)(?:\\s+(white|black|red|#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}))?(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "match": "^\\s+(flash)(?:\\s+(white|black|red|#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}))?(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.flash.emaki"
@@ -486,7 +501,7 @@
           }
         },
         {
-          "match": "^\\s+(camera)\\s+(?:(reset)|(zoom)\\s+(\\d+(?:\\.\\d+)?)(?:\\s+(at)\\s+(\\d+(?:\\.\\d+)?%)\\s+(\\d+(?:\\.\\d+)?%))?)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*$",
+          "match": "^\\s+(camera)\\s+(?:(reset)|(zoom)\\s+(\\d+(?:\\.\\d+)?)(?:\\s+(at)\\s+(\\d+(?:\\.\\d+)?%)\\s+(\\d+(?:\\.\\d+)?%))?)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.camera.emaki"
@@ -518,7 +533,7 @@
           }
         },
         {
-          "match": "^\\s+(wait)\\s+(\\d+(?:\\.\\d+)?)\\s*$",
+          "match": "^\\s+(wait)\\s+(\\d+(?:\\.\\d+)?)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.other.wait.emaki"
@@ -529,7 +544,7 @@
           }
         },
         {
-          "match": "^\\s+(menu)\\s*(:)\\s*$",
+          "match": "^\\s+(menu)\\s*(:)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.control.menu.emaki"
@@ -540,7 +555,7 @@
           }
         },
         {
-          "match": "^\\s+(else)\\s*(:)\\s*$",
+          "match": "^\\s+(else)\\s*(:)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {
               "name": "keyword.control.conditional.emaki"
@@ -552,7 +567,7 @@
         },
         {
           "begin": "^\\s+(if|elif)\\b",
-          "end": "(:)\\s*$",
+          "end": "(:)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "beginCaptures": {
             "1": {
               "name": "keyword.control.conditional.emaki"
@@ -565,13 +580,16 @@
           },
           "patterns": [
             {
+              "include": "#inline-comment"
+            },
+            {
               "include": "#expression"
             }
           ]
         },
         {
-          "begin": "^\\s+(?=\".*\"\\s*(?:if\\b.*)?:\\s*$)",
-          "end": "(:)\\s*$",
+          "begin": "^\\s+(?=\".*\"\\s*(?:if\\b.*)?:\\s*(?=$|(?<=\\s)#(?:\\s|$)))",
+          "end": "(:)\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "endCaptures": {
             "1": {
               "name": "punctuation.section.choice.emaki"
@@ -579,11 +597,14 @@
           },
           "patterns": [
             {
+              "include": "#inline-comment"
+            },
+            {
               "include": "#dialogue-string"
             },
             {
               "begin": "\\b(if)\\b",
-              "end": "(?=:\\s*$)",
+              "end": "(?=:\\s*(?=$|(?<=\\s)#(?:\\s|$)))",
               "beginCaptures": {
                 "1": {
                   "name": "keyword.control.conditional.emaki"
@@ -601,6 +622,9 @@
           "begin": "^\\s+(?=\")",
           "end": "$",
           "patterns": [
+            {
+              "include": "#inline-comment"
+            },
             {
               "include": "#dialogue-string"
             }
@@ -622,6 +646,9 @@
           },
           "contentName": "string.unquoted.dialogue.emaki",
           "patterns": [
+            {
+              "include": "#inline-comment"
+            },
             {
               "include": "#dialogue-string"
             },
@@ -806,6 +833,16 @@
         },
         "7": {
           "name": "entity.name.function.label.emaki"
+        }
+      }
+    },
+    "inline-comment": {
+      "comment": "An end-of-line comment: a # with a space before it and a space (or the end) after it",
+      "match": "(?<=\\s)(#)(?=\\s|$).*$",
+      "name": "comment.line.number-sign.emaki",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.comment.emaki"
         }
       }
     }

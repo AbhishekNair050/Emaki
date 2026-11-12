@@ -56,6 +56,21 @@ describe('script highlighting', () => {
     expect(l[9]).toEqual(['keyword:label', 'labelDef:a']);
   });
 
+  it('colours end-of-line comments', () => {
+    const l = tokens([
+      '---', 'title: A  # for now', '---',
+      'label a:  # opening',
+      '  scene kitchen  # morning',
+      '  mira: Hello.  # first words',
+      '  mira: Room #4.',
+    ].join('\n'));
+    expect(l[1]).toEqual(['prop:title', 'string:A', 'comment:# for now']);
+    expect(l[3]).toEqual(['keyword:label', 'labelDef:a', 'comment:# opening']);
+    expect(l[4]).toEqual(['keyword:scene', 'asset:kitchen', 'comment:# morning']);
+    expect(l[5]).toEqual(['speaker:mira', 'prose:Hello.', 'comment:# first words']);
+    expect(l[6]!.some((x) => x.startsWith('comment'))).toBe(false);
+  });
+
   it('colours statements, speakers and prose', () => {
     const l = tokens([
       'label a:',

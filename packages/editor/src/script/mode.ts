@@ -52,8 +52,17 @@ const parser: StreamParser<State> = {
     }
     if (state.header === 'in') {
       if (stream.match(/^\s*:\s*/)) return 'punctuation';
-      stream.skipToEnd();
+      if (atComment(stream)) { stream.skipToEnd(); return 'comment'; }
+      if (stream.eatSpace()) return null;
+      stream.match(/^(?:"(?:[^"\\]|\\.)*"?|.*?(?=\s+#(?:\s|$)|$))/);
+      if (stream.pos === stream.start) stream.next();
       return 'string';
+    }
+    // An end-of-line comment: ` # note` (not inside quoted prose).
+    if (state.dialogue !== 'quote' && atComment(stream)) {
+      stream.skipToEnd();
+      state.dialogue = null;
+      return 'comment';
     }
     if (state.dialogue) return dialogue(stream, state);
     if (stream.eatSpace()) return null;
@@ -141,10 +150,16 @@ function dialogue(stream: StringStream, state: State): string {
     state.dialogue = null;
     return 'dialogue';
   }
-  const stop = state.dialogue === 'quote' ? /[{*[\\"]/ : /[{*[\\]/;
+  if (stream.peek() === '#') { stream.next(); return 'dialogue'; } // not a comment: the token loop checks first
+  const stop = state.dialogue === 'quote' ? /[{*[\\"]/ : /[{*[\\#]/;
   while (!stream.eol() && !stop.test(stream.peek()!)) stream.next();
   if (stream.pos === stream.start) stream.next();
   return 'dialogue';
+}
+
+/** At a `#` that starts an end-of-line comment: a space before it, and a space or the line's end after it. */
+function atComment(stream: StringStream): boolean {
+  return stream.peek() === '#' && stream.pos > 0 && /\s/.test(stream.string[stream.pos - 1]!) && /^#(?:\s|$)/.test(stream.string.slice(stream.pos));
 }
 
 function isLineStart(stream: StringStream): boolean {
