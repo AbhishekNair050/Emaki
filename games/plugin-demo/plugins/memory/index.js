@@ -3,8 +3,10 @@
  * until they're all found, then gets the number of turns it took.
  *
  *   @memory play pairs=4 -> turns
+ *   if turns <= @memory.perfect(4) + 2:     the fewest turns a round can take
  */
 const FACES = ['🐚', '⚓', '🌊', '🐟', '⛵', '🦀', '🌙', '⭐'];
+const size = (pairs) => Math.max(2, Math.min(FACES.length, Math.round(pairs ?? 4)));
 
 export default function memory(ctx) {
   const style = document.createElement('style');
@@ -25,7 +27,7 @@ export default function memory(ctx) {
   return {
     commands: {
       play(args) {
-        const pairs = Math.max(2, Math.min(FACES.length, Math.round(args.pairs ?? 4)));
+        const pairs = size(args.pairs);
         const deck = [...FACES.slice(0, pairs), ...FACES.slice(0, pairs)].sort(() => Math.random() - 0.5);
         const { root, close } = ctx.modal();
         const board = document.createElement('div');
@@ -72,6 +74,10 @@ export default function memory(ctx) {
           board.querySelector('button')?.focus();
         });
       },
+    },
+    functions: {
+      // With perfect luck, every turn finds a pair.
+      perfect: (pairs) => size(pairs),
     },
   };
 }

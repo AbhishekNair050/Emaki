@@ -6,5 +6,12 @@
       "args": { "pairs": "number?" },
       "waits": true
     }
+  },
+  "functions": {
+    "perfect": {
+      "description": "The fewest turns a round with this many pairs can take.",
+      "args": { "pairs": "number" },
+      "returns": "number"
+    }
   }
 }

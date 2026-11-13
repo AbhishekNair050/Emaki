@@ -5,7 +5,8 @@ start: start
 
 # A small game using three example plugins (see docs/plugins.md):
 # weather (a lasting effect), memory (a minigame the story waits on) and
-# meter (an element for screens).
+# meter (an element for screens). The memory plugin also has a function,
+# used in an expression below.
 
 define mira "Mira"
 
@@ -28,7 +29,7 @@ label start:
   mira: The petals are early this year.
   mira: Want to play a game while we wait for the ferry?
   @memory play pairs=4 -> turns
-  if turns <= 6:
+  if turns <= @memory.perfect(4) + 2:  # close to a perfect round
     set trust += 3
     mira: {turns} turns! You've got a good memory.
   else:
