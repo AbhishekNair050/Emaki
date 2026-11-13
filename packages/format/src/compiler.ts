@@ -12,8 +12,8 @@ import {
   FORMAT_ID, FORMAT_VERSION,
   type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
-import { EvalError, evaluate, freeVars, type Expr, type Value } from './expr.ts';
-import { checkPluginCall, type PluginCommandSpec, type PluginManifest } from './plugins.ts';
+import { EvalError, evaluate, freeVars, pluginCalls, type Expr, type Value } from './expr.ts';
+import { checkPluginCall, checkPluginFunctions, type PluginCommandSpec, type PluginManifest } from './plugins.ts';
 import { REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse } from './parser.ts';
@@ -226,7 +226,9 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
       vars[v.name] = evaluate(v.init, {});
     } catch (e) {
       if (!(e instanceof EvalError)) throw e;
-      error(v.loc, 'bad-var', `Starting values must be plain values (numbers, text, true/false)`);
+      error(v.loc, 'bad-var', pluginCalls(v.init).length
+        ? `A starting value can't call a plugin (it's worked out before the game runs): start it at 0 and 'set' it at the start of the story`
+        : `Starting values must be plain values (numbers, text, true/false)`);
       vars[v.name] = 0;
     }
   }
@@ -258,6 +260,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         error(line, 'unknown-variable', didYouMean(name, Object.keys(vars)) ?? `Unknown variable '${name}'. Declare it at the top: var ${name} = 0`);
       }
     }
+    checkPluginFunctions(e, opts.plugins, (code, message) => error(line, code, message));
   };
 
   const checkTransition = (t: string | null, line: Loc) => {

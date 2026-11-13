@@ -2,10 +2,11 @@
  * The Emaki expression language.
  *
  * Deliberately tiny and sandboxed: numbers, strings, booleans, declared
- * variables, arithmetic, comparison and boolean logic. No function calls,
- * no property access, no host-language eval. Expressions are stored in the
- * compiled story as plain JSON trees so any runtime (web, native, console)
- * can evaluate them identically.
+ * variables, arithmetic, comparison and boolean logic. The only calls are to
+ * functions a game's plugins declare (`@dice.roll(6)`), answered by the
+ * runtime; there is no property access and no host-language eval.
+ * Expressions are stored in the compiled story as plain JSON trees so any
+ * runtime (web, native, console) can evaluate them identically.
  */
 
 export type Value = number | string | boolean;
@@ -21,7 +22,12 @@ export type Expr =
   | { k: 'bool'; v: boolean }
   | { k: 'var'; name: string }
   | { k: 'un'; op: '-' | 'not'; e: Expr }
-  | { k: 'bin'; op: BinOp; l: Expr; r: Expr };
+  | { k: 'bin'; op: BinOp; l: Expr; r: Expr }
+  /** `@dice.roll(6)`: a function from one of the game's plugins. */
+  | { k: 'call'; plugin: string; fn: string; args: Expr[] };
+
+/** Answers plugin function calls while evaluating; throws to report a problem. */
+export type CallPlugin = (plugin: string, fn: string, args: Value[]) => Value;
 
 export class ExprError extends Error {
   /** 0-based column within the expression source. */
@@ -38,9 +44,10 @@ type Tok =
   | { t: 'str'; v: string; pos: number }
   | { t: 'id'; v: string; pos: number }
   | { t: 'op'; v: string; pos: number }
+  | { t: 'fn'; plugin: string; fn: string; pos: number }
   | { t: 'eof'; pos: number };
 
-const OPS = ['==', '!=', '<=', '>=', '<', '>', '+', '-', '*', '/', '%', '(', ')'];
+const OPS = ['==', '!=', '<=', '>=', '<', '>', '+', '-', '*', '/', '%', '(', ')', ','];
 
 function tokenize(src: string): Tok[] {
   const toks: Tok[] = [];
@@ -64,6 +71,16 @@ function tokenize(src: string): Tok[] {
       const { value, end } = readQuoted(src, i);
       toks.push({ t: 'str', v: value, pos: i });
       i = end;
+      continue;
+    }
+    if (c === '@') {
+      const m = /^@([A-Za-z_]\w*)\.([A-Za-z_]\w*)(?=\s*\()/.exec(src.slice(i));
+      if (!m) {
+        const name = /^@([A-Za-z_]\w*)/.exec(src.slice(i))?.[1] ?? 'plugin';
+        throw new ExprError(`Call a plugin's function as @${name}.function(...), like @dice.roll(6)`, i);
+      }
+      toks.push({ t: 'fn', plugin: m[1]!, fn: m[2]!, pos: i });
+      i += m[0].length;
       continue;
     }
     if (src.startsWith('&&', i) || src.startsWith('||', i)) {
@@ -145,6 +162,19 @@ export function parseExpr(src: string): Expr {
         if (t.v === 'not') return { k: 'un', op: 'not', e: parse(3) };
         if (RESERVED.has(t.v)) throw new ExprError(`Unexpected '${t.v}'`, t.pos);
         return { k: 'var', name: t.v };
+      case 'fn': {
+        next(); // (
+        const args: Expr[] = [];
+        if (!(peek().t === 'op' && (peek() as { v: string }).v === ')')) {
+          for (;;) {
+            args.push(parse(0));
+            const sep = next();
+            if (sep.t === 'op' && sep.v === ')') break;
+            if (sep.t !== 'op' || sep.v !== ',') throw new ExprError(`Expected ',' or ')' in @${t.plugin}.${t.fn}(...)`, sep.pos);
+          }
+        } else next();
+        return { k: 'call', plugin: t.plugin, fn: t.fn, args };
+      }
       case 'op':
         if (t.v === '-') return { k: 'un', op: '-', e: parse(7) };
         if (t.v === '(') {
@@ -176,7 +206,7 @@ export function parseExpr(src: string): Expr {
   const e = parse(0);
   const rest = peek();
   if (rest.t !== 'eof') {
-    const shown = rest.t === 'str' ? `"${rest.v}"` : String(rest.v);
+    const shown = rest.t === 'str' ? `"${rest.v}"` : rest.t === 'fn' ? `@${rest.plugin}.${rest.fn}` : String(rest.v);
     throw new ExprError(`Unexpected '${shown}' after expression`, rest.pos);
   }
   return e;
@@ -188,6 +218,18 @@ export function freeVars(e: Expr, out: Set<string> = new Set()): Set<string> {
     case 'var': out.add(e.name); break;
     case 'un': freeVars(e.e, out); break;
     case 'bin': freeVars(e.l, out); freeVars(e.r, out); break;
+    case 'call': for (const a of e.args) freeVars(a, out); break;
+    default: break;
+  }
+  return out;
+}
+
+/** Every plugin function call in an expression, outermost first. */
+export function pluginCalls(e: Expr, out: Array<Extract<Expr, { k: 'call' }>> = []): Array<Extract<Expr, { k: 'call' }>> {
+  switch (e.k) {
+    case 'un': pluginCalls(e.e, out); break;
+    case 'bin': pluginCalls(e.l, out); pluginCalls(e.r, out); break;
+    case 'call': out.push(e); for (const a of e.args) pluginCalls(a, out); break;
     default: break;
   }
   return out;
@@ -206,7 +248,12 @@ export function truthy(v: Value): boolean {
   return v.length > 0;
 }
 
-export function evaluate(e: Expr, vars: Readonly<Record<string, Value>>): Value {
+/**
+ * Evaluate an expression. `call` answers plugin functions; without it (when
+ * compiling, or where no plugins run) a call is an error.
+ */
+export function evaluate(e: Expr, vars: Readonly<Record<string, Value>>, call?: CallPlugin): Value {
+  const ev = (x: Expr) => evaluate(x, vars, call);
   switch (e.k) {
     case 'num': case 'str': case 'bool': return e.v;
     case 'var': {
@@ -215,16 +262,30 @@ export function evaluate(e: Expr, vars: Readonly<Record<string, Value>>): Value 
       }
       return vars[e.name];
     }
+    case 'call': {
+      if (!call) throw new EvalError(`@${e.plugin}.${e.fn}(...) can't be used here`);
+      const args = e.args.map(ev);
+      let v: unknown;
+      try {
+        v = call(e.plugin, e.fn, args);
+      } catch (err) {
+        throw new EvalError(`@${e.plugin}.${e.fn} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      if (typeof v === 'number' ? !Number.isFinite(v) : typeof v !== 'string' && typeof v !== 'boolean') {
+        throw new EvalError(`@${e.plugin}.${e.fn} should give a number, text or true/false (it gave ${v === null ? 'null' : typeof v})`);
+      }
+      return v as Value;
+    }
     case 'un': {
-      const v = evaluate(e.e, vars);
+      const v = ev(e.e);
       if (e.op === 'not') return !truthy(v);
       return -num(v, '-');
     }
     case 'bin': {
-      if (e.op === 'and') return truthy(evaluate(e.l, vars)) && truthy(evaluate(e.r, vars));
-      if (e.op === 'or') return truthy(evaluate(e.l, vars)) || truthy(evaluate(e.r, vars));
-      const l = evaluate(e.l, vars);
-      const r = evaluate(e.r, vars);
+      if (e.op === 'and') return truthy(ev(e.l)) && truthy(ev(e.r));
+      if (e.op === 'or') return truthy(ev(e.l)) || truthy(ev(e.r));
+      const l = ev(e.l);
+      const r = ev(e.r);
       switch (e.op) {
         case '+':
           if (typeof l === 'string' || typeof r === 'string') return String(l) + String(r);
@@ -269,6 +330,7 @@ export function printExpr(e: Expr, parentPrec = 0): string {
     case 'str': return JSON.stringify(e.v);
     case 'bool': return String(e.v);
     case 'var': return e.name;
+    case 'call': return `@${e.plugin}.${e.fn}(${e.args.map((a) => printExpr(a)).join(', ')})`;
     case 'un': {
       const s = e.op === 'not' ? `not ${printExpr(e.e, 3)}` : `-${printExpr(e.e, 7)}`;
       const prec = e.op === 'not' ? 3 : 7;

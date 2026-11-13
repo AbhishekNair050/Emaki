@@ -7,12 +7,13 @@
  *   @cards play rounds=3 -> score          a command the story waits on, with a result
  *   screen hud:
  *     @clock face style="digital" at 90% 4%  an element on a screen
+ *   if @dice.roll(6) > 4:                   a function, in any expression
  *
  * Arguments are always named (`key=value`); a value is a number, a quoted
  * string, true/false, a variable, or any expression written without spaces.
  */
 import type { Loc } from './ast.ts';
-import { freeVars, parseExpr, printExpr, readQuoted, type Expr, type Value } from './expr.ts';
+import { freeVars, parseExpr, pluginCalls, printExpr, readQuoted, type Expr, type Value } from './expr.ts';
 
 /** An argument's type: a kind (`?` = may be left out), or the strings it may be. */
 export type PluginArgType = 'number' | 'string' | 'boolean' | 'number?' | 'string?' | 'boolean?' | string[];
@@ -38,6 +39,18 @@ export interface PluginElementSpec {
   description?: string;
 }
 
+/**
+ * A function for expressions: `@dice.roll(6)`. Arguments are given in the
+ * order they're declared (optional ones last). It answers straight away and
+ * shouldn't change anything the story can see: what it returns is what
+ * counts, kept in a variable when the story needs it again.
+ */
+export interface PluginFunctionSpec {
+  args?: Record<string, PluginArgType>;
+  returns?: 'number' | 'string' | 'boolean';
+  description?: string;
+}
+
 export interface PluginManifest {
   name: string;
   description?: string;
@@ -45,6 +58,7 @@ export interface PluginManifest {
   main?: string;
   commands?: Record<string, PluginCommandSpec>;
   elements?: Record<string, PluginElementSpec>;
+  functions?: Record<string, PluginFunctionSpec>;
 }
 
 export const PLUGIN_NAME = /^[a-z][a-z0-9_]*$/;
@@ -69,7 +83,7 @@ export function parseManifest(raw: unknown, name: string): { manifest: PluginMan
     }
     return out;
   };
-  const table = <T>(key: 'commands' | 'elements', one: (n: string, v: Record<string, unknown>) => T): Record<string, T> | undefined => {
+  const table = <T>(key: 'commands' | 'elements' | 'functions', one: (n: string, v: Record<string, unknown>) => T): Record<string, T> | undefined => {
     const v = r[key];
     if (v === undefined) return undefined;
     if (!v || typeof v !== 'object' || Array.isArray(v)) { errors.push(`"${key}" should be an object`); return undefined; }
@@ -108,7 +122,25 @@ export function parseManifest(raw: unknown, name: string): { manifest: PluginMan
     return e;
   });
   if (elements) manifest.elements = elements;
-  if (!manifest.commands && !manifest.elements) errors.push('plugin.json declares no "commands" or "elements"');
+  const functions = table('functions', (n, s) => {
+    const f: PluginFunctionSpec = {};
+    const a = args(`function '${n}'`, s.args);
+    if (a) {
+      f.args = a;
+      const optional = Object.values(a).map((t) => typeof t === 'string' && t.endsWith('?'));
+      if (optional.some((o, i) => o && optional.slice(i + 1).some((later) => !later))) {
+        errors.push(`function '${n}': arguments are given in order, so the ones that can be left out (?) go last`);
+      }
+    }
+    if (s.returns !== undefined) {
+      if (s.returns === 'number' || s.returns === 'string' || s.returns === 'boolean') f.returns = s.returns;
+      else errors.push(`function '${n}': "returns" should be "number", "string" or "boolean"`);
+    }
+    if (typeof s.description === 'string') f.description = s.description;
+    return f;
+  });
+  if (functions) manifest.functions = functions;
+  if (!manifest.commands && !manifest.elements && !manifest.functions) errors.push('plugin.json declares no "commands", "elements" or "functions"');
   return { manifest: errors.length ? null : manifest, errors };
 }
 
@@ -190,7 +222,10 @@ export function checkPluginCall(
   c: PluginCall, kind: 'command' | 'element', plugins: Readonly<Record<string, PluginManifest>> | undefined,
   knownVar: (name: string) => boolean, report: (code: string, message: string) => void,
 ): PluginCommandSpec | PluginElementSpec | null {
-  for (const e of Object.values(c.args)) for (const v of freeVars(e)) if (!knownVar(v)) report('unknown-variable', `Unknown variable '${v}'`);
+  for (const e of Object.values(c.args)) {
+    for (const v of freeVars(e)) if (!knownVar(v)) report('unknown-variable', `Unknown variable '${v}'`);
+    checkPluginFunctions(e, plugins, report);
+  }
   if (!plugins) return null;
   const p = plugins[c.plugin];
   if (!p) {
@@ -208,17 +243,58 @@ export function checkPluginCall(
   for (const [k, e] of Object.entries(c.args)) {
     const t = declared[k];
     if (!t) { report('bad-plugin-arg', `@${c.plugin} ${c.name} has no '${k}'${Object.keys(declared).length ? ` (it takes: ${Object.keys(declared).join(', ')})` : ''}`); continue; }
-    const literal: Value | undefined = e.k === 'num' || e.k === 'str' || e.k === 'bool' ? e.v : undefined;
-    if (literal === undefined) continue; // a variable or expression: checked when it runs
-    const problem = Array.isArray(t)
-      ? (typeof literal === 'string' && t.includes(literal) ? null : `one of ${t.map((x) => `"${x}"`).join(', ')}`)
-      : (typeof literal === t.replace('?', '') ? null : `a ${t.replace('?', '')}`);
+    const problem = argProblem(t, e);
     if (problem) report('bad-plugin-arg', `'${k}' should be ${problem}`);
   }
   for (const [k, t] of Object.entries(declared)) {
     if (!(k in c.args) && !(typeof t === 'string' && t.endsWith('?'))) report('bad-plugin-arg', `@${c.plugin} ${c.name} needs '${k}=...'`);
   }
   return spec;
+}
+
+/** What a literal argument should have been, or null when it fits (or isn't a literal: that's checked when it runs). */
+function argProblem(t: PluginArgType, e: Expr): string | null {
+  const literal: Value | undefined = e.k === 'num' || e.k === 'str' || e.k === 'bool' ? e.v : undefined;
+  if (literal === undefined) return null;
+  return Array.isArray(t)
+    ? (typeof literal === 'string' && t.includes(literal) ? null : `one of ${t.map((x) => `"${x}"`).join(', ')}`)
+    : (typeof literal === t.replace('?', '') ? null : `a ${t.replace('?', '')}`);
+}
+
+/**
+ * Check the plugin functions an expression calls: the plugin, the function,
+ * how many arguments, and literal ones against their types. `plugins`
+ * undefined: not known here, nothing checked.
+ */
+export function checkPluginFunctions(
+  e: Expr, plugins: Readonly<Record<string, PluginManifest>> | undefined, report: (code: string, message: string) => void,
+): void {
+  if (!plugins) return;
+  for (const c of pluginCalls(e)) {
+    const p = plugins[c.plugin];
+    if (!p) {
+      report('unknown-plugin', `No plugin '${c.plugin}' (plugins go in plugins/${c.plugin}/ with a plugin.json)${Object.keys(plugins).length ? `; this game has: ${Object.keys(plugins).join(', ')}` : ''}`);
+      continue;
+    }
+    const spec = p.functions?.[c.fn];
+    if (!spec) {
+      const have = Object.keys(p.functions ?? {});
+      report('unknown-plugin-function', `'${c.plugin}' has no function '${c.fn}'${have.length ? ` (it has: ${have.join(', ')})` : ''}`);
+      continue;
+    }
+    const declared = Object.entries(spec.args ?? {});
+    const needed = declared.filter(([, t]) => !(typeof t === 'string' && t.endsWith('?'))).length;
+    const usage = `@${c.plugin}.${c.fn}(${declared.map(([k, t]) => (typeof t === 'string' && t.endsWith('?') ? `${k}?` : k)).join(', ')})`;
+    if (c.args.length < needed || c.args.length > declared.length) {
+      report('bad-plugin-arg', `${usage} takes ${needed === declared.length ? declared.length : `${needed} to ${declared.length}`} argument${declared.length === 1 ? '' : 's'}, not ${c.args.length}`);
+      continue;
+    }
+    c.args.forEach((a, i) => {
+      const [k, t] = declared[i]!;
+      const problem = argProblem(t, a);
+      if (problem) report('bad-plugin-arg', `${usage}: '${k}' should be ${problem}`);
+    });
+  }
 }
 
 export type { Loc };

@@ -20,7 +20,7 @@
 import type { AssetRef, AssignOp, Diagnostic, Loc, Trivia } from './ast.ts';
 import { freeVars, parseExpr, printExpr, readQuoted, type Expr } from './expr.ts';
 import { parseMarkup, type Span } from './markup.ts';
-import { checkPluginCall, parsePluginCall, printPluginCall, type PluginCall, type PluginManifest } from './plugins.ts';
+import { checkPluginCall, checkPluginFunctions, parsePluginCall, printPluginCall, type PluginCall, type PluginManifest } from './plugins.ts';
 
 // ------------------------------------------------------------------ syntax tree
 
@@ -690,6 +690,7 @@ export function compileScreens(defs: ScreenDef[], ctx: ScreenContext): Record<st
       for (const name of freeVars(e)) {
         if (!known(name)) ctx.error(loc, 'unknown-variable', (SLOT_VARS as readonly string[]).includes(name) ? `'${name}' is only known inside 'slots'` : `Unknown variable '${name}'`);
       }
+      checkPluginFunctions(e, ctx.plugins, (code, message) => ctx.error(loc, code, message));
     };
     const compiled: CompiledScreen = { items: def.items.map(compileItem) };
     if (def.name === 'textbox' && !parts.has('dialogue')) ctx.error(def.loc, 'bad-screen', `The text box needs a 'dialogue': where the lines appear`);

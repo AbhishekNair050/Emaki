@@ -48,3 +48,21 @@ describe('expressions', () => {
     }
   });
 });
+
+describe('plugin function calls', () => {
+  it('parse, print and evaluate through the caller', () => {
+    const e = parseExpr('@dice.roll(6, n + 1) * 2');
+    expect(e).toEqual({ k: 'bin', op: '*', l: { k: 'call', plugin: 'dice', fn: 'roll', args: [{ k: 'num', v: 6 }, { k: 'bin', op: '+', l: { k: 'var', name: 'n' }, r: { k: 'num', v: 1 } }] }, r: { k: 'num', v: 2 } });
+    expect(printExpr(e)).toBe('@dice.roll(6, n + 1) * 2');
+    expect(printExpr(parseExpr('@clock.hour()'))).toBe('@clock.hour()');
+    expect(evaluate(e, { n: 2 }, (_p, _f, args) => (args[0] as number) + (args[1] as number))).toBe(18);
+    expect(() => evaluate(e, { n: 2 })).toThrow(/can't be used here/);
+    expect([...freeVars(e)]).toEqual(['n']);
+  });
+
+  it('explain how to write one', () => {
+    expect(() => parseExpr('@dice')).toThrow(/@dice.function\(\.\.\.\)/);
+    expect(() => parseExpr('@dice.roll')).toThrow(/@dice.function/);
+    expect(() => parseExpr('@dice.roll(6')).toThrow(/Expected ',' or '\)'/);
+  });
+});
