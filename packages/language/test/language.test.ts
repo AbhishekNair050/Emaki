@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { parseManifest } from '@emaki/format';
 import { Analysis, format } from '../src/index.ts';
 
 const demoSrc = readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8');
@@ -180,5 +181,71 @@ describe('preview links', () => {
     expect(previewUrl('http://localhost:5173/', 51)).toBe('http://localhost:5173/?line=52');
     expect(previewUrl('http://localhost:5173/game/?trust=2', 0)).toBe('http://localhost:5173/game/?trust=2&line=1');
     expect(() => previewUrl('not a url', 0)).toThrow();
+  });
+});
+
+describe('plugins', () => {
+  const plugins = {
+    weather: parseManifest({
+      description: 'Snow, rain and petals',
+      commands: {
+        start: { args: { kind: ['snow', 'rain'], amount: 'number?', loud: 'boolean?' }, lasting: 'sky', description: 'Start falling' },
+        stop: { lasting: 'sky', ends: true },
+      },
+    }, 'weather').manifest!,
+    dice: parseManifest({ functions: { roll: { args: { sides: 'number', times: 'number?' }, returns: 'number', description: 'Roll dice' } } }, 'dice').manifest!,
+    clock: parseManifest({ elements: { face: { args: { style: ['digital', 'hands'] } } } }, 'clock').manifest!,
+  };
+  const story = [
+    'var n = 0',
+    '',
+    'screen hud:',
+    '  @clock face style="digital" at 1% 1%',
+    '',
+    'label start:',
+    '  @weather start kind="snow"',
+    '  set n = @dice.roll(6)',
+    '  "x"',
+    '',
+  ].join('\n');
+  const analysis = (text: string) => new Analysis(text, { file: 'story.vn', files: [], plugins });
+  const complete = (text: string, line: number, col?: number) => {
+    const t = text.split('\n');
+    return analysis(text).completionsAt(line, col ?? t[line]!.length).map((c) => c.label);
+  };
+  const withLine = (line: string) => story.replace('  "x"', `${line}\n  "x"`);
+  const at = 8; // the line inserted before "x"
+
+  it('check @ lines and functions against the manifests the editor gives', () => {
+    expect(analysis(story).problems()).toEqual([]);
+    expect(analysis(withLine('  @weather begin')).problems().map((p) => p.code)).toEqual(['unknown-plugin-command']);
+    expect(analysis(withLine('  set n = @dice.roll()')).problems().map((p) => p.code)).toEqual(['bad-plugin-arg']);
+    // A lone script with no game around it: nothing to check against.
+    expect(new Analysis(withLine('  @weather begin')).problems()).toEqual([]);
+  });
+
+  it('complete plugins, commands, elements, arguments, values and functions', () => {
+    expect(complete(withLine('  @'), at)).toEqual(['weather']);
+    expect(complete(withLine('  @weather '), at)).toEqual(['start', 'stop']);
+    expect(complete(withLine('  @weather start '), at)).toEqual(['kind=', 'amount=', 'loud=']);
+    expect(complete(withLine('  @weather start kind="snow" '), at)).toEqual(['amount=', 'loud=']);
+    expect(complete(withLine('  @weather start kind='), at)).toEqual(['"snow"', '"rain"']);
+    expect(complete(withLine('  @weather start kind="r'), at)).toEqual(['snow', 'rain']);
+    expect(complete(withLine('  @weather start loud='), at)).toEqual(['true', 'false']);
+    expect(complete(withLine('  @weather start amount='), at)).toEqual(['n']);
+    expect(complete(withLine('  set n = @'), at)).toEqual(['dice']);
+    expect(complete(withLine('  if @dice.'), at)).toEqual(['roll']);
+    // In a screen, `@` lines are elements.
+    const screen = story.replace('  @clock face style="digital" at 1% 1%', '  @');
+    expect(complete(screen, 3)).toEqual(['clock']);
+    expect(complete(story.replace('  @clock face style="digital" at 1% 1%', '  @clock '), 3)).toEqual(['face']);
+  });
+
+  it('describe them on hover', () => {
+    const a = analysis(story);
+    expect(a.hoverAt(6, 4)).toBe('**@weather** — plugin: Snow, rain and petals');
+    expect(a.hoverAt(6, 12)).toBe('**@weather start** — plugin command, lasting (sky)\n\n`kind`: "snow" | "rain" · `amount`: number (optional) · `loud`: boolean (optional)\n\nStart falling');
+    expect(a.hoverAt(7, 17)).toBe('**@dice.roll**(sides, times?) → number — plugin function\n\nRoll dice');
+    expect(a.hoverAt(3, 10)).toContain('**@clock face** — plugin element');
   });
 });

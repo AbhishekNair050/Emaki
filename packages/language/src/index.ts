@@ -7,7 +7,7 @@
  */
 import {
   compile, compileFiles, parse, print, printExpr, KEYWORDS, POSITIONS, TRANSITIONS,
-  type Diagnostic, type Loc, type Program, type Stmt, type StoryFile,
+  type Diagnostic, type Loc, type PluginArgType, type PluginManifest, type Program, type Stmt, type StoryFile,
 } from '@emaki/format';
 
 export * from './edits.ts';
@@ -49,9 +49,15 @@ export interface StorySymbol {
 export interface StoryContext {
   file: string;
   files: StoryFile[];
+  /**
+   * The game's plugins (plugins/<name>/plugin.json): `@` lines and plugin
+   * functions are checked and completed against them. Absent: not known,
+   * so plugin lines aren't checked.
+   */
+  plugins?: Readonly<Record<string, PluginManifest>>;
 }
 
-export type CompletionKind = SymbolKind | 'keyword' | 'value';
+export type CompletionKind = SymbolKind | 'keyword' | 'value' | 'plugin' | 'function' | 'argument';
 
 export interface Completion {
   label: string;
@@ -68,10 +74,14 @@ export class Analysis {
   /** This document's file: undefined for story.vn, as in the compiler's locations. */
   readonly file: string | undefined;
 
+  /** The game's plugins, when known. */
+  readonly plugins: Readonly<Record<string, PluginManifest>> | undefined;
+
   constructor(source: string, context?: StoryContext) {
     this.lines = source.split(/\r?\n/);
     const file = context && context.file !== 'story.vn' ? context.file : undefined;
     this.file = file;
+    this.plugins = context?.plugins;
     let result;
     if (!context) result = compile(source);
     else {
@@ -79,7 +89,7 @@ export class Analysis {
       const main = file ? others.find((f) => f.path === 'story.vn')?.source ?? '' : source;
       const parts = others.filter((f) => f.path !== 'story.vn');
       if (file) parts.push({ path: file, source });
-      result = compileFiles(main, parts);
+      result = compileFiles(main, parts, context.plugins ? { plugins: { ...context.plugins } } : {});
     }
     this.program = result.program;
     // Only this document's problems; the others are reported in their own files.
@@ -233,6 +243,8 @@ export class Analysis {
 
   /** Markdown shown when hovering a name. */
   hoverAt(line: number, col: number): string | undefined {
+    const plugin = this.pluginHoverAt(this.lines[line] ?? '', col, line);
+    if (plugin) return plugin;
     const s = this.definitionAt(line, col);
     if (!s || (s.line === line && s.file === this.file)) return undefined;
     switch (s.kind) {
@@ -254,9 +266,101 @@ export class Analysis {
       .filter((n) => !['title', 'menu', 'load', 'save', 'settings', 'extras'].includes(n));
   }
 
+  // ------------------------------------------------------------ plugins
+
+  /** `@weather start`, `@dice.roll(6)` under the cursor: what the manifest says about it. */
+  private pluginHoverAt(text: string, col: number, line: number): string | undefined {
+    if (!this.plugins) return undefined;
+    for (const m of text.matchAll(/@([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*)|\s+([A-Za-z_]\w*))?/g)) {
+      if (col < m.index || col > m.index + m[0].length) continue;
+      const p = this.plugins[m[1]!];
+      if (!p) return undefined;
+      const onPlugin = col <= m.index + 1 + m[1]!.length;
+      if (m[2] && !onPlugin) {
+        const f = p.functions?.[m[2]];
+        return f && `**@${m[1]}.${m[2]}**${signature(f.args)}${f.returns ? ` → ${f.returns}` : ''} — plugin function${f.description ? `\n\n${f.description}` : ''}`;
+      }
+      if (m[3] && !onPlugin && /^\s*$/.test(text.slice(0, m.index))) {
+        const inScreen = this.inScreen(line);
+        const spec = (inScreen ? p.elements : p.commands)?.[m[3]];
+        if (!spec) return undefined;
+        const c = spec as { args?: Record<string, PluginArgType>; waits?: boolean; lasting?: string; description?: string };
+        const how = c.waits ? ', the story waits for it' : c.lasting ? `, lasting (${c.lasting})` : '';
+        return `**@${m[1]} ${m[3]}** — plugin ${inScreen ? 'element' : 'command'}${how}${argList(c.args)}${c.description ? `\n\n${c.description}` : ''}`;
+      }
+      return `**@${m[1]}** — plugin${p.description ? `: ${p.description}` : ''}`;
+    }
+    return undefined;
+  }
+
+  /** Whether a line sits in a `screen` block (where `@` lines are elements, not commands). */
+  private inScreen(at: number): boolean {
+    for (let i = at; i >= 0; i--) {
+      const l = this.lines[i] ?? '';
+      if (/^\S/.test(l) && !l.startsWith('#')) return /^screen\s/.test(l);
+    }
+    return false;
+  }
+
+  /** Completions for plugin commands, elements, arguments and functions; null when the cursor isn't on one. */
+  private pluginCompletions(before: string, line: number): Completion[] | null {
+    const plugins = this.plugins;
+    const fn = /@([A-Za-z_]\w*)\.\w*$/.exec(before);
+    if (fn) {
+      return Object.entries(plugins?.[fn[1]!]?.functions ?? {})
+        .map(([n, f]): Completion => ({ label: n, kind: 'function', detail: `${signature(f.args)}${f.returns ? ` → ${f.returns}` : ''}${f.description ? ` — ${f.description}` : ''}` }));
+    }
+    const inScreen = () => this.inScreen(line);
+    const table = (p: PluginManifest) => (inScreen() ? p.elements : p.commands);
+    if (/^\s+@\w*$/.test(before)) {
+      return Object.entries(plugins ?? {}).filter(([, p]) => Object.keys(table(p) ?? {}).length)
+        .map(([n, p]): Completion => ({ label: n, kind: 'plugin', ...(p.description ? { detail: p.description } : {}) }));
+    }
+    const cmd = /^\s+@([A-Za-z_]\w*)\s+\w*$/.exec(before);
+    if (cmd) {
+      const p = plugins?.[cmd[1]!];
+      return Object.entries((p && table(p)) ?? {})
+        .map(([n, c]): Completion => ({ label: n, kind: 'function', ...(c.description ? { detail: c.description } : {}) }));
+    }
+    const call = /^\s+@([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\b(.*)$/.exec(before);
+    if (call) {
+      const p = plugins?.[call[1]!];
+      const spec = p && table(p)?.[call[2]!];
+      const args = spec?.args ?? {};
+      const rest = call[3]!;
+      const value = /\s([A-Za-z_]\w*)=("?)\w*$/.exec(rest);
+      if (value) {
+        const t = args[value[1]!];
+        if (Array.isArray(t)) return t.map((o): Completion => ({ label: value[2] ? o : `"${o}"`, kind: 'value', detail: value[1] }));
+        if (t === 'boolean' || t === 'boolean?') return ['true', 'false'].map((o): Completion => ({ label: o, kind: 'value', detail: value[1] }));
+        return /=\w*$/.test(rest) && !value[2] ? this.of('variable') : [];
+      }
+      if (/\s\w*$/.test(rest) && !/->\s*\w*$/.test(rest)) {
+        const given = new Set([...rest.matchAll(/([A-Za-z_]\w*)=/g)].map((m) => m[1]));
+        return Object.entries(args).filter(([k]) => !given.has(k))
+          .map(([k, t]): Completion => ({ label: `${k}=`, kind: 'argument', detail: typeText(t) }));
+      }
+      if (/->\s*\w*$/.test(rest)) return this.of('variable');
+      return [];
+    }
+    if (/@\w*$/.test(before)) {
+      return Object.entries(plugins ?? {}).filter(([, p]) => Object.keys(p.functions ?? {}).length)
+        .map(([n, p]): Completion => ({ label: n, kind: 'plugin', ...(p.description ? { detail: p.description } : {}) }));
+    }
+    return null;
+  }
+
+  private of(kind: SymbolKind): Completion[] {
+    return this.symbols().filter((s) => s.kind === kind).map((s): Completion => ({ label: s.name, kind, detail: s.detail }));
+  }
+
+  // ------------------------------------------------------------ completion
+
   /** Suggestions for the cursor position, based on the text before it on the line. */
   completionsAt(line: number, col: number): Completion[] {
     const before = (this.lines[line] ?? '').slice(0, col);
+    const plugin = this.pluginCompletions(before, line);
+    if (plugin) return plugin;
     const syms = this.symbols();
     const of = (kind: SymbolKind) => syms.filter((s) => s.kind === kind).map((s): Completion => ({ label: s.name, kind, detail: s.detail }));
     const values = (xs: string[], detail: string) => xs.map((x): Completion => ({ label: x, kind: 'value', detail }));
@@ -313,6 +417,20 @@ export class Analysis {
     }
     return true;
   }
+}
+
+/** `(sides, times?)`: a plugin function's arguments, in order. */
+function signature(args: Record<string, PluginArgType> | undefined): string {
+  return `(${Object.entries(args ?? {}).map(([k, t]) => (typeof t === 'string' && t.endsWith('?') ? `${k}?` : k)).join(', ')})`;
+}
+
+function typeText(t: PluginArgType): string {
+  return Array.isArray(t) ? t.map((x) => `"${x}"`).join(' | ') : t.endsWith('?') ? `${t.slice(0, -1)} (optional)` : t;
+}
+
+function argList(args: Record<string, PluginArgType> | undefined): string {
+  const e = Object.entries(args ?? {});
+  return e.length ? `\n\n${e.map(([k, t]) => `\`${k}\`: ${typeText(t)}`).join(' · ')}` : '';
 }
 
 const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'replay', 'label'];
