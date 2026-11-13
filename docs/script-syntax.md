@@ -70,7 +70,16 @@ Between `---` lines at the very top: `key: value` pairs.
 | `achievement first_light "First Light"` | An achievement players can earn. Use the same id as on Steam. |
 | `label name:` | A scene of your story. Everything indented under it runs in order. |
 
-Full-line comments start with `#`. Tools that rewrite your script (`emaki fmt`, the visual editor) keep your comments and blank lines.
+Comments start with `#`: a whole line, or the end of any line after a space.
+
+```
+# The opening scene
+label start:  # rewrite after playtesting
+  scene kitchen with fade  # morning light
+  mira: Room #4, please.  # "#4" is text: no space after the #
+```
+
+A `#` starts a comment when it has a space before it and a space (or the end of the line) after it, outside quotes. So `Room #4`, `color=#e8b04b` and `"Track # 2"` are not comments; in unquoted dialogue, write `\#` for a lone `#` with spaces around it. Tools that rewrite your script (`emaki fmt`, the visual editor) keep your comments and blank lines.
 
 ## Story lines (indented under a label)
 | Line | Meaning |
@@ -289,7 +298,7 @@ Works in dialogue, narration and choices.
 | `[ruby=うすくれない]薄紅[/ruby]` | 薄紅 with its reading (furigana) in small type above it |
 | `Room 5 \* 3` | Room 5 * 3 |
 
-A backslash shows `*`, `[`, `]` or `\` literally. Ordinary square brackets are just text; only `[color=...]`, `[ruby=...]`, their closing tags and the pauses below are special. Inside italic narration, `*emphasis*` turns upright so it still stands out. An unclosed `*` or `[color]` is reported with its line number.
+A backslash shows `*`, `[`, `]`, `#` or `\` literally. Ordinary square brackets are just text; only `[color=...]`, `[ruby=...]`, their closing tags and the pauses below are special. Inside italic narration, `*emphasis*` turns upright so it still stands out. An unclosed `*` or `[color]` is reported with its line number.
 
 ## Pauses inside a line
 Dialogue and narration can stop partway, the way people pause when they talk.
@@ -366,4 +375,4 @@ Everything is shared: a label in one file can `jump` to a label in another, and 
 `story.vn:52: Unknown name 'kitchen_tlak'. Did you mean 'kitchen_talk'?`
 
 ## Not yet supported (planned)
-Plural forms in translations, explicit line ids, inline (end-of-line) comments, functions from plugins in expressions.
+Plural forms in translations, explicit line ids.

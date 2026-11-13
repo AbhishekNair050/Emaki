@@ -90,4 +90,4 @@ What the port still drew as dead art, made real.
 - Ren'Py importer (common subset)
 
 ## Later
-Live2D/Spine plugins, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles, plural forms in translations, explicit line ids, inline (end-of-line) comments.
+Live2D/Spine plugins, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles, plural forms in translations, explicit line ids.

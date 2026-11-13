@@ -42,7 +42,7 @@ v0 player is plain DOM: accessible, crisp text, tiny (≈13 KB gzipped incl. eng
 ### D-011 — Sprite attributes replace, they don't merge (provisional)
 `show mira smile` then `mira sad: ...` → attrs become `[sad]`. Simpler than Ren'Py's attribute merging; revisit when layered sprites (outfit + expression) arrive.
 
-### D-012 — Comments are full-line `#` only (accepted)
+### D-012 — Comments are full-line `#` only (superseded by D-057)
 Inline comments would conflict with dialogue text containing `#` ("mira: Room #4"), so a comment is always a whole line. Comments are preserved by the formatter; see D-015.
 
 ### D-013 — The story map is a dev-only tool (accepted)
@@ -182,3 +182,6 @@ The escape hatch D-005 promised. A plugin is a folder in the game (`plugins/<nam
 
 ### D-056 — Scene replay and the music room unlock like the gallery (accepted)
 Both are declared in the script and unlocked by playing, like `image ... gallery`: `audio ... music "Title"` marks a track for the music room, unlocked once it plays as music, and `replay label "Name"` marks a scene, unlocked once one of its lines is shown, both remembered across playthroughs on the device. A replay is a mode of the runner, not a copy of the scene: it starts at the label with fresh variables (globals kept) and the story ends where it leaves the label at the top of the call stack, so calls stay part of the scene; `until label` covers scenes written across several labels. Replays can't be saved, and they end back on the Extras screen they started from. The music room swaps the music for its track and puts back what was playing when the player leaves it. The built-in Extras screen gets Scenes and Music tabs; a game's own screen uses the `scenes` and `music` elements. On the ported demo, the music room lists the 37 tracks the demo ships in the original's order behind its title's Music button; the original's scene replays play scenes from the full game, which the demo doesn't contain, so it has none.
+
+### D-057 — End-of-line comments: a `#` with spaces around it (accepted)
+Writers asked for notes beside a line (`scene kitchen  # morning light`), which D-012 ruled out because dialogue can hold `#` ("Room #4"). The rule that keeps both: a `#` starts a comment only with a space before it and a space (or the line's end) after it, outside double quotes. Hashtags, room numbers and colours (`#4`, `#e8b04b`) stay text; the rare dialogue with a free-standing ` # ` is quoted or written `\#`, and the formatter quotes such dialogue itself so its output always reads back the same. No existing script in the demos or ports changed meaning. Comments live in the AST as `comment` beside `leading` (D-015), header entries included, so the formatter and the visual editor keep them, written two spaces after the line.
