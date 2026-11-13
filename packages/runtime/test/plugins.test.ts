@@ -34,7 +34,7 @@ describe('plugin manifests', () => {
     expect(parseManifest({ commands: { x: { args: { n: 'int' } } } }, 'p').errors[0]).toMatch(/should be "number"/);
     expect(parseManifest({ commands: { x: { ends: true } } }, 'p').errors[0]).toMatch(/needs the "lasting"/);
     expect(parseManifest({ commands: { x: { waits: true, lasting: 'a' } } }, 'p').errors[0]).toMatch(/can't also last/);
-    expect(parseManifest({}, 'p').errors[0]).toMatch(/no "commands"/);
+    expect(parseManifest({}, 'p').errors[0]).toMatch(/no "commands", "elements" or "functions"/);
     expect(parseManifest({ commands: {} }, 'Bad-Name').errors[0]).toMatch(/lowercase/);
   });
 });
@@ -100,6 +100,84 @@ describe('running plugin commands', () => {
     const preview = new Runner(story());
     preview.startAtLine(SRC.split('\n').indexOf('  "Rain."') + 1);
     expect(preview.pluginState.map((c) => c.args.kind)).toEqual(['rain']);
+  });
+});
+
+describe('plugin functions in expressions', () => {
+  const dice = parseManifest({
+    functions: {
+      roll: { args: { sides: 'number', times: 'number?' }, returns: 'number', description: 'Roll dice' },
+      name: { returns: 'string' },
+      mood: { args: { of: ['calm', 'storm'] } },
+    },
+  }, 'dice').manifest!;
+  const fns = { ...plugins, dice };
+  const SRC2 = `var total = 0
+
+screen hud:
+  text "Lucky" at 3% 3% if @dice.roll(6) > 3
+  button "Reroll" at 3% 9% -> set total = @dice.roll(6, 2)
+
+label start:
+  set total = @dice.roll(6) + @dice.roll(6, 2)
+  if @dice.name() == "d6" and total > 2:
+    "Rolled {total}."
+  else:
+    "Low."
+  @weather start kind="snow" amount=@dice.roll(10)
+  "Snow."
+`;
+
+  it('read from plugin.json, with arguments in order', () => {
+    expect(dice.functions!.roll).toEqual({ args: { sides: 'number', times: 'number?' }, returns: 'number', description: 'Roll dice' });
+    expect(parseManifest({ functions: { f: { args: { a: 'number?', b: 'number' } } } }, 'p').errors[0]).toMatch(/go last/);
+    expect(parseManifest({ functions: { f: { returns: 'list' } } }, 'p').errors[0]).toMatch(/"returns"/);
+  });
+
+  it('parse, print back and compile against the manifests', () => {
+    const p = parse(SRC2);
+    expect(p.diagnostics).toEqual([]);
+    expect(print(p.program)).toBe(SRC2);
+    expect(compile(SRC2, { plugins: fns }).diagnostics).toEqual([]);
+  });
+
+  it('explain mistakes', () => {
+    const codes = (line: string) => compile(`var n = 0\nlabel start:\n  ${line}\n  "x"\n`, { plugins: fns }).diagnostics.map((d) => d.code);
+    expect(codes('set n = @dice.toss(6)')).toEqual(['unknown-plugin-function']);
+    expect(codes('set n = @coin.toss()')).toEqual(['unknown-plugin']);
+    expect(codes('set n = @dice.roll()')).toEqual(['bad-plugin-arg']);
+    expect(codes('set n = @dice.roll(1, 2, 3)')).toEqual(['bad-plugin-arg']);
+    expect(codes('set n = @dice.roll("six")')).toEqual(['bad-plugin-arg']);
+    expect(codes('if @dice.mood("rain") == 1:\n    "y"')).toEqual(['bad-plugin-arg']);
+    expect(codes('set n = @dice.roll(m)')).toEqual(['unknown-variable']);
+    expect(codes('set n = @dice')).toEqual(['bad-expression']);
+    expect(compile('var n = @dice.roll(6)\nlabel start:\n  "x"\n', { plugins: fns }).diagnostics[0]!.message).toMatch(/can't call a plugin/);
+    // Without the manifests (an editor showing one file), calls aren't checked.
+    expect(compile('var n = 0\nlabel start:\n  set n = @any.thing(1)\n  "x"\n').diagnostics).toEqual([]);
+  });
+
+  it('are answered by whoever runs the plugins', () => {
+    const story = compile(SRC2, { plugins: fns }).story!;
+    const calls: string[] = [];
+    const run = new Runner(story);
+    run.callPlugin = (plugin, fn, args) => {
+      calls.push(`${plugin}.${fn}(${args.join(',')})`);
+      return fn === 'name' ? 'd6' : fn === 'roll' ? (args[1] === 2 ? 7 : 3) : 0;
+    };
+    expect(run.start().block).toMatchObject({ text: 'Rolled 10.' });
+    expect(calls).toEqual(['dice.roll(6)', 'dice.roll(6,2)', 'dice.name()']);
+    expect(run.advance().effects).toContainEqual({ type: 'plugin', plugin: 'weather', command: 'start', args: { kind: 'snow', amount: 3 } });
+  });
+
+  it('stop the story with a clear message when nobody answers or the answer is wrong', () => {
+    const story = compile(SRC2, { plugins: fns }).story!;
+    expect(() => new Runner(story).start()).toThrow(/@dice.roll\(\.\.\.\) can't be used here/);
+    const bad = new Runner(story);
+    bad.callPlugin = () => ({}) as never;
+    expect(() => bad.start()).toThrow(/should give a number, text or true\/false/);
+    const broken = new Runner(story);
+    broken.callPlugin = () => { throw new Error('no dice'); };
+    expect(() => broken.start()).toThrow(/@dice.roll failed: no dice/);
   });
 });
 

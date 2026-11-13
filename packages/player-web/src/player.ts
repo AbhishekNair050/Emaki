@@ -6,7 +6,7 @@
  * same Effect/Block contract later for shaders and particle effects.
  */
 import {
-  evaluate, isPercentPosition, parseAspect, parseCanvas, saveSlotCount,
+  evaluate, isPercentPosition, type CallPlugin, parseAspect, parseCanvas, saveSlotCount,
   type CompiledScreenItem, type CompiledStory, type CompiledTranslation, type ScreenAction, type Span, type Value,
 } from '@emaki/format';
 import {
@@ -158,6 +158,7 @@ export class Player {
   constructor(root: HTMLElement, story: CompiledStory, opts: PlayerOptions = {}) {
     this.story = story;
     this.runner = new Runner(story);
+    this.runner.callPlugin = this.callPlugin;
     this.opts = opts;
     this.host = opts.host ?? detectHost();
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
@@ -297,6 +298,7 @@ export class Player {
     this.story = story;
     this.applyStageShape();
     this.runner = new Runner(story);
+    this.runner.callPlugin = this.callPlugin;
     this.runner.setTranslation(this.translation);
     this.loadGlobals();
     this.drawTextbox();
@@ -1533,6 +1535,9 @@ export class Player {
   }
 
   /** What a screen needs from the player: text, pictures, saves, extras and settings. */
+  /** Plugin functions in expressions, answered by the game's plugins. */
+  private readonly callPlugin: CallPlugin = (plugin, fn, args) => this.plugins.call(plugin, fn, args);
+
   private screenHost(name: string, onStory = false): ScreenHost {
     const saved = this.slots();
     const t = (k: UiKey, vars?: Record<string, string | number>) => this.t(k, vars);
@@ -1540,6 +1545,7 @@ export class Player {
       this.translation?.strings[`${kind}.${id}`]?.text ?? table?.[id]?.name ?? id;
     return {
       vars: () => this.screenVars(name),
+      callPlugin: this.callPlugin,
       translated: (id) => this.translation?.strings[id] ?? null,
       nodes: (text, spans) => (spans ? spanNodes(spans) : [document.createTextNode(text)]),
       url: this.assetUrl,
@@ -1700,7 +1706,7 @@ export class Player {
         case 'set': {
           const vars = this.screenVars(screen);
           try {
-            const v = evaluate(a.value, vars);
+            const v = evaluate(a.value, vars, this.callPlugin);
             const old = vars[a.name];
             const next = a.op === '=' ? v : typeof old === 'number' && typeof v === 'number' ? (a.op === '+=' ? old + v : old - v) : a.op === '+=' ? String(old) + String(v) : v;
             this.runner.setVar(a.name, next);
@@ -1832,7 +1838,7 @@ export class Player {
           if (!called) { this.runActions([{ do: 'close' }], screen, onStory); return; }
           let value: Value | undefined;
           try {
-            value = a.value ? evaluate(a.value, this.screenVars(screen)) : undefined;
+            value = a.value ? evaluate(a.value, this.screenVars(screen), this.callPlugin) : undefined;
           } catch (err) {
             this.fail(err);
             return;

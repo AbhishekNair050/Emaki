@@ -9,11 +9,13 @@
  * The renderer only builds elements; what buttons do, which text a translation
  * gives and what variables hold all come from the host (the Player).
  */
-import { evaluate, truthy, type CompiledScreen, type CompiledScreenItem, type ScreenAction, type Span, type Value } from '@emaki/format';
+import { evaluate, truthy, type CallPlugin, type CompiledScreen, type CompiledScreenItem, type ScreenAction, type Span, type Value } from '@emaki/format';
 
 export interface ScreenHost {
   /** Variable values for conditions and {variables} in text. */
   vars(): Readonly<Record<string, Value>>;
+  /** Answers plugin functions in conditions and arguments (`if @clock.hour() > 18`). */
+  callPlugin?: CallPlugin;
   /** The text with id `id` in the chosen language, if translated. */
   translated(id: string): { text: string; spans?: Span[] } | null;
   /** Styled text as nodes (the player's own rendering of spans). */
@@ -87,9 +89,9 @@ function interpolate(text: string, vars: Readonly<Record<string, Value>>): strin
     m === '{{' ? '{' : m === '}}' ? '}' : String(vars[name!] ?? m));
 }
 
-function visible(it: CompiledScreenItem, vars: Readonly<Record<string, Value>>): boolean {
+function visible(it: CompiledScreenItem, vars: Readonly<Record<string, Value>>, call?: CallPlugin): boolean {
   if (!it.cond) return true;
-  try { return truthy(evaluate(it.cond, vars)); } catch { return false; }
+  try { return truthy(evaluate(it.cond, vars, call)); } catch { return false; }
 }
 
 /** The element's text in the chosen language, with {variables} filled in. */
@@ -179,7 +181,7 @@ function wire(b: HTMLButtonElement, actions: readonly ScreenAction[], host: Scre
 let controlIds = 0;
 
 function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Record<string, Value>>, slot?: number, entry?: number): HTMLElement | null {
-  if (!visible(it, vars)) return null;
+  if (!visible(it, vars, host.callPlugin)) return null;
   switch (it.kind) {
     case 'log': {
       // A window of `count` lines of the log, each laid out by the lines under it (`size` is one entry's size).
@@ -420,7 +422,7 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
     case 'plugin': {
       let args: Record<string, Value>;
       try {
-        args = Object.fromEntries(Object.entries(it.args ?? {}).map(([k, e]) => [k, evaluate(e, vars)]));
+        args = Object.fromEntries(Object.entries(it.args ?? {}).map(([k, e]) => [k, evaluate(e, vars, host.callPlugin)]));
       } catch {
         return null;
       }

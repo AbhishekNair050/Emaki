@@ -66,6 +66,11 @@ export interface Plugin {
   commands?: Record<string, (args: PluginArgs, run: CommandRun) => void | Value | Promise<Value | void>>;
   /** Elements for screens (`@clock face` in a screen): return what to place. */
   elements?: Record<string, (args: PluginArgs) => HTMLElement>;
+  /**
+   * Functions for expressions (`if @dice.roll(6) > 4`): given the arguments in
+   * order, return a number, text or true/false straight away.
+   */
+  functions?: Record<string, (...args: Value[]) => Value>;
   /** Things happening in the game. */
   on?: {
     start?(): void;
@@ -164,6 +169,15 @@ export class PluginManager {
       console.error(`@${plugin} ${element} failed`, err);
       return null;
     }
+  }
+
+  /** Call a plugin function from an expression; throws (with a reason) when it can't answer. */
+  call(plugin: string, fn: string, args: Value[]): Value {
+    const p = this.loaded.get(plugin);
+    if (!p) throw new Error(`plugin '${plugin}' isn't loaded`);
+    const f = p.functions?.[fn];
+    if (typeof f !== 'function') throw new Error(`plugin '${plugin}' has no function '${fn}'`);
+    return f(...args);
   }
 
   /** Tell every plugin something happened. */

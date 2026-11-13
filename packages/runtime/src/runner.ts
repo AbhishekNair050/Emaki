@@ -8,7 +8,7 @@
  */
 import {
   EvalError, evaluate, truthy,
-  type CompiledStory, type CompiledTranslation, type Instr, type Value, type Channel, type Span,
+  type CallPlugin, type CompiledStory, type CompiledTranslation, type Instr, type Value, type Channel, type Span,
 } from '@emaki/format';
 
 export interface SpriteState {
@@ -190,6 +190,12 @@ export class Runner {
   private textInstrs: Map<string, Extract<Instr, { op: 'say' | 'menu' }>> | null = null;
   /** Values of `global var`s, carried across playthroughs; they win over anything in a save or rollback. */
   private globalValues: Record<string, Value> = {};
+  /**
+   * Answers plugin functions in expressions (`if @dice.roll(6) > 4`); set by
+   * whoever runs the plugins. Without it, such an expression stops the story
+   * with a message.
+   */
+  callPlugin: CallPlugin | undefined;
 
   constructor(story: CompiledStory) {
     this.story = story;
@@ -1007,7 +1013,7 @@ export class Runner {
 
   private eval(e: Parameters<typeof evaluate>[0], ins: Instr): Value {
     try {
-      return evaluate(e, this.state.vars);
+      return evaluate(e, this.state.vars, this.callPlugin);
     } catch (err) {
       if (err instanceof EvalError) throw new StoryError(err.message, ins.src.line);
       throw err;
