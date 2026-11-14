@@ -6,6 +6,7 @@
  * is part of the same story (see @emaki/format/files). Any other .vn file is
  * checked on its own.
  *
+ *   emaki new <folder> [--title "Name"]  start a game: a small story that runs as it is
  *   emaki check <story.vn>            report errors and warnings
  *   emaki build <story.vn> [out.json] compile to the runtime format
  *   emaki graph <story.vn>            print a Mermaid flowchart of labels
@@ -27,10 +28,12 @@ import {
 import { addVoices, MAIN_FILE, pluginManifests, readPlugins, storyParts } from '@emaki/format/files';
 import { uiSourceStrings } from '@emaki/player-web/ui-strings';
 import { runExport, TARGETS, type Target } from './export.ts';
+import { newGame } from './new.ts';
 
 const [cmd, file, ...rest] = process.argv.slice(2);
 
 const USAGE = `Usage:
+  emaki new   <folder> [--title "Name"]            start a new game in a new folder
   emaki check <story.vn>
   emaki build <story.vn> [out.json]
   emaki graph <story.vn>
@@ -45,6 +48,7 @@ if (!cmd || !file || cmd === 'help' || cmd === '--help') {
 }
 
 if (cmd === 'export') await exportCommand();
+if (cmd === 'new') newCommand();
 
 let source: string;
 try {
@@ -153,6 +157,27 @@ switch (cmd) {
   default:
     console.error(`Unknown command '${cmd}'\n\n${USAGE}`);
     process.exit(1);
+}
+
+function newCommand(): never {
+  const at = rest.indexOf('--title');
+  const title = at >= 0 ? rest[at + 1] : undefined;
+  try {
+    const files = newGame(file!, title);
+    console.log(`✓ Started a game in ${file}`);
+    for (const f of files) console.log(`  ${f}`);
+    const game = file!.replace(/\\/g, '/');
+    console.log(`
+Play it while you write (it reloads as you save):
+  bash:       EMAKI_GAME=${game} npm run dev
+  PowerShell: $env:EMAKI_GAME="${game}"; npm run dev
+Or open it in the editor: the same, with 'npm run edit'.
+Then: docs/getting-started.md`);
+    process.exit(0);
+  } catch (e) {
+    console.error((e as Error).message);
+    process.exit(1);
+  }
 }
 
 /**
