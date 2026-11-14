@@ -7,7 +7,7 @@
  * Prints what the extension did (diagnostics, definition, completion, ...).
  */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,10 @@ const tmp = mkdtempSync(join(tmpdir(), 'emaki-e2e-'));
 const work = join(tmp, 'work');
 mkdirSync(work);
 copyFileSync(here('../../../../games/gullwing/story.vn'), join(work, 'story.vn')); // edited during the run
+// A plugin for the game, so `@` lines are checked against its manifest (changed during the run).
+mkdirSync(join(work, 'plugins', 'dice'), { recursive: true });
+writeFileSync(join(work, 'plugins', 'dice', 'plugin.json'), JSON.stringify({ functions: { roll: { args: { sides: 'number' }, returns: 'number' } } }));
+writeFileSync(join(work, 'plugins', 'dice', 'index.js'), 'export default () => ({ functions: { roll: (n = 6) => 1 + Math.floor(Math.random() * n) } });\n');
 const report = join(tmp, 'report.txt');
 
 try {
@@ -32,7 +36,7 @@ try {
     `--extensions-dir=${join(tmp, 'extensions')}`,
     '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--disable-gpu',
     work,
-  ], { env: { ...process.env, EMAKI_E2E_REPORT: report, EMAKI_E2E_STORY: join(work, 'story.vn'), EMAKI_E2E_PREVIEW_URL: process.env.EMAKI_E2E_PREVIEW_URL ?? 'http://localhost:5173/' }, stdio: 'ignore', timeout: 120_000 });
+  ], { env: { ...process.env, EMAKI_E2E_REPORT: report, EMAKI_E2E_STORY: join(work, 'story.vn'), EMAKI_E2E_PLUGIN: join(work, 'plugins', 'dice', 'plugin.json'), EMAKI_E2E_PREVIEW_URL: process.env.EMAKI_E2E_PREVIEW_URL ?? 'http://localhost:5173/' }, stdio: 'ignore', timeout: 120_000 });
 } catch (err) {
   console.error(`VS Code didn't finish: ${err.message.split('\n')[0]}`);
 } finally {

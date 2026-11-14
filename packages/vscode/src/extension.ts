@@ -8,7 +8,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import * as vscode from 'vscode';
-import { MAIN_FILE, storyParts } from '@emaki/format/files';
+import { MAIN_FILE, pluginManifests, readPlugins, storyParts } from '@emaki/format/files';
+import type { PluginManifest } from '@emaki/format';
 import { Analysis, format, previewUrl, type CompletionKind, type StoryContext, type StorySymbol, type SymbolKind } from '@emaki/language';
 
 const LANGUAGE = 'emaki';
@@ -43,7 +44,38 @@ function gameOf(file: string): { dir: string; path: string } | null {
   }
 }
 
-/** Every file of the story, with the unsaved text of the ones open in the editor. */
+/** The game's plugin manifests (plugins/<name>/plugin.json), read again when the story or a manifest changes. */
+const manifests = new Map<string, { generation: number; plugins: Record<string, PluginManifest> }>();
+/** Problems with the plugins themselves (a broken plugin.json, missing code), shown on their plugin.json. */
+let pluginProblems: vscode.DiagnosticCollection | null = null;
+const pluginProblemFiles = new Map<string, vscode.Uri[]>();
+
+function gamePlugins(dir: string): Record<string, PluginManifest> {
+  const hit = manifests.get(dir);
+  if (hit && hit.generation === generation) return hit.plugins;
+  let plugins: Record<string, PluginManifest> = {};
+  try {
+    const r = readPlugins(dir);
+    plugins = pluginManifests(r.plugins);
+    for (const uri of pluginProblemFiles.get(dir) ?? []) pluginProblems?.delete(uri);
+    const byFile = new Map<string, vscode.Diagnostic[]>();
+    for (const d of r.diagnostics) {
+      const list = byFile.get(d.file ?? '') ?? [];
+      list.push(Object.assign(new vscode.Diagnostic(new vscode.Range(0, 0, 0, 0), d.message, vscode.DiagnosticSeverity.Error), { source: 'emaki', code: d.code }));
+      byFile.set(d.file ?? '', list);
+    }
+    const uris = [...byFile].map(([file, list]) => {
+      const uri = vscode.Uri.file(join(dir, file));
+      pluginProblems?.set(uri, list);
+      return uri;
+    });
+    pluginProblemFiles.set(dir, uris);
+  } catch { /* unreadable: check against none */ }
+  manifests.set(dir, { generation, plugins });
+  return plugins;
+}
+
+/** Every file of the story, with the unsaved text of the ones open in the editor, and the game's plugins. */
 function storyContext(game: { dir: string; path: string }, doc: vscode.TextDocument): StoryContext {
   const open = new Map(vscode.workspace.textDocuments.map((d) => [d.uri.fsPath.toLowerCase(), d]));
   const files = [MAIN_FILE, ...storyParts(game.dir)].map((path) => {
@@ -51,7 +83,7 @@ function storyContext(game: { dir: string; path: string }, doc: vscode.TextDocum
     const text = abs.toLowerCase() === doc.uri.fsPath.toLowerCase() ? doc.getText() : open.get(abs.toLowerCase())?.getText() ?? readFileSync(abs, 'utf8');
     return { path, source: text };
   });
-  return { file: game.path, files };
+  return { file: game.path, files, plugins: gamePlugins(game.dir) };
 }
 
 /** Where a definition is: this document, or another file of the story. */
@@ -64,6 +96,7 @@ async function locate(doc: vscode.TextDocument, a: Analysis, s: StorySymbol): Pr
 
 export function activate(context: vscode.ExtensionContext): void {
   const problems = vscode.languages.createDiagnosticCollection(LANGUAGE);
+  pluginProblems = vscode.languages.createDiagnosticCollection(`${LANGUAGE}-plugins`);
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const check = (doc: vscode.TextDocument) => {
@@ -92,14 +125,20 @@ export function activate(context: vscode.ExtensionContext): void {
     for (const d of vscode.workspace.textDocuments) if (d.languageId === LANGUAGE) checkSoon(d);
   };
   const watcher = vscode.workspace.createFileSystemWatcher('**/*.vn');
+  const pluginWatcher = vscode.workspace.createFileSystemWatcher('**/plugins/*/plugin.json');
 
   vscode.workspace.textDocuments.forEach(check);
   context.subscriptions.push(
     problems,
+    pluginProblems,
     watcher,
     watcher.onDidCreate(storyChanged),
     watcher.onDidDelete(storyChanged),
     watcher.onDidChange(storyChanged),
+    pluginWatcher,
+    pluginWatcher.onDidCreate(storyChanged),
+    pluginWatcher.onDidDelete(storyChanged),
+    pluginWatcher.onDidChange(storyChanged),
     vscode.workspace.onDidOpenTextDocument(check),
     vscode.workspace.onDidChangeTextDocument((e) => { if (e.document.languageId === LANGUAGE && e.contentChanges.length) storyChanged(); }),
     vscode.workspace.onDidCloseTextDocument((doc) => problems.delete(doc.uri)),
@@ -147,7 +186,7 @@ export function activate(context: vscode.ExtensionContext): void {
           return item;
         });
       },
-    }, ' ', '{'),
+    }, ' ', '{', '@', '.', '='),
 
     vscode.commands.registerTextEditorCommand('emaki.previewLine', (editor) => previewLine(editor)),
 
@@ -224,4 +263,7 @@ const COMPLETION_KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
   ending: vscode.CompletionItemKind.Event,
   keyword: vscode.CompletionItemKind.Keyword,
   value: vscode.CompletionItemKind.EnumMember,
+  plugin: vscode.CompletionItemKind.Module,
+  function: vscode.CompletionItemKind.Method,
+  argument: vscode.CompletionItemKind.Property,
 };

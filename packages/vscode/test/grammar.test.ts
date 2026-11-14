@@ -117,6 +117,14 @@ describe('grammar', () => {
     expect(scopeOf(cond!, 'trust')).toContain('variable.other');
   });
 
+  it('colours plugin functions in expressions', () => {
+    const [cond, set] = tokens(['  if @dice.roll(6) > 4:', '  set n = @dice.roll(6, 2) + 1'].join('\n'));
+    expect(scopeOf(cond!, '@dice')).toContain('keyword.other.plugin');
+    expect(scopeOf(cond!, 'roll')).toContain('entity.name.function.plugin');
+    expect(scopeOf(cond!, '6')).toContain('constant.numeric');
+    expect(scopeOf(set!, 'roll')).toContain('entity.name.function.plugin');
+  });
+
   it('colours end-of-line comments without breaking the line', () => {
     const [, title, , , label, scene, say, hash, quoted, cond] = tokens([
       '---', 'title: The Keeper  # working title', 'start: arrival', '---',

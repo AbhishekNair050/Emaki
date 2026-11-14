@@ -77,6 +77,25 @@ exports.run = async function run() {
     log('completions after "jump ":', names.filter((n) => /^[a-z_]+$/.test(n)).slice(0, 8).join(', '));
     await restore();
 
+    // Plugins: checked and completed against the game's plugins/*/plugin.json, re-read when it changes.
+    const after = pos('jump kitchen_talk', 0);
+    await editor.edit((e) => e.insert(new vscode.Position(after.line + 1, 0), '  set trust = @dice.roll()  # roll for it\n'));
+    const pd = await waitFor(() => { const d = vscode.languages.getDiagnostics(doc.uri); return d.length ? d : null; });
+    log('plugin function without its argument:', pd?.[0]?.code?.value ?? pd?.[0]?.code, '-', pd?.[0]?.message);
+    const fl = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', doc.uri, new vscode.Position(after.line + 1, 20));
+    log('completions after "@dice.":', fl.items.map((i) => (typeof i.label === 'string' ? i.label : i.label.label)).filter((n) => n === 'roll').join(', '));
+    fs.writeFileSync(process.env.EMAKI_E2E_PLUGIN, JSON.stringify({ functions: { roll: { args: { sides: 'number?' }, returns: 'number' } } }));
+    await waitFor(() => vscode.languages.getDiagnostics(doc.uri).length === 0);
+    log('after making the argument optional in plugin.json:', vscode.languages.getDiagnostics(doc.uri).length, 'diagnostics');
+    const manifest = vscode.Uri.file(process.env.EMAKI_E2E_PLUGIN);
+    fs.writeFileSync(process.env.EMAKI_E2E_PLUGIN, '{ "functions": ');
+    const md = await waitFor(() => { const d = vscode.languages.getDiagnostics(manifest); return d.length ? d : null; });
+    log('a broken plugin.json:', md?.[0]?.message ?? 'NO DIAGNOSTIC');
+    fs.writeFileSync(process.env.EMAKI_E2E_PLUGIN, JSON.stringify({ functions: { roll: { args: { sides: 'number?' } } } }));
+    await waitFor(() => vscode.languages.getDiagnostics(manifest).length === 0);
+    log('fixed again:', vscode.languages.getDiagnostics(manifest).length, 'diagnostics on plugin.json');
+    await restore();
+
     // Format a messy file.
     const messy = await vscode.workspace.openTextDocument({ language: 'emaki', content: 'label a:\n      "x"\n      jump a\n' });
     const edits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', messy.uri, { tabSize: 2, insertSpaces: true });
