@@ -246,13 +246,14 @@ function problems(view: EditorView): LintDiagnostic[] {
 
 const COMPLETION_TYPE: Record<CompletionKind, string> = {
   label: 'function', character: 'class', image: 'type', audio: 'type', variable: 'variable', achievement: 'constant', ending: 'constant', keyword: 'keyword', value: 'constant',
+  plugin: 'namespace', function: 'method', argument: 'property',
 };
 
 function complete(ctx: CompletionContext): CompletionResult | null {
   const word = ctx.matchBefore(/[A-Za-z_]\w*/);
   const line = ctx.state.doc.lineAt(ctx.pos);
   const items = analysisOf(ctx.state.doc).completionsAt(line.number - 1, ctx.pos - line.from);
-  if (!items.length || (!word && !ctx.explicit && !/\s$|\{$/.test(line.text.slice(0, ctx.pos - line.from)))) return null;
+  if (!items.length || (!word && !ctx.explicit && !/\s$|[{@.=]$/.test(line.text.slice(0, ctx.pos - line.from)))) return null;
   return {
     from: word ? word.from : ctx.pos,
     options: items.map((c) => ({ label: c.label, type: COMPLETION_TYPE[c.kind], detail: c.detail })),

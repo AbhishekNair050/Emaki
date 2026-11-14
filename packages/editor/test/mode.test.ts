@@ -56,6 +56,11 @@ describe('script highlighting', () => {
     expect(l[9]).toEqual(['keyword:label', 'labelDef:a']);
   });
 
+  it('colours plugin functions in expressions', () => {
+    const l = tokens(['label a:', '  if @dice.roll(6) > 4:'].join('\n'));
+    expect(l[1]).toEqual(['keyword:if', 'keyword:@dice.roll', 'number:6', 'op:>', 'number:4']);
+  });
+
   it('colours end-of-line comments', () => {
     const l = tokens([
       '---', 'title: A  # for now', '---',

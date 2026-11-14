@@ -91,6 +91,8 @@ const parser: StreamParser<State> = {
     }
 
     if (stream.match(/^"(?:[^"\\]|\\.)*"?/)) return 'string';
+    // A plugin function in an expression: `@dice.roll(6)`.
+    if (stream.match(/^@[A-Za-z_]\w*\.[A-Za-z_]\w*/)) return 'keyword';
     if (stream.match(/^#[0-9a-fA-F]{3,8}\b/)) return 'color';
     if (stream.match(/^-?\d+(\.\d+)?/)) return 'number';
     if (stream.match(ATOM)) return 'atom';

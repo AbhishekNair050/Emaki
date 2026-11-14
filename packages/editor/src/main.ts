@@ -205,7 +205,11 @@ async function main(): Promise<void> {
     onCursor: (line) => { flow.setCursor(labelAt(line)); previewAt(line); },
     onSave: () => void doc().sync.saveNow(),
     onDrop: (drop, line) => void dropOnScript(drop, line),
-    context: () => (docs.size > 1 ? { file: active, files: [...docs.values()].map((d) => ({ path: d.path, source: d.text })) } : undefined),
+    context: () => ({
+      file: active,
+      files: docs.size > 1 ? [...docs.values()].map((d) => ({ path: d.path, source: d.text })) : [],
+      plugins: pluginManifests,
+    }),
     openDefinition: (sym) => openSymbol(sym),
   }, MAIN);
 
