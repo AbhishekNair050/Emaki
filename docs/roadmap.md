@@ -52,7 +52,7 @@ What a finished commercial VN does on screen and in the ear that Emaki couldn't 
 - [x] Side images (`image side mira smile`) and per-character text boxes through `theme.css` (D-042)
 - [x] The editor's game pane uses the game's `theme.css` (updated live) and its voice files; NVL pages and the scripted title already showed there
 
-## 🚧 Milestone 5 — Lessons from a multilingual commercial port (in progress)
+## ✅ Milestone 5 — Lessons from a multilingual commercial port (done, 2026-11-15)
 Porting a commercial VN demo released in Japanese, English and both Chinese scripts.
 - [x] Pictures and movies with a version per language (`cg/sign.fr.png`, D-043); Chinese devices matched by script (`zh-TW` → `zh-Hant`)
 - [x] Character and text box moves: `hop`, `nod`, `bow`, `shake mira` (D-044)
@@ -79,7 +79,10 @@ What the port still drew as dead art, made real.
 
 ## ✅ Milestone 8 — Plugins
 - [x] Plugin API v1 (D-055): `plugins/<name>/` with plugin.json + index.js; `@name command key=value [-> var]` commands (effects, lasting, waiting with a result) and `@name element` in screens, checked by the compiler; events; bundled into exports. Example plugins in games/plugin-demo: weather, a memory minigame, a meter
-- [ ] Later: functions in expressions, VS Code checks against the game's manifests, completion of plugin commands and arguments
+- [x] Plugin functions in expressions: `if @dice.roll(6) > 4:` (D-058); the demo's memory plugin has one
+- [x] VS Code checks scripts against the game's plugins/*/plugin.json, and shows problems with a plugin on it
+- [x] Completion of plugins, commands, elements, arguments, their values and functions (VS Code and the editor), with hovers from the manifests
+- [x] End-of-line comments: `scene kitchen  # morning light` (D-057)
 
 ## ✅ Milestone 9 — Scene replay and music room
 - [x] `replay label "Name" [image ...] [until label]`: replay scenes from Extras, unlocked once reached, no saving, back to Extras at the end (D-056)

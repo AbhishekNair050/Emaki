@@ -22,7 +22,8 @@ screen hud:
 - A line starting with `@` runs a plugin's command: `@plugin command name=value ...`. Arguments are always named. A value is a number, a quoted string, `true`/`false`, a variable, or an expression with no spaces (`amount=base*2`).
 - `-> variable` keeps the result of a command the story waits on (a minigame's score).
 - In a screen, `@plugin element name=value ...` places one of the plugin's elements, with the usual `at`, `size`, `anchor`, `class=` and `if`. Variables in its arguments are read each time the screen is drawn.
-- The compiler checks every `@` line against the plugin's manifest: the plugin and command exist, every argument is one it takes, required ones are there, and written values have the right type. `emaki check`, the dev server, the editor and exports all do this.
+- In any expression (`if`, `set`, a choice's `if`, a screen's `if` or `set`), `@plugin.function(...)` calls one of the plugin's functions, with its arguments in order: `if @dice.roll(6) > 4:`, `set luck = @dice.roll(6, 2)`. In a command's argument, write it without spaces (`amount=@dice.roll(10)`).
+- The compiler checks every `@` line and function call against the plugin's manifest: the plugin and command exist, every argument is one it takes, required ones are there, and written values have the right type. `emaki check`, the dev server, the editor, VS Code and exports all do this. The editor and VS Code also complete plugins, commands, arguments, their allowed values and functions, and show a manifest's descriptions on hover; VS Code shows problems with a plugin itself (a broken plugin.json, missing code) on its plugin.json.
 
 ## Writing a plugin
 
@@ -39,6 +40,9 @@ A plugin is a folder `plugins/<name>/` in the game, with two files. The name is 
   },
   "elements": {
     "bar": { "args": { "value": "number", "max": "number?" } }
+  },
+  "functions": {
+    "wind": { "args": { "at": "number?" }, "returns": "number", "description": "How hard the wind blows now, 0 to 10." }
   }
 }
 ```
@@ -46,6 +50,7 @@ A plugin is a folder `plugins/<name>/` in the game, with two files. The name is 
 | Key | Meaning |
 |---|---|
 | `commands` / `elements` | What `@name ...` can run in a story, and place in a screen. |
+| `functions` | What `@name.function(...)` can ask in an expression. Arguments are given in the order `args` lists them, so ones with `?` go last. `returns` (`"number"`, `"string"` or `"boolean"`) is optional, for the editor. |
 | `args` | Each argument's type: `"number"`, `"string"`, `"boolean"` (add `?` if it can be left out), or a list of the strings it may be. |
 | `waits` | The story waits until the command finishes (its promise resolves); `-> variable` keeps the result. |
 | `lasting` | The command's effect lasts, and is part of the saved game under this slot: loading, going back and line previews redo it. A later command with the same slot replaces it. |
@@ -85,11 +90,14 @@ export default function weather(ctx) {
 |---|---|
 | `commands` | By name: `(args, run) => void`, or a promise for a command the story waits on (what it resolves to is the result). `run.instant` is true when skipping or redoing a lasting command, `run.restoring` when redoing one. |
 | `elements` | By name: `(args) => HTMLElement`, placed by the screen. Called again each time the screen is drawn. |
+| `functions` | By name: `(...args) => value`, with the arguments in order, returning a number, text or `true`/`false` straight away (no promises). The story stops with a message naming the function if it throws or returns anything else. |
 | `on` | Events: `start()`, `title()`, `line({ id, speaker, text, label })`, `choice({ id, text })`, `ending({ id, name })`, `achievement({ id, name })`, `save()`, `load()`. For analytics, a Discord status, achievements elsewhere. |
 | `reset()` | Forget every lasting effect. The player calls it before redoing the lasting commands after a load, going back or a line preview, and when a new game starts. |
 | `destroy()` | The player is going away. |
 
 **Lasting effects come back by being run again.** A plugin doesn't save anything itself: the story keeps each lasting command and its arguments, and after a load the player calls `reset()` and runs them again with `run.restoring` set. So a lasting command should draw its whole state from its arguments.
+
+**Functions answer; they don't act.** A function should only work something out (a dice roll, the hour, how many pairs a perfect round takes) and not change what the story shows: that's what commands are for. The story doesn't remember answers: going back past a line and playing on asks again, so a random function can give a different answer the second time. A starting value (`var luck = ...`) can't call one, since it's worked out before the game runs; `set` it at the start of the story instead.
 
 **A broken plugin doesn't break the game.** Errors are logged to the console; a command the story waits on that fails lets the story go on without a result.
 

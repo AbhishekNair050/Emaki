@@ -254,7 +254,7 @@ label opening:
   @weather start kind="petals" amount=60
   @memory play pairs=4 -> turns
 ```
-A line starting with `@` runs a command from one of the game's [plugins](plugins.md) (in `plugins/<name>/`), with named arguments (`name=value`: a number, a quoted string, `true`/`false`, a variable, or an expression without spaces). `-> variable` keeps the result of a command the story waits on, like a minigame's score. The compiler checks each line against the plugin's `plugin.json`.
+A line starting with `@` runs a command from one of the game's [plugins](plugins.md) (in `plugins/<name>/`), with named arguments (`name=value`: a number, a quoted string, `true`/`false`, a variable, or an expression without spaces). `-> variable` keeps the result of a command the story waits on, like a minigame's score. In expressions, `@plugin.function(...)` asks one of a plugin's functions (`if @dice.roll(6) > 4:`). The compiler checks each line and call against the plugin's `plugin.json`.
 
 ## Screens during the story
 ```
