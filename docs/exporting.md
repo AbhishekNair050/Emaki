@@ -11,6 +11,8 @@ npm run export -- ios     games/mygame    # an Xcode project (building needs a M
 
 The game must compile without errors first (`npm run emaki -- check games/mygame/story.vn`).
 
+**What's been tested.** Web and Windows exports are tested. macOS and Linux apps are built the same way but haven't been tried on those systems yet; Steam support and the Android APK build are written but not yet tested against real Steam or on a device. Reports from anyone who tries them are very welcome.
+
 ## What the export reads from your story's header
 ```
 ---
