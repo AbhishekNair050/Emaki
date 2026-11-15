@@ -8,12 +8,19 @@ declare module 'virtual:emaki-plugins' {
 
 declare module 'virtual:emaki-game' {
   import type { CompiledStory, CompiledTranslation, Diagnostic, StoryGraph } from '@emaki/format';
-  export const story: CompiledStory | null;
-  /** Compiled lang/*.po and lang/*.csv files. */
-  export const translations: CompiledTranslation[];
-  export const diagnostics: Diagnostic[];
-  /** Each file's lines by path ('' for story.vn). */
-  export const sourceLines: Record<string, string[]>;
-  /** Only present on the dev server (null in builds). */
-  export const graph: StoryGraph | null;
+  /**
+   * Fetch the game's data (game.json; the dev server compiles it on request),
+   * with the story ready to run. Same shape as GameData in emaki-plugin.ts.
+   */
+  export function loadGame(): Promise<{
+    /** Null when the story has errors (dev only: a build would have failed). */
+    story: CompiledStory | null;
+    /** Compiled lang/*.po and lang/*.csv files. */
+    translations: CompiledTranslation[];
+    diagnostics: Diagnostic[];
+    /** Each file's lines by path ('' for story.vn), for the error screen: dev server only, when there are errors. */
+    sourceLines: Record<string, string[]>;
+    /** Only present on the dev server (null in builds). */
+    graph: StoryGraph | null;
+  }>;
 }

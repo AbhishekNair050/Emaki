@@ -102,14 +102,17 @@ export function layoutGraph(ids: string[], edgesIn: GraphEdgeIn[], start: string
 
   // 2. Longest-path layering over the DAG (Kahn's algorithm).
   const dag = edges.filter((e) => !e.back);
+  // Each label's DAG edges in and out, in edge order (a full-length game has thousands).
+  const dagIn = new Map<string, typeof edges>(ids.map((i) => [i, []]));
+  const dagOut = new Map<string, typeof edges>(ids.map((i) => [i, []]));
+  for (const e of dag) { dagIn.get(e.to)!.push(e); dagOut.get(e.from)!.push(e); }
   const indeg = new Map(ids.map((i) => [i, 0]));
   for (const e of dag) indeg.set(e.to, indeg.get(e.to)! + 1);
   const layer = new Map(ids.map((i) => [i, 0]));
   const queue = discovery.filter((i) => indeg.get(i) === 0);
-  while (queue.length) {
-    const u = queue.shift()!;
-    for (const e of dag) {
-      if (e.from !== u) continue;
+  for (let q = 0; q < queue.length; q++) {
+    const u = queue[q]!;
+    for (const e of dagOut.get(u)!) {
       layer.set(e.to, Math.max(layer.get(e.to)!, layer.get(u)! + 1));
       indeg.set(e.to, indeg.get(e.to)! - 1);
       if (indeg.get(e.to) === 0) queue.push(e.to);
@@ -120,23 +123,22 @@ export function layoutGraph(ids: string[], edgesIn: GraphEdgeIn[], start: string
   const rowCount = Math.max(0, ...layer.values()) + 1;
   const rows: string[][] = Array.from({ length: rowCount }, () => []);
   for (const id of discovery) rows[layer.get(id)!].push(id);
-  const pos = () => {
-    const p = new Map<string, number>();
-    rows.forEach((r) => r.forEach((id, i) => p.set(id, (i + 0.5) / r.length)));
-    return p;
-  };
+  // Each label's place in its row (0..1), kept up to date as rows are sorted.
+  const p = new Map<string, number>();
+  const place = (r: string[]) => r.forEach((id, i) => p.set(id, (i + 0.5) / r.length));
+  rows.forEach(place);
   const sortBy = (row: string[], score: (id: string) => number | null) => {
     const current = new Map(row.map((id, i) => [id, i]));
-    row.sort((a, b) => (score(a) ?? current.get(a)! / row.length) - (score(b) ?? current.get(b)! / row.length) || current.get(a)! - current.get(b)!);
+    const scores = new Map(row.map((id) => [id, score(id) ?? current.get(id)! / row.length]));
+    row.sort((a, b) => scores.get(a)! - scores.get(b)! || current.get(a)! - current.get(b)!);
+    place(row);
   };
   for (let sweep = 0; sweep < 4; sweep++) {
     for (let i = 1; i < rowCount; i++) {
-      const p = pos();
-      sortBy(rows[i], (id) => avg(dag.filter((e) => e.to === id).map((e) => p.get(e.from)!)));
+      sortBy(rows[i], (id) => avg(dagIn.get(id)!.map((e) => p.get(e.from)!)));
     }
     for (let i = rowCount - 2; i >= 0; i--) {
-      const p = pos();
-      sortBy(rows[i], (id) => avg(dag.filter((e) => e.from === id).map((e) => p.get(e.to)!)));
+      sortBy(rows[i], (id) => avg(dagOut.get(id)!.map((e) => p.get(e.to)!)));
     }
   }
 

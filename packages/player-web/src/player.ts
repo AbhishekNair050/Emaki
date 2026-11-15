@@ -995,7 +995,8 @@ export class Player {
   private setTone(tone: 'sepia' | 'mono' | null, ms: number): void {
     const filter = tone === 'sepia' ? 'sepia(0.85) saturate(0.9)' : tone === 'mono' ? 'grayscale(1)' : '';
     for (const layer of [this.bgLayer, this.spriteLayer]) {
-      const from = getComputedStyle(layer).filter;
+      // Reading the computed style makes the browser lay out the page, so only when fading.
+      const from = ms ? getComputedStyle(layer).filter : '';
       layer.style.filter = filter;
       if (ms && from !== (filter || 'none')) layer.animate([{ filter: from }, { filter: filter || 'none' }], { duration: ms, easing: 'ease-in-out' });
     }

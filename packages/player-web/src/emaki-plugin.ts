@@ -1,18 +1,19 @@
 /**
  * Vite plugin: compiles the game's story (story.vn plus its other .vn files)
- * and its translations in lang/ on the fly, and exposes them as
- * `virtual:emaki-game`. Editing, adding or removing a .vn file or a
+ * and its translations in lang/, which the player fetches as JSON through
+ * `virtual:emaki-game` (game.json in a build). Editing, adding or removing a .vn file or a
  * translation triggers a reload; the player resumes at the same line (see
  * Runner.resume).
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, normalize, resolve } from 'node:path';
+import { join, normalize, resolve, sep } from 'node:path';
 import type { Plugin } from 'vite';
 import {
-  buildGraph, compileTranslation, localizedAssets, localizablePaths, parseCatalog,
-  type CompiledStory, type CompiledTranslation, type SourceString,
+  buildGraph, compileTranslation, createCompileCache, localizedAssets, localizablePaths, packStory, parseCatalog,
+  type CompiledStory, type CompiledTranslation, type Diagnostic, type SourceString, type StoryGraph,
 } from '@emaki/format';
 import { compileGame, readPlugins, storyParts, where } from '@emaki/format/files';
+import { serveAssets } from './assets-middleware.ts';
 import { uiSourceStrings } from './ui-strings.ts';
 
 const VIRTUAL = 'virtual:emaki-game';
@@ -63,18 +64,67 @@ export function loadTranslations(
   return out;
 }
 
+/** What the player loads: the story and everything that goes with it (see virtual.d.ts). */
+export interface GameData {
+  /** Packed (docs/story-format.md); null when the story has errors. */
+  story: CompiledStory | null;
+  translations: CompiledTranslation[];
+  diagnostics: Diagnostic[];
+  /** Each file's lines by path ('' for story.vn), for the dev server's error screen: only when the story has errors. */
+  sourceLines: Record<string, string[]>;
+  /** The story map, a dev tool: never shipped in a build, where it would be a map of every route. */
+  graph: StoryGraph | null;
+}
+
+/** Where a build puts the game's data, next to index.html. */
+const GAME_FILE = 'game.json';
+/** Where the dev server answers with it. */
+const DEV_GAME_URL = '/@emaki/game.json';
+
 export function emakiGame(gameDir: string): Plugin {
   const storyPath = resolve(gameDir, 'story.vn');
   const langDir = resolve(gameDir, 'lang');
   // The game's own styles, loaded after the player's (see docs/theming.md).
   const themePath = resolve(gameDir, 'theme.css');
   let devServer = false;
+  // Edits recompile only the files and labels that changed.
+  const cache = createCompileCache();
+  /** The dev server's last answer, until a file it came from changes. */
+  let devData: string | null = null;
+  /** Set by the dev server: compile again on the next load, and reload the page. */
+  let changedHook: ((alsoPlugins: boolean) => void) | null = null;
   /** story.vn or one of the story's other files (not a stray .vn in assets/ or a build). */
   const isStoryFile = (f: string) => f === normalize(storyPath)
     || storyParts(gameDir).some((p) => normalize(join(gameDir, p)) === f);
 
+  /** Compile the game; `forBuild` leaves out what only the dev server uses. */
+  const gameData = (report: (msg: string, isError: boolean) => void, forBuild: boolean): GameData => {
+    const r = compileGame(gameDir, cache);
+    for (const d of r.diagnostics) report(`${where(d)}: ${d.severity}: ${d.message}`, d.severity === 'error');
+    const translations = r.story ? loadTranslations(gameDir, r.strings, report, r.story) : [];
+    const lines = (t: string) => t.replace(/\r\n?/g, '\n').split('\n');
+    return {
+      story: r.story ? packStory(r.story) : null,
+      translations,
+      diagnostics: r.diagnostics,
+      // Only the error screen shows source lines, and only when there are errors.
+      sourceLines: forBuild || r.story ? {} : Object.fromEntries([['', lines(r.main)], ...r.parts.map((p) => [p.path, lines(p.source)])]),
+      graph: !forBuild && r.story ? buildGraph(r.program) : null,
+    };
+  };
+
   return {
     name: 'emaki-game',
+    config(_config, env) {
+      if (env.command !== 'serve') return;
+      // The dev server reads assets/ from disk as they're asked for (see serveAssets) instead
+      // of listing and watching every file, which takes most of a minute for a long game.
+      const assets = normalize(resolve(gameDir, 'assets'));
+      return {
+        publicDir: false,
+        server: { watch: { ignored: [(p: string) => normalize(p) === assets || normalize(p).startsWith(assets + sep)] } },
+      };
+    },
     configResolved(config) {
       devServer = config.command === 'serve';
     },
@@ -87,77 +137,74 @@ export function emakiGame(gameDir: string): Plugin {
         return pluginModule(gameDir);
       }
       if (id !== RESOLVED) return null;
-      // A plugin.json describes what the script may write, so it's part of the story.
-      for (const p of Object.values(readPlugins(gameDir).plugins)) this.addWatchFile(join(p.main, '..', 'plugin.json'));
-      this.addWatchFile(storyPath);
-      for (const part of storyParts(gameDir)) this.addWatchFile(join(gameDir, part));
-      const r = compileGame(gameDir);
-      for (const d of r.diagnostics) {
-        const msg = `${where(d)}: ${d.severity}: ${d.message}`;
-        if (d.severity === 'error') this.warn(msg); else this.info?.(msg);
+      // The story is data, fetched as JSON rather than written into this module: a long
+      // story would make a module of tens of megabytes for Vite and the browser to parse.
+      let url = `${JSON.stringify(DEV_GAME_URL)}`;
+      if (!devServer) {
+        const data = gameData((msg, isError) => (isError ? this.warn(msg) : this.info?.(msg)), true);
+        this.emitFile({ type: 'asset', fileName: GAME_FILE, source: JSON.stringify(data) });
+        url = `new URL(${JSON.stringify(GAME_FILE)}, document.baseURI)`;
       }
-      for (const f of translationFiles(gameDir)) this.addWatchFile(f);
-      const translations = r.story
-        ? loadTranslations(gameDir, r.strings, (msg, isError) => (isError ? this.warn(msg) : this.info?.(msg)), r.story)
-        : [];
       return [
         ...(existsSync(themePath) ? [`import ${JSON.stringify(themePath.replace(/\\/g, '/'))};`] : []),
-        `export const story = ${JSON.stringify(r.story)};`,
-        `export const translations = ${JSON.stringify(translations)};`,
-        `export const diagnostics = ${JSON.stringify(r.diagnostics)};`,
-        // Source lines of each file (story.vn under ''), for the error screen.
-        `export const sourceLines = ${JSON.stringify(Object.fromEntries([['', r.main], ...r.parts.map((p) => [p.path, p.source])].map(([k, t]) => [k, t!.replace(/\r\n?/g, '\n').split('\n')])))};`,
-        // The story map is a dev tool: never ship a spoiler map of the routes in a build.
-        `export const graph = ${JSON.stringify(devServer && r.story ? buildGraph(r.program) : null)};`,
+        `import { loadStory } from '@emaki/format';`,
+        `export async function loadGame() {`,
+        `  const res = await fetch(${url});`,
+        `  if (!res.ok) throw new Error('Could not load the game data (' + res.status + ')');`,
+        `  const game = await res.json();`,
+        `  return { ...game, story: game.story && loadStory(game.story) };`,
+        `}`,
       ].join('\n');
     },
     configureServer(server) {
+      const log = server.config.logger;
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split('?')[0] !== DEV_GAME_URL) return next();
+        devData ??= JSON.stringify(gameData((msg, isError) => (isError ? log.warn(msg) : log.info(msg)), false));
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(devData);
+      });
+      server.middlewares.use(serveAssets(resolve(gameDir, 'assets')));
+      /** Something the game is made from changed: compile again on the next load, and reload. */
+      const changed = (alsoPlugins = false) => {
+        devData = null;
+        for (const id of alsoPlugins ? [RESOLVED, PLUGINS_RESOLVED] : [RESOLVED]) {
+          const mod = server.moduleGraph.getModuleById(id);
+          if (mod) server.moduleGraph.invalidateModule(mod);
+        }
+        server.ws.send({ type: 'full-reload' });
+      };
+      changedHook = changed;
       // New translation files aren't watched yet; watch the folder.
       server.watcher.add(langDir);
       const onLangFile = (file: string) => {
-        if (!normalize(file).startsWith(langDir) || !/\.(po|csv)$/i.test(file)) return;
-        const mod = server.moduleGraph.getModuleById(RESOLVED);
-        if (mod) server.moduleGraph.invalidateModule(mod);
-        server.ws.send({ type: 'full-reload' });
+        if (normalize(file).startsWith(langDir) && /\.(po|csv)$/i.test(file)) changed();
       };
       server.watcher.on('add', onLangFile);
       server.watcher.on('unlink', onLangFile);
       // Adding or removing theme.css changes what the game imports.
       server.watcher.add(themePath);
       const onTheme = (file: string) => {
-        if (normalize(file) !== normalize(themePath)) return;
-        const mod = server.moduleGraph.getModuleById(RESOLVED);
-        if (mod) server.moduleGraph.invalidateModule(mod);
-        server.ws.send({ type: 'full-reload' });
+        if (normalize(file) === normalize(themePath)) changed();
       };
       server.watcher.on('add', onTheme);
       server.watcher.on('unlink', onTheme);
       // A new or deleted .vn file changes the story.
       const onScript = (file: string) => {
         const f = normalize(file);
-        if (!f.endsWith('.vn') || !f.startsWith(normalize(gameDir)) || !isStoryFile(f)) return;
-        const mod = server.moduleGraph.getModuleById(RESOLVED);
-        if (mod) server.moduleGraph.invalidateModule(mod);
-        server.ws.send({ type: 'full-reload' });
+        if (f.endsWith('.vn') && f.startsWith(normalize(gameDir)) && isStoryFile(f)) changed();
       };
       server.watcher.add(gameDir);
       server.watcher.on('add', onScript);
       server.watcher.on('unlink', onScript);
     },
-    handleHotUpdate({ file, server }) {
+    handleHotUpdate({ file }) {
       const f = normalize(file);
-      if (f.startsWith(normalize(join(gameDir, 'plugins'))) && f.endsWith('plugin.json')) {
-        for (const id of [RESOLVED, PLUGINS_RESOLVED]) {
-          const mod = server.moduleGraph.getModuleById(id);
-          if (mod) server.moduleGraph.invalidateModule(mod);
-        }
-        server.ws.send({ type: 'full-reload' });
-        return [];
-      }
+      // A plugin.json describes what the script may write, so it's part of the story.
+      if (f.startsWith(normalize(join(gameDir, 'plugins'))) && f.endsWith('plugin.json')) { changedHook?.(true); return []; }
       if (!isStoryFile(f) && !(f.startsWith(langDir) && /\.(po|csv)$/i.test(f))) return;
-      const mod = server.moduleGraph.getModuleById(RESOLVED);
-      if (mod) server.moduleGraph.invalidateModule(mod);
-      server.ws.send({ type: 'full-reload' });
+      changedHook?.(false);
       return [];
     },
   };
