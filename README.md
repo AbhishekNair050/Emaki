@@ -74,6 +74,7 @@ npm run emaki -- new ../my-game      # start your own game
 - **[Story format](docs/story-format.md)**: the compiled JSON any runtime can play
 - **[Decisions](docs/decisions.md)**: why things are the way they are
 - **[Roadmap](docs/roadmap.md)**: what's done and what's next
+- **[Changelog](CHANGELOG.md)**: what changed, version by version
 
 ## Status and known limitations
 Emaki is young (0.x). It's been used to write the demo and to port two complete existing visual novels, but expect rough edges:
