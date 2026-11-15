@@ -9,8 +9,6 @@ const game = resolve(repo, process.env.EMAKI_GAME ?? 'games/gullwing');
 
 export default defineConfig({
   root: here,
-  // The game's assets are served from the root, exactly where the player looks for them.
-  publicDir: resolve(game, 'assets'),
   plugins: [emakiEditor(game)],
   server: {
     port: 5174,

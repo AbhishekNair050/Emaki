@@ -2,6 +2,7 @@
  * Vite plugin for the editor: a tiny API over the game folder.
  *
  *   GET  /__emaki/files   → { files: ['story.vn', 'chapters/two.vn', ...] }
+ *   GET  /__emaki/files?text=1 → also { texts: { path: { text, version } } }, every file in one go
  *   POST /__emaki/files   { path } → creates an empty .vn file in the game
  *   GET  /__emaki/story?file=chapters/two.vn   → { text, version }  (default: story.vn)
  *   PUT  /__emaki/story?file=…  { text, base } → { version } or 409 { text, version }
@@ -16,10 +17,11 @@
  * to do; when .vn files appear or disappear, `emaki:files-changed`; when files
  * appear or disappear under assets/, `emaki:assets-changed`.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { MAIN_FILE, readPlugins, storyParts } from '@emaki/format/files';
 import { pluginModule } from '@emaki/player-web/plugin';
+import { serveAssets } from '@emaki/player-web/assets-middleware';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { AssetError, AssetStore, MAX_ASSET_BYTES } from './asset-store.ts';
@@ -35,7 +37,11 @@ const RESOLVED_PLUGINS = '\0' + PLUGINS;
 export function emakiEditor(gameDir: string): Plugin {
   gameDir = resolve(gameDir);
   const assets = new AssetStore(resolve(gameDir, 'assets'));
-  const files = () => [MAIN_FILE, ...storyParts(gameDir)];
+  // The story's files, listed again only when a .vn file appears or disappears:
+  // every request checks its path against the list, and a long game has hundreds.
+  let fileList: string[] | null = null;
+  const files = () => (fileList ??= [MAIN_FILE, ...storyParts(gameDir)]);
+  const filesChanged = () => { fileList = null; };
   /** The story file at a path from the browser, or null if it isn't one of the story's files. */
   const fileAt = (path: string | null): StoryFile | null => {
     const rel = path ?? MAIN_FILE;
@@ -46,6 +52,12 @@ export function emakiEditor(gameDir: string): Plugin {
 
   return {
     name: 'emaki-editor',
+    config() {
+      // Assets are read from disk as they're asked for (see serveAssets), not listed and
+      // watched one by one through Vite's public folder: slow for a game with thousands.
+      const root = resolve(gameDir, 'assets');
+      return { publicDir: false, server: { watch: { ignored: [(p: string) => resolve(p) === root || resolve(p).startsWith(root + sep)] } } };
+    },
     resolveId(id) {
       return id === THEME ? RESOLVED_THEME : id === PLUGINS ? RESOLVED_PLUGINS : null;
     },
@@ -58,8 +70,10 @@ export function emakiEditor(gameDir: string): Plugin {
       return existsSync(themePath) ? `import ${JSON.stringify(themePath.replace(/\\/g, '/'))};` : '';
     },
     configureServer(server) {
+      // The game's assets, from the root, exactly where the player looks for them.
+      server.middlewares.use(serveAssets(assets.root));
       server.middlewares.use('/__emaki/files', (req, res) => {
-        void handleFiles(gameDir, files, req, res).catch((err: unknown) => {
+        void handleFiles(gameDir, files, req, res, filesChanged).catch((err: unknown) => {
           send(res, 500, { error: err instanceof Error ? err.message : String(err) });
         });
       });
@@ -78,7 +92,18 @@ export function emakiEditor(gameDir: string): Plugin {
         });
       });
 
-      server.watcher.add([gameDir, assets.root]);
+      server.watcher.add(gameDir);
+      // One native watch for the whole assets folder (Vite's watcher skips it, see config()).
+      let assetTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        if (existsSync(assets.root)) {
+          const w = watch(assets.root, { recursive: true }, () => {
+            clearTimeout(assetTimer);
+            assetTimer = setTimeout(() => server.ws.send({ type: 'custom', event: 'emaki:assets-changed', data: {} }), 200);
+          });
+          server.httpServer?.once('close', () => w.close());
+        }
+      } catch { /* no recursive watching here: the asset list refreshes when the editor reloads */ }
       const isScript = (file: string) => file.endsWith('.vn') && files().includes(relPath(file));
       // Adding or removing theme.css changes what the page imports.
       const themeToggled = (file: string) => {
@@ -90,14 +115,16 @@ export function emakiEditor(gameDir: string): Plugin {
       };
       const added = (file: string) => {
         if (themeToggled(file)) return;
-        if (resolve(file).startsWith(assets.root)) server.ws.send({ type: 'custom', event: 'emaki:assets-changed', data: {} });
-        else if (isScript(file)) server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
+        if (file.endsWith('.vn')) filesChanged();
+        if (isScript(file)) server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
       };
       server.watcher.on('add', added);
       server.watcher.on('unlink', (file) => {
         if (themeToggled(file)) return;
-        if (resolve(file).startsWith(assets.root)) server.ws.send({ type: 'custom', event: 'emaki:assets-changed', data: {} });
-        else if (file.endsWith('.vn')) server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
+        if (file.endsWith('.vn')) {
+          filesChanged();
+          server.ws.send({ type: 'custom', event: 'emaki:files-changed', data: { files: files() } });
+        }
       });
       server.watcher.on('change', (file) => {
         if (!isScript(file)) return;
@@ -109,9 +136,13 @@ export function emakiEditor(gameDir: string): Plugin {
 }
 
 /** List the story's files, or create a new one (`chapters/two.vn`, inside the game folder, never over an existing file). */
-async function handleFiles(gameDir: string, files: () => string[], req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleFiles(gameDir: string, files: () => string[], req: IncomingMessage, res: ServerResponse, changed: () => void): Promise<void> {
   if (!sameOrigin(req)) return send(res, 403, { error: 'Requests from other sites are not allowed.' });
-  if (req.method === 'GET') return send(res, 200, { files: files() });
+  if (req.method === 'GET') {
+    if (!new URL(req.url ?? '', 'http://x').searchParams.has('text')) return send(res, 200, { files: files() });
+    const texts = Object.fromEntries(files().map((f) => [f, new StoryFile(join(gameDir, f)).read()]));
+    return send(res, 200, { files: files(), texts });
+  }
   if (req.method !== 'POST') return send(res, 405, { error: 'Use GET or POST.' });
   if (!req.headers['content-type']?.startsWith('application/json')) return send(res, 415, { error: 'Send JSON.' });
   const body = JSON.parse(await readBody(req)) as { path?: unknown };
@@ -121,6 +152,7 @@ async function handleFiles(gameDir: string, files: () => string[], req: Incoming
   if (existsSync(abs)) return send(res, 409, { error: `${path} already exists.` });
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, '', 'utf8');
+  changed();
   send(res, 201, { path, files: files() });
 }
 

@@ -199,6 +199,8 @@ async function main(): Promise<void> {
 
   /** The screen the cursor is in (shown in the game), if any; see previewAt. */
   let previewing: string | null = null;
+  // Compiles (the game's and the script pane's) redo only the files and labels that changed.
+  const compileCache = createCompileCache();
   const script = new ScriptPane($('.cm-host'), initial.text, {
     onChange: (text) => { doc().text = text; doc().sync.changed(text); scheduleCompile(); },
     onRun: (line) => runFrom(line),
@@ -209,6 +211,7 @@ async function main(): Promise<void> {
       file: active,
       files: docs.size > 1 ? [...docs.values()].map((d) => ({ path: d.path, source: d.text })) : [],
       plugins: pluginManifests,
+      cache: compileCache,
     }),
     openDefinition: (sym) => openSymbol(sym),
   }, MAIN);
@@ -313,9 +316,6 @@ async function main(): Promise<void> {
     recompile();
   }
 
-  // Each recompile redoes only the files and labels that changed.
-  const compileCache = createCompileCache();
-
   /** Compile every file of the story (the open one as it is in the editor). */
   function recompile(): void {
     compileTimer = 0;
@@ -389,10 +389,15 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------------------- script ↔ flowchart
 
+  /** The label the cursor is in: the nearest `label` line above it (runs on every keystroke, so no compiling). */
   function labelAt(line: number): string | null {
-    const zero = line - 1;
-    const hit = script.analysis.ownSymbols().find((s) => s.kind === 'label' && zero >= s.line && zero <= s.endLine);
-    return hit?.name ?? null;
+    const lines = doc().text.split('\n');
+    for (let i = line - 1; i >= 0; i--) {
+      const l = lines[i] ?? '';
+      if (!l.trim() || /^\s/.test(l) || l.trimStart().startsWith('#')) continue;
+      return /^label\s+([A-Za-z_]\w*)\s*:/.exec(l)?.[1] ?? null;
+    }
+    return null;
   }
 
   function revealLabel(label: string): void {
@@ -498,16 +503,11 @@ function setupTabs(): void {
 /** Every file of the story, story.vn first. */
 async function loadFiles(): Promise<Map<string, StoryText> | null> {
   try {
-    const list = await fetch('/__emaki/files');
+    // All of them in one request: a long game has hundreds of files.
+    const list = await fetch('/__emaki/files?text=1');
     if (!list.ok) throw new Error(`${list.status}`);
-    const { files } = (await list.json()) as { files: string[] };
-    const out = new Map<string, StoryText>();
-    for (const path of files) {
-      const res = await fetch(`/__emaki/story?file=${encodeURIComponent(path)}`);
-      if (!res.ok) throw new Error(`${path}: ${res.status}`);
-      out.set(path, (await res.json()) as StoryText);
-    }
-    return out;
+    const { files, texts } = (await list.json()) as { files: string[]; texts: Record<string, StoryText> };
+    return new Map(files.map((path) => [path, texts[path]!]));
   } catch (err) {
     document.body.innerHTML = '<p class="fatal">Couldn’t load story.vn from the editor server. Is <code>npm run edit</code> still running?</p>';
     console.error(err);

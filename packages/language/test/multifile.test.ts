@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createCompileCache } from '@emaki/format';
 import { Analysis } from '../src/index.ts';
 
 const MAIN = `---
@@ -25,6 +26,18 @@ describe('analysis across files', () => {
     const part = new Analysis(PART, { file: 'chapters/two.vn', files });
     expect(part.problems().map((p) => [p.range.line, p.code])).toEqual([[3, 'unknown-label']]);
     expect(new Analysis(PART).problems().length).toBeGreaterThan(1); // alone, ann and met are unknown
+  });
+
+  it('with a cache, edits are analysed the same as from scratch', () => {
+    const cache = createCompileCache();
+    expect(new Analysis(PART, { file: 'chapters/two.vn', files, cache }).problems().map((p) => p.code)).toEqual(['unknown-label']);
+    const fixed = PART.replace('jump nowhere', 'jump start');
+    const a = new Analysis(fixed, { file: 'chapters/two.vn', files, cache });
+    expect(a.symbols().map((s) => s.name)).toContain('chapter_two');
+    expect(a.problems()).toEqual([]);
+    // story.vn sees the other file's edited text too when it's passed in.
+    const edited = [{ path: 'story.vn', source: MAIN.replace('var met = false\n', '') }, { path: 'chapters/two.vn', source: fixed }];
+    expect(new Analysis(fixed, { file: 'chapters/two.vn', files: edited, cache }).problems().map((p) => p.code)).toEqual(['unknown-variable']);
   });
 
   it('jumps to definitions in other files', () => {

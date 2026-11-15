@@ -116,6 +116,22 @@ export interface StoryFile {
  * their `file`; locations in story.vn have none.
  */
 export function compileFiles(main: string, parts: StoryFile[] = [], opts: CompileOptions = {}): CompileResult {
+  const { program, diagnostics: all } = combineFiles(main, parts, opts);
+  const res = compileProgram(program, opts);
+  all.push(...res.diagnostics);
+  // story.vn first, then the parts in order; by line within a file.
+  const order = new Map(parts.map((p, i) => [p.path, i + 1]));
+  all.sort((a, b) => (order.get(a.file ?? '') ?? 0) - (order.get(b.file ?? '') ?? 0) || a.line - b.line);
+  const hasErrors = all.some((d) => d.severity === 'error');
+  return { story: hasErrors ? null : res.story, diagnostics: all, program, strings: res.strings };
+}
+
+/**
+ * The story's files parsed and put together into one program, without
+ * compiling it: what tools need for names, symbols and completion. The
+ * diagnostics are only the files' syntax errors (compileFiles adds the rest).
+ */
+export function combineFiles(main: string, parts: StoryFile[] = [], opts: CompileOptions = {}): { program: Program; diagnostics: Diagnostic[] } {
   const parseFile = (path: string, source: string): ParseResult => {
     const hit = opts.cache?.files.get(path);
     if (hit && hit.source === source) return hit.result;
@@ -149,13 +165,7 @@ export function compileFiles(main: string, parts: StoryFile[] = [], opts: Compil
     if (r.program.replays?.length) (program.replays ??= []).push(...r.program.replays);
     program.labels.push(...r.program.labels);
   }
-  const res = compileProgram(program, opts);
-  all.push(...res.diagnostics);
-  // story.vn first, then the parts in order; by line within a file.
-  const order = new Map(parts.map((p, i) => [p.path, i + 1]));
-  all.sort((a, b) => (order.get(a.file ?? '') ?? 0) - (order.get(b.file ?? '') ?? 0) || a.line - b.line);
-  const hasErrors = all.some((d) => d.severity === 'error');
-  return { story: hasErrors ? null : res.story, diagnostics: all, program, strings: res.strings };
+  return { program, diagnostics: all };
 }
 
 /** Mark every location in a parsed file as belonging to `file`. */

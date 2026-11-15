@@ -5,11 +5,11 @@
  * the compiler from @emaki/format inlined, so it works without Node or npm on
  * the writer's machine.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import * as vscode from 'vscode';
 import { MAIN_FILE, pluginManifests, readPlugins, storyParts } from '@emaki/format/files';
-import type { PluginManifest } from '@emaki/format';
+import { createCompileCache, type CompileCache, type PluginManifest } from '@emaki/format';
 import { Analysis, format, previewUrl, type CompletionKind, type StoryContext, type StorySymbol, type SymbolKind } from '@emaki/language';
 
 const LANGUAGE = 'emaki';
@@ -75,15 +75,31 @@ function gamePlugins(dir: string): Record<string, PluginManifest> {
   return plugins;
 }
 
+/** Per game: what's been compiled, so a keystroke recompiles only what changed (see CompileCache). */
+const compileCaches = new Map<string, CompileCache>();
+/** Files read from disk, until they change there. */
+const fileTexts = new Map<string, { mtime: number; text: string }>();
+
+function readCached(abs: string): string {
+  const mtime = statSync(abs).mtimeMs;
+  const hit = fileTexts.get(abs);
+  if (hit && hit.mtime === mtime) return hit.text;
+  const text = readFileSync(abs, 'utf8');
+  fileTexts.set(abs, { mtime, text });
+  return text;
+}
+
 /** Every file of the story, with the unsaved text of the ones open in the editor, and the game's plugins. */
 function storyContext(game: { dir: string; path: string }, doc: vscode.TextDocument): StoryContext {
   const open = new Map(vscode.workspace.textDocuments.map((d) => [d.uri.fsPath.toLowerCase(), d]));
   const files = [MAIN_FILE, ...storyParts(game.dir)].map((path) => {
     const abs = join(game.dir, path);
-    const text = abs.toLowerCase() === doc.uri.fsPath.toLowerCase() ? doc.getText() : open.get(abs.toLowerCase())?.getText() ?? readFileSync(abs, 'utf8');
+    const text = abs.toLowerCase() === doc.uri.fsPath.toLowerCase() ? doc.getText() : open.get(abs.toLowerCase())?.getText() ?? readCached(abs);
     return { path, source: text };
   });
-  return { file: game.path, files, plugins: gamePlugins(game.dir) };
+  let cache = compileCaches.get(game.dir);
+  if (!cache) compileCaches.set(game.dir, (cache = createCompileCache()));
+  return { file: game.path, files, plugins: gamePlugins(game.dir), cache };
 }
 
 /** Where a definition is: this document, or another file of the story. */

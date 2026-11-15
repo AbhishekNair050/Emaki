@@ -6,8 +6,8 @@
  * both thin adapters over it, and a language server could be too.
  */
 import {
-  compile, compileFiles, parse, print, printExpr, KEYWORDS, POSITIONS, TRANSITIONS,
-  type Diagnostic, type Loc, type PluginArgType, type PluginManifest, type Program, type Stmt, type StoryFile,
+  combineFiles, compile, compileFiles, parse, print, printExpr, KEYWORDS, POSITIONS, TRANSITIONS,
+  type CompileCache, type Diagnostic, type Loc, type PluginArgType, type PluginManifest, type Program, type Stmt, type StoryFile,
 } from '@emaki/format';
 
 export * from './edits.ts';
@@ -55,6 +55,11 @@ export interface StoryContext {
    * so plugin lines aren't checked.
    */
   plugins?: Readonly<Record<string, PluginManifest>>;
+  /**
+   * Keep one per game and pass it with every analysis: only the files and
+   * labels that changed are compiled again, which matters for long games.
+   */
+  cache?: CompileCache;
 }
 
 export type CompletionKind = SymbolKind | 'keyword' | 'value' | 'plugin' | 'function' | 'argument';
@@ -65,11 +70,16 @@ export interface Completion {
   detail?: string;
 }
 
-/** One parsed snapshot of a document. Cheap enough to rebuild on every edit. */
+/**
+ * One parsed snapshot of a document. Cheap enough to rebuild on every edit:
+ * names, symbols and completion need only the parsed files; the whole story is
+ * compiled the first time its problems are asked for.
+ */
 export class Analysis {
   readonly lines: string[];
   readonly program: Program;
-  readonly diagnostics: Diagnostic[];
+  private readonly compileNow: () => Diagnostic[];
+  private compiled: Diagnostic[] | undefined;
 
   /** This document's file: undefined for story.vn, as in the compiler's locations. */
   readonly file: string | undefined;
@@ -82,18 +92,23 @@ export class Analysis {
     const file = context && context.file !== 'story.vn' ? context.file : undefined;
     this.file = file;
     this.plugins = context?.plugins;
-    let result;
-    if (!context) result = compile(source);
-    else {
+    if (!context) {
+      this.program = parse(source).program;
+      this.compileNow = () => compile(source).diagnostics;
+    } else {
       const others = context.files.filter((f) => f.path !== context.file);
       const main = file ? others.find((f) => f.path === 'story.vn')?.source ?? '' : source;
       const parts = others.filter((f) => f.path !== 'story.vn');
       if (file) parts.push({ path: file, source });
-      result = compileFiles(main, parts, context.plugins ? { plugins: { ...context.plugins } } : {});
+      const opts = { ...(context.plugins ? { plugins: { ...context.plugins } } : {}), cache: context.cache };
+      this.program = combineFiles(main, parts, opts).program;
+      this.compileNow = () => compileFiles(main, parts, opts).diagnostics;
     }
-    this.program = result.program;
-    // Only this document's problems; the others are reported in their own files.
-    this.diagnostics = result.diagnostics.filter((d) => d.file === file);
+  }
+
+  /** This document's problems (the other files' are reported in their own files). Compiles the story the first time. */
+  get diagnostics(): Diagnostic[] {
+    return (this.compiled ??= this.compileNow().filter((d) => d.file === this.file));
   }
 
   // ------------------------------------------------------------ problems
