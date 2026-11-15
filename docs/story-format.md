@@ -22,7 +22,7 @@ The contract between the compiler and every runtime. A runtime in any language t
 ```
 
 ## Instructions
-Every instruction has `op` and `src: { line, label }`. `target` fields are indices into `code`.
+Every instruction has `op` and `src: { line, label, file? }` (`file` only for instructions from a file other than story.vn). `target` fields are indices into `code`.
 
 | op | fields | blocks? | semantics |
 |---|---|---|---|
@@ -57,6 +57,14 @@ Every instruction has `op` and `src: { line, label }`. `target` fields are indic
 **Layered characters.** `layered` maps a tag to its layers, bottom first: `{ path }` is always drawn; `{ group, options: {attr: path}, default }` draws the option currently chosen for the group (`default` until one is chosen; `null` means nothing). For a layered tag, a sprite's attrs are the chosen option per group. Each attr in a `show` or `say` replaces the option of the group that contains it; `-attr` clears that group. With no attrs, a new sprite starts with every group's default.
 
 A runtime should guard against loops that execute many instructions without blocking (reference: 100,000).
+
+## Packed files (version 2)
+Story files written by the tools (`emaki build`, the player's own build) are **packed**: `version` is 2, and two things that repeat on almost every instruction are left out. A runtime expands them when it loads the file, then works with version 1 as described above.
+
+- `src.file` and `src.label` are written only when they differ from the previous instruction's. A `file` of `""` means story.vn again. The first instruction always has both.
+- On `say`, `who` is left out when it's `null` and `attrs` when it's `[]`.
+
+Everything else is unchanged. In a full-length game this takes the file from 31 MB to 19 MB. The reference loader is `loadStory()` in `packages/format/src/pack.ts`; a runtime can accept both versions by applying it only when `version` is 2.
 
 ## Styled text
 `text` is always plain, with markup removed. When a line uses styling, `spans` is also present: an array of `{ text, b?: true, i?: true, color?: string, ruby?: string }` runs that join to make `text`. `ruby` is a reading shown in small type above that run (furigana); runtimes without ruby support show the text alone. Runtimes without styling support can ignore `spans`. `color` is a hex code or a plain colour name, validated by the compiler.

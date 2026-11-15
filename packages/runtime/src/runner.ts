@@ -7,7 +7,7 @@
  * Node tests, or a future native shell.
  */
 import {
-  EvalError, evaluate, truthy,
+  EvalError, evaluate, loadStory, truthy,
   type CallPlugin, type CompiledStory, type CompiledTranslation, type Instr, type Value, type Channel, type Span,
 } from '@emaki/format';
 
@@ -197,8 +197,9 @@ export class Runner {
    */
   callPlugin: CallPlugin | undefined;
 
+  /** `story` as compiled, or as read from a file (packed; see docs/story-format.md). */
   constructor(story: CompiledStory) {
-    this.story = story;
+    this.story = loadStory(story);
     this.state = this.initialState();
   }
 

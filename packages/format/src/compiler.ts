@@ -16,7 +16,7 @@ import { EvalError, evaluate, freeVars, pluginCalls, type Expr, type Value } fro
 import { checkPluginCall, checkPluginFunctions, type PluginCommandSpec, type PluginManifest } from './plugins.ts';
 import { REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
 import { parseMarkup, type Span } from './markup.ts';
-import { parse } from './parser.ts';
+import { parse, type ParseResult } from './parser.ts';
 
 export const TRANSITIONS = ['fade', 'dissolve', 'move', 'none'];
 export const POSITIONS = ['left', 'center', 'right'];
@@ -57,7 +57,39 @@ export interface SourceString {
 
 /** Parse + compile in one go. */
 /** What the compiler knows about the game beyond its script. */
+/**
+ * What one label compiled to, kept between compiles by a CompileCache: its code
+ * (targets counted from its first instruction), messages and translatable
+ * strings, and its jumps to other labels (`at` is the instruction).
+ */
+export interface LabelCode {
+  key: string;
+  code: Instr[];
+  diagnostics: Diagnostic[];
+  strings: SourceString[];
+  jumps: Array<{ at: number; name: string; loc: Loc }>;
+  usedIds: Map<string, number>;
+  hash: string;
+}
+
+/**
+ * Lets compiling the same game again redo only what changed: a file whose text
+ * is the same isn't parsed again, and its labels aren't compiled again unless
+ * the declarations (images, characters, variables...) changed. Make one per
+ * game and pass it to every compile of that game.
+ */
+export interface CompileCache {
+  files: Map<string, { source: string; result: ParseResult }>;
+  labels: WeakMap<object, LabelCode>;
+}
+
+export function createCompileCache(): CompileCache {
+  return { files: new Map(), labels: new WeakMap() };
+}
+
 export interface CompileOptions {
+  /** Reuse work from earlier compiles of the same game; see CompileCache. */
+  cache?: CompileCache;
   /**
    * The game's plugins by name (from plugins/<name>/plugin.json). Absent: not
    * known here, so `@` lines aren't checked (an editor showing one file);
@@ -84,11 +116,24 @@ export interface StoryFile {
  * their `file`; locations in story.vn have none.
  */
 export function compileFiles(main: string, parts: StoryFile[] = [], opts: CompileOptions = {}): CompileResult {
-  const { program, diagnostics } = parse(main);
-  const all: Diagnostic[] = [...diagnostics];
+  const parseFile = (path: string, source: string): ParseResult => {
+    const hit = opts.cache?.files.get(path);
+    if (hit && hit.source === source) return hit.result;
+    const r = parse(source);
+    if (path) tagFile(r.program, path);
+    opts.cache?.files.set(path, { source, result: r });
+    return r;
+  };
+  // story.vn's program collects every file's declarations and labels, so it's a copy.
+  const mainResult = parseFile('', main);
+  const program: Program = { ...mainResult.program };
+  for (const k of ['characters', 'images', 'audio', 'layered', 'screens', 'vars', 'achievements', 'endings', 'labels'] as const) {
+    (program as unknown as Record<string, unknown[]>)[k] = [...mainResult.program[k]];
+  }
+  if (program.replays) program.replays = [...program.replays];
+  const all: Diagnostic[] = [...mainResult.diagnostics];
   for (const part of parts) {
-    const r = parse(part.source);
-    tagFile(r.program, part.path);
+    const r = parseFile(part.path, part.source);
     for (const d of r.diagnostics) all.push({ ...d, file: part.path });
     if (r.program.meta.length) {
       all.push({ severity: 'error', line: 1, file: part.path, code: 'header-in-part', message: 'Only story.vn can have a header (title, start, ...); move these lines there' });
@@ -127,10 +172,12 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   const diagnostics: Diagnostic[] = [];
   const strings: SourceString[] = [];
   const at = (where: number | Loc) => (typeof where === 'number' ? { line: where } : where.file ? { line: where.line, file: where.file } : { line: where.line });
+  /** Where messages go: the story's list, or the label being compiled (see LabelCode). */
+  let sink = diagnostics;
   const error = (where: number | Loc, code: string, message: string) =>
-    diagnostics.push({ severity: 'error', ...at(where), code, message });
+    sink.push({ severity: 'error', ...at(where), code, message });
   const warn = (where: number | Loc, code: string, message: string) =>
-    diagnostics.push({ severity: 'warning', ...at(where), code, message });
+    sink.push({ severity: 'warning', ...at(where), code, message });
 
   // --- Declarations -----------------------------------------------------
   const meta: Record<string, string> = {};
@@ -244,13 +291,14 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   // --- Code generation --------------------------------------------------
   const code: Instr[] = [];
   const labels: Record<string, number> = {};
-  const usedIds = new Map<string, number>();
   const pendingTargets: Array<{ instr: { target: number; label?: string }; name: string; loc: Loc }> = [];
+  /** The label being compiled. Its targets count from its own first instruction. */
+  let frag: LabelCode = { key: '', code: [], diagnostics: [], strings: [], jumps: [], usedIds: new Map(), hash: '' };
 
   const lineId = (label: string, key: string): string => {
     const base = `${label}.${fnv1a(key)}`;
-    const n = usedIds.get(base) ?? 0;
-    usedIds.set(base, n + 1);
+    const n = frag.usedIds.get(base) ?? 0;
+    frag.usedIds.set(base, n + 1);
     return n === 0 ? base : `${base}.${n + 1}`;
   };
 
@@ -301,8 +349,8 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         checkText(s.text, s.loc);
         const styled = styledText(s.text, s.loc);
         const id = lineId(label, `${s.who ?? ''}|${s.text}`);
-        strings.push({ id, kind: 'line', speaker: s.who, text: s.text, label, ...lineOf(s.loc) });
-        code.push({ op: 'say', id, who: s.who, attrs: s.attrs, ...styled, src });
+        frag.strings.push({ id, kind: 'line', speaker: s.who, text: s.text, label, ...lineOf(s.loc) });
+        frag.code.push({ op: 'say', id, who: s.who, attrs: s.attrs, ...styled, src });
         return;
       }
       case 'scene': {
@@ -310,7 +358,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
           error(s.loc, 'unknown-image', didYouMean(s.image, Object.keys(images)) ?? `No image named '${s.image}'`);
         }
         checkTransition(s.transition, s.loc);
-        code.push({ op: 'scene', image: s.image, transition: s.transition, ...dur(s), src });
+        frag.code.push({ op: 'scene', image: s.image, transition: s.transition, ...dur(s), src });
         return;
       }
       case 'show': {
@@ -320,24 +368,24 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         }
         if (s.at && !POSITIONS.includes(s.at) && !isPercentPosition(s.at)) error(s.loc, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')}, or a percentage of the screen's width like 30%)`);
         checkTransition(s.transition, s.loc);
-        code.push({ op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, at: s.at, transition: s.transition, ...dur(s), src });
+        frag.code.push({ op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, at: s.at, transition: s.transition, ...dur(s), src });
         return;
       }
       case 'hide':
         if (!imageTags.has(s.tag)) warn(s.loc, 'unknown-image', `Nothing called '${s.tag}' can be shown, so it can't be hidden`);
         checkTransition(s.transition, s.loc);
-        code.push({ op: 'hide', tag: s.tag, transition: s.transition, ...dur(s), src });
+        frag.code.push({ op: 'hide', tag: s.tag, transition: s.transition, ...dur(s), src });
         return;
       case 'play': {
         let path = '';
         if (s.asset.kind === 'path') path = s.asset.path;
         else if (audio[s.asset.name]) path = audio[s.asset.name];
         else error(s.loc, 'unknown-audio', `Unknown audio '${s.asset.name}'. Add: audio ${s.asset.name} = "audio/file.ogg"`);
-        code.push({ op: 'play', channel: s.channel, path, loop: s.loop ?? (s.channel === 'music' || s.channel === 'ambience'), fade: s.fade, src });
+        frag.code.push({ op: 'play', channel: s.channel, path, loop: s.loop ?? (s.channel === 'music' || s.channel === 'ambience'), fade: s.fade, src });
         return;
       }
       case 'stop':
-        code.push({ op: 'stop', channel: s.channel, fade: s.fade, src });
+        frag.code.push({ op: 'stop', channel: s.channel, fade: s.fade, src });
         return;
       case 'set': {
         if (!Object.prototype.hasOwnProperty.call(vars, s.name)) {
@@ -347,42 +395,40 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         const expr: Expr = s.op === '='
           ? s.expr
           : { k: 'bin', op: s.op === '+=' ? '+' : '-', l: { k: 'var', name: s.name }, r: s.expr };
-        code.push({ op: 'set', name: s.name, expr, src });
+        frag.code.push({ op: 'set', name: s.name, expr, src });
         return;
       }
       case 'jump': {
-        const instr = { op: 'jump' as const, target: -1, label: s.target, src };
-        pendingTargets.push({ instr, name: s.target, loc: s.loc });
-        code.push(instr);
+        frag.jumps.push({ at: frag.code.length, name: s.target, loc: s.loc });
+        frag.code.push({ op: 'jump', target: -1, label: s.target, src });
         return;
       }
       case 'call': {
-        const instr = { op: 'call' as const, target: -1, label: s.target, src };
-        pendingTargets.push({ instr, name: s.target, loc: s.loc });
-        code.push(instr);
+        frag.jumps.push({ at: frag.code.length, name: s.target, loc: s.loc });
+        frag.code.push({ op: 'call', target: -1, label: s.target, src });
         return;
       }
-      case 'return': code.push({ op: 'return', src }); return;
+      case 'return': frag.code.push({ op: 'return', src }); return;
       case 'end':
         if (s.ending && !endings[s.ending]) {
           error(s.loc, 'unknown-ending', didYouMean(s.ending, Object.keys(endings))
             ?? `Unknown ending '${s.ending}'. Declare it at the top: ending ${s.ending} "Its Name"`);
         }
-        code.push(s.ending ? { op: 'end', ending: s.ending, src } : { op: 'end', src });
+        frag.code.push(s.ending ? { op: 'end', ending: s.ending, src } : { op: 'end', src });
         return;
-      case 'wait': code.push({ op: 'wait', seconds: s.seconds, src }); return;
+      case 'wait': frag.code.push({ op: 'wait', seconds: s.seconds, src }); return;
       case 'achieve':
         if (!achievements[s.id]) {
           error(s.loc, 'unknown-achievement', didYouMean(s.id, Object.keys(achievements))
             ?? `Unknown achievement '${s.id}'. Declare it at the top: achievement ${s.id} "Its Name"`);
         }
-        code.push({ op: 'achieve', id: s.id, src });
+        frag.code.push({ op: 'achieve', id: s.id, src });
         return;
       case 'nvl':
-        code.push({ op: 'nvl', mode: s.mode, src });
+        frag.code.push({ op: 'nvl', mode: s.mode, src });
         return;
       case 'shake':
-        code.push({ op: 'shake', ...dur(s), src });
+        frag.code.push({ op: 'shake', ...dur(s), src });
         return;
       case 'motion':
         if (s.target !== 'textbox' && !imageTags.has(s.target)) {
@@ -390,20 +436,20 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
             ?? `Nothing called '${s.target}' can be on screen to ${s.motion} (use a character's image name, or textbox)`);
         }
         if (s.forever && s.target === 'textbox') error(s.loc, `bad-${s.motion}`, `Only characters can keep moving; the text box moves once at a time`);
-        code.push({
+        frag.code.push({
           op: 'motion', motion: s.motion, target: s.target,
           ...(s.times ? { times: s.times } : {}), ...(s.forever ? { forever: true as const } : {}), src,
         });
         return;
       case 'still':
         if (!imageTags.has(s.target)) error(s.loc, 'unknown-image', didYouMean(s.target, [...imageTags]) ?? `No character named '${s.target}' to keep still`);
-        code.push({ op: 'still', target: s.target, src });
+        frag.code.push({ op: 'still', target: s.target, src });
         return;
       case 'tone':
-        code.push({ op: 'tone', tone: s.tone, ...(s.over !== null ? { duration: s.over } : {}), src });
+        frag.code.push({ op: 'tone', tone: s.tone, ...(s.over !== null ? { duration: s.over } : {}), src });
         return;
       case 'movie':
-        code.push({ op: 'movie', path: s.path, src });
+        frag.code.push({ op: 'movie', path: s.path, src });
         return;
       case 'plugin': {
         const spec = checkPluginCall(s.call, 'command', opts.plugins, (n) => Object.prototype.hasOwnProperty.call(vars, n), (code, message) => error(s.loc, code, message)) as PluginCommandSpec | null;
@@ -412,7 +458,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
           if (spec && !spec.waits) error(s.loc, 'bad-plugin', `@${s.call.plugin} ${s.call.name} doesn't wait for a result, so it has nothing to put in '${s.into}'`);
         }
         const waits = spec ? spec.waits : !!s.into;
-        code.push({
+        frag.code.push({
           op: 'plugin', plugin: s.call.plugin, command: s.call.name, args: s.call.args,
           ...(waits ? { waits: true as const } : {}), ...(spec?.lasting ? { lasting: spec.lasting } : {}), ...(spec?.ends ? { ends: true as const } : {}),
           ...(s.into ? { into: s.into } : {}), src,
@@ -431,14 +477,14 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         if (s.into && !Object.prototype.hasOwnProperty.call(vars, s.into)) {
           error(s.loc, 'unknown-variable', `Unknown variable '${s.into}'. Declare it at the top: var ${s.into} = ""`);
         }
-        code.push({ op: 'screen', mode: s.mode, name: s.name, ...(s.into ? { into: s.into } : {}), src });
+        frag.code.push({ op: 'screen', mode: s.mode, name: s.name, ...(s.into ? { into: s.into } : {}), src });
         return;
       }
       case 'flash':
-        code.push({ op: 'flash', color: s.color ?? 'white', ...dur(s), src });
+        frag.code.push({ op: 'flash', color: s.color ?? 'white', ...dur(s), src });
         return;
       case 'camera':
-        code.push({
+        frag.code.push({
           op: 'camera', zoom: s.zoom ?? 1, x: s.at?.[0] ?? 50, y: s.at?.[1] ?? 50,
           ...(s.over !== null ? { duration: s.over } : {}), src,
         });
@@ -454,18 +500,18 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         const menuId = lineId(label, `menu|${s.choices.map((c) => c.text).join('|')}`);
         choices.forEach((c, i) => {
           c.id = lineId(label, `choice|${s.choices[i].text}`);
-          strings.push({ id: c.id, kind: 'choice', speaker: null, text: s.choices[i].text, label, ...lineOf(s.choices[i].loc) });
+          frag.strings.push({ id: c.id, kind: 'choice', speaker: null, text: s.choices[i].text, label, ...lineOf(s.choices[i].loc) });
         });
-        code.push({ op: 'menu', id: menuId, choices, src });
+        frag.code.push({ op: 'menu', id: menuId, choices, src });
         const exits: Array<{ target: number }> = [];
         s.choices.forEach((c, i) => {
-          choices[i].target = code.length;
+          choices[i].target = frag.code.length;
           emitBlock(c.body, label);
           const j = { op: 'jump' as const, target: -1, src: srcRef(c.loc, label) };
           exits.push(j);
-          code.push(j);
+          frag.code.push(j);
         });
-        for (const j of exits) j.target = code.length;
+        for (const j of exits) j.target = frag.code.length;
         return;
       }
       case 'if': {
@@ -475,26 +521,60 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
           if (b.cond) {
             checkVars(b.cond, b.loc);
             const ji = { op: 'jumpIfNot' as const, cond: b.cond, target: -1, src: srcRef(b.loc, label) };
-            code.push(ji);
+            frag.code.push(ji);
             skip = ji;
           }
           emitBlock(b.body, label);
           const j = { op: 'jump' as const, target: -1, src: srcRef(b.loc, label) };
           exits.push(j);
-          code.push(j);
-          if (skip) skip.target = code.length;
+          frag.code.push(j);
+          if (skip) skip.target = frag.code.length;
         }
-        for (const j of exits) j.target = code.length;
+        for (const j of exits) j.target = frag.code.length;
         return;
       }
     }
   };
 
+  // Each label compiles on its own, against the declarations. With a cache, a label
+  // that hasn't changed (the same parsed label, the same declarations) is reused.
+  const cache = opts.cache;
+  const declKey = fnv1a(JSON.stringify([
+    characters, images, layered, audio, vars, endings, achievements,
+    program.screens.map((d) => [d.name, screenCanLeave(d)]), opts.plugins ?? null,
+  ]));
+  const labelHashes: string[] = [];
   for (const l of program.labels) {
-    labels[l.name] = code.length;
-    emitBlock(l.body, l.name);
-    // Reaching the end of a label behaves like `return` (ends the story if nothing called it).
-    code.push({ op: 'return', src: srcRef(l.loc, l.name) });
+    let f = cache?.labels.get(l);
+    if (!f || f.key !== declKey) {
+      frag = { key: declKey, code: [], diagnostics: [], strings: [], jumps: [], usedIds: new Map(), hash: '' };
+      sink = frag.diagnostics;
+      emitBlock(l.body, l.name);
+      // Reaching the end of a label behaves like `return` (ends the story if nothing called it).
+      frag.code.push({ op: 'return', src: srcRef(l.loc, l.name) });
+      sink = diagnostics;
+      frag.hash = fnv1a(JSON.stringify(frag.code));
+      f = frag;
+      cache?.labels.set(l, f);
+    }
+    // Link: move its targets to where it lands; jumps to other labels are resolved below.
+    const offset = code.length;
+    labels[l.name] = offset;
+    diagnostics.push(...f.diagnostics);
+    strings.push(...f.strings);
+    let next = 0;
+    for (let i = 0; i < f.code.length; i++) {
+      const ins = f.code[i]!;
+      if (f.jumps[next]?.at === i) {
+        const j = f.jumps[next++]!;
+        const copy = { ...ins } as Extract<Instr, { op: 'jump' | 'call' }>;
+        pendingTargets.push({ instr: copy, name: j.name, loc: j.loc });
+        code.push(copy);
+      } else if (ins.op === 'jump' || ins.op === 'jumpIfNot') code.push({ ...ins, target: ins.target + offset });
+      else if (ins.op === 'menu') code.push({ ...ins, choices: ins.choices.map((c) => ({ ...c, target: c.target + offset })) });
+      else code.push(ins);
+    }
+    labelHashes.push(f.hash);
   }
 
   for (const p of pendingTargets) {
@@ -599,7 +679,8 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     labels, code,
     hash: '',
   };
-  story.hash = fnv1a(JSON.stringify({ ...story, hash: '' }));
+  // Each label's code was hashed once, when it was compiled; `labels` says where each one landed.
+  story.hash = fnv1a(JSON.stringify({ ...story, code: labelHashes, hash: '' }));
   // Names and the title come first in a translation file, as translators expect.
   const header: SourceString[] = [
     ...program.meta.filter(([k]) => k === 'title').map(([k, v]): SourceString => ({ id: `meta.${k}`, kind: 'meta', speaker: null, text: v, label: null, line: 0 })),

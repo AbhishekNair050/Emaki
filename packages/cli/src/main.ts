@@ -22,7 +22,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import {
-  buildGraph, catalogStats, compileFiles, compileTranslation, parse, parseCatalog, print, toMermaid, updateCatalog, voicePath, writeCsv, writePo,
+  buildGraph, catalogStats, compileFiles, compileTranslation, packStory, parse, parseCatalog, print, toMermaid, updateCatalog, voicePath, writeCsv, writePo,
   type Diagnostic, type StoryFile,
 } from '@emaki/format';
 import { addVoices, MAIN_FILE, pluginManifests, readPlugins, storyParts } from '@emaki/format/files';
@@ -108,7 +108,7 @@ switch (cmd) {
     const r = compileStory();
     if (!report(r.diagnostics) || !r.story) process.exit(1);
     const out = rest[0] ?? file.replace(/\.vn$/, '') + '.compiled.json';
-    writeFileSync(out, JSON.stringify(r.story, null, 2));
+    writeFileSync(out, JSON.stringify(packStory(r.story)));
     console.log(`Wrote ${out}`);
     break;
   }

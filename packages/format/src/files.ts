@@ -9,7 +9,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import type { Diagnostic } from './ast.ts';
 import type { CompiledStory } from './compiled.ts';
-import { compileFiles, voiceMap, type CompileResult, type StoryFile } from './compiler.ts';
+import { compileFiles, voiceMap, type CompileCache, type CompileResult, type StoryFile } from './compiler.ts';
 import { parseManifest, type PluginManifest } from './plugins.ts';
 
 /** A plugin in the game folder: its manifest and the absolute path of its code. */
@@ -58,12 +58,17 @@ export function gameDirOf(path: string): string {
 /** Paths (relative to the game folder, with forward slashes) of every .vn file except story.vn, sorted. */
 export function storyParts(gameDir: string): string[] {
   const out: string[] = [];
+  // Files can come and go while we look (a tool rewriting the scripts): skip what's gone.
+  const isDir = (p: string) => { try { return statSync(p).isDirectory(); } catch { return false; } };
   const walk = (dir: string) => {
-    for (const name of readdirSync(dir).sort()) {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const e of entries) {
+      const name = e.name;
       if (name.startsWith('.')) continue;
       const p = join(dir, name);
-      const st = statSync(p);
-      if (st.isDirectory()) {
+      if (e.isSymbolicLink() ? isDir(p) : e.isDirectory()) {
         if (!SKIP_DIRS.has(name) || dir !== gameDir) walk(p);
       } else if (name.endsWith('.vn')) {
         const rel = relative(gameDir, p).split(sep).join('/');
@@ -84,10 +89,11 @@ export function readStory(gameDir: string): { main: string; parts: StoryFile[] }
 }
 
 /** Compile the whole game in a folder (with its voice files). */
-export function compileGame(gameDir: string): CompileResult & { parts: StoryFile[]; main: string; plugins: Record<string, GamePlugin> } {
+/** Compile the game in a folder. Pass the same `cache` each time to recompile only what changed. */
+export function compileGame(gameDir: string, cache?: CompileCache): CompileResult & { parts: StoryFile[]; main: string; plugins: Record<string, GamePlugin> } {
   const { main, parts } = readStory(gameDir);
   const { plugins, diagnostics } = readPlugins(gameDir);
-  const r = compileFiles(main, parts, { plugins: pluginManifests(plugins) });
+  const r = compileFiles(main, parts, { plugins: pluginManifests(plugins), cache });
   if (r.story) addVoices(r.story, gameDir);
   const all = [...diagnostics, ...r.diagnostics];
   return { ...r, story: all.some((d) => d.severity === 'error') ? null : r.story, diagnostics: all, main, parts, plugins };

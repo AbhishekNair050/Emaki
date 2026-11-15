@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { compile } from '@emaki/format';
+import { compile, packStory } from '@emaki/format';
 import { Runner, StoryError, type Block, type SayBlock, type Step } from '../src/index.ts';
 
 const demoSrc = readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8');
@@ -61,6 +61,12 @@ describe('demo story: every ending is reachable', () => {
   it('Rough Water', () => {
     const blocks = playthrough(new Runner(demo), ['The driver', 'Leave it alone', "I'll take the radio"]);
     expect(lastSay(blocks)).toBe('Ending: Rough Water.');
+  });
+
+  it('plays the same from a packed story file', () => {
+    const picks = ['The driver', 'Read the letter', "I'll crank"];
+    const packed = JSON.parse(JSON.stringify(packStory(demo)));
+    expect(playthrough(new Runner(packed), picks)).toEqual(playthrough(new Runner(demo), picks));
   });
 
   it('hides the trust-gated choice when trust is 0', () => {

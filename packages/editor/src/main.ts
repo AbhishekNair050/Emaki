@@ -10,7 +10,7 @@
  *  - drag images and audio from the asset browser (or your computer) onto the script
  *  - a story can span several files: pick one above the script, or add one
  */
-import { buildGraph, compileFiles, voiceMap, type CompiledStory, type Diagnostic, type Stmt } from '@emaki/format';
+import { buildGraph, compileFiles, createCompileCache, voiceMap, type CompiledStory, type Diagnostic, type Stmt } from '@emaki/format';
 import {
   addScene, connectScenes, declareAsset, deleteScene, dropAsset, renameScene, type EditResult, type SceneContext, type StorySymbol,
 } from '@emaki/language';
@@ -313,12 +313,15 @@ async function main(): Promise<void> {
     recompile();
   }
 
+  // Each recompile redoes only the files and labels that changed.
+  const compileCache = createCompileCache();
+
   /** Compile every file of the story (the open one as it is in the editor). */
   function recompile(): void {
     compileTimer = 0;
     doc().text = script.text;
     const parts = [...docs.values()].filter((d) => d.path !== MAIN).map((d) => ({ path: d.path, source: d.text }));
-    const r = compileFiles(doc(MAIN).text, parts, { plugins: pluginManifests });
+    const r = compileFiles(doc(MAIN).text, parts, { plugins: pluginManifests, cache: compileCache });
     const hadErrors = new Set(lastDiagnostics.filter((d) => d.severity === 'error').map((d) => d.file ?? MAIN)).size;
     lastDiagnostics = r.diagnostics;
     const nowErrors = new Set(r.diagnostics.filter((d) => d.severity === 'error').map((d) => d.file ?? MAIN)).size;
