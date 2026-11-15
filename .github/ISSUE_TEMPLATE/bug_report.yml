@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in Emaki doesn't work the way the docs say it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The smallest script that shows the problem is the most useful thing you can include. For a security problem, please report it privately instead (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Include any error message exactly as shown.
+    validations:
+      required: true
+  - type: textarea
+    id: script
+    attributes:
+      label: A script that shows it
+      description: As few lines of story.vn (and theme.css or plugin files, if they matter) as you can.
+      render: text
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      multiple: true
+      options:
+        - Playing the game (browser)
+        - Exported desktop app
+        - Exported phone app
+        - The editor (npm run edit)
+        - VS Code extension
+        - Command line (check, fmt, strings, export…)
+        - Plugins
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system, and browser or device if it's about playing.
+      placeholder: Windows 11, Chrome 131
+  - type: input
+    id: version
+    attributes:
+      label: Emaki version
+      description: The commit you're on (`git rev-parse --short HEAD`).

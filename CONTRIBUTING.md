@@ -3,6 +3,7 @@
 Emaki is an open-source visual novel engine. Its goal is to make visual novel development easier, and it is built in the open with its community.
 
 ## Start here
+- `docs/getting-started.md`: install, play the demo, start a game. Do this first.
 - `docs/decisions.md`: every architectural decision and why. Add an entry when you decide something.
 - `docs/script-syntax.md`: the `.vn` language as writers see it.
 - `docs/story-format.md`: the compiled JSON contract runtimes implement.
@@ -13,7 +14,7 @@ Emaki is an open-source visual novel engine. Its goal is to make visual novel de
 packages/format      parser, compiler, expression language, printer, graph  (no deps)
 packages/runtime     headless VM: Runner (steps, rollback, save/load, resume) (depends on format)
 packages/player-web  DOM player + Vite plugin that compiles story.vn live + story map dev panel (src/map)
-packages/cli         emaki check | build | graph | fmt | strings | export
+packages/cli         emaki new | check | build | graph | fmt | strings | voices | export
 packages/desktop     desktop export: app/ is the Electron shell shipped in every game (plain JS), src/ the exporter
 packages/mobile      Android/iOS export: generates and syncs a Capacitor project
 packages/editor      web editor: script pane (CodeMirror) + game + flowchart; src/server is the Vite plugin that reads/saves story.vn and manages assets/
@@ -24,12 +25,14 @@ games/plugin-demo    a small game using the example plugins (plugins/weather, me
 ```
 
 ## Commands (run from the repo root)
-- `npm test`: vitest (format + runtime). Must stay green.
+- `npm test`: vitest, every package. Must stay green.
 - `npm run typecheck`: tsc, strict.
 - `npm run check`: compile the demo story and report diagnostics.
 - `npm run fmt` / `npm run fmt:check`: format the demo story / verify it is formatted.
 
-CI (`.github/workflows/ci.yml`) runs typecheck, tests, check, fmt:check and the demo build on every push and pull request.
+CI (`.github/workflows/ci.yml`) runs all of these, the demo build, the VS Code extension build and a web export on every push and pull request.
+
+Other commands:
 - `npm run strings -- --lang fr`: create/update a translation of the demo (lang/fr.po).
 - `npm run export -- <web|desktop|android|ios> games/gullwing`: package the demo (into games/gullwing/export/).
 - `npm run edit`: the editor on the demo (edits games/gullwing/story.vn; `EMAKI_GAME=...` for another game).
@@ -38,6 +41,12 @@ CI (`.github/workflows/ci.yml`) runs typecheck, tests, check, fmt:check and the 
 - `npm run build:vscode`: bundle the VS Code extension (the one package with a build step, because VS Code can't run .ts).
 - `npm run emaki -- graph games/gullwing/story.vn`: Mermaid flowchart.
 - `npm run art`: regenerate the demo's placeholder SVGs.
+- `VSCODE_PATH=/path/to/Code npm run test:e2e -w emaki-vscode`: drive the extension in a real VS Code (needs a desktop, so not in CI).
+
+## Reporting bugs and proposing features
+Use the issue templates. For a bug in a story, the smallest script that shows it is the most useful thing you can include. A new feature should come from a game that needs it: say what you're making and what you couldn't write. Larger changes are best discussed in an issue before a pull request, since the script language and the compiled format are shared contracts (see Conventions). Security problems go privately: see [SECURITY.md](SECURITY.md).
+
+By contributing you agree that your contributions are licensed under the MIT License, and to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Conventions
 - TypeScript runs directly in Node (type stripping): **no enums, no parameter properties, no namespaces**

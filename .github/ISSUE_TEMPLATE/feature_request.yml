@@ -1,0 +1,28 @@
+name: Feature request
+description: Something your game needs that Emaki can't do yet.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Emaki's features come from games that need them, so the most helpful request says what you're making and where you got stuck. Check the [roadmap](https://github.com/AbhishekNair050/Emaki/blob/main/docs/roadmap.md) first: it may already be planned.
+  - type: textarea
+    id: game
+    attributes:
+      label: What you're making
+      description: The game or scene, and what it should do for the player.
+    validations:
+      required: true
+  - type: textarea
+    id: stuck
+    attributes:
+      label: What you couldn't do
+      description: What you tried, and why it didn't work or was too awkward.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How you'd like to write it
+      description: Optional. A few lines of script showing how you imagine it, or how another engine does it.
+      render: text
