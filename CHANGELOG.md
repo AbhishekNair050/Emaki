@@ -38,6 +38,9 @@ The first public version. Everything below is new.
 ### Plugins
 - Game plugins in `plugins/<name>/` (a `plugin.json` manifest and JavaScript): commands (effects, lasting effects that survive saves and rollback, and commands the story waits on with a result), screen elements, functions in expressions, and events. The compiler, editor and VS Code check every use against the manifest.
 
+### Long games
+- Tested on a full-length game (80,000 lines in 758 files, 31,000 assets): story files are packed (D-059), the player fetches the story as `game.json` (D-060), and edits recompile only what changed, so the dev server, the editor and VS Code stay quick at that size.
+
 ### Shipping
 - `emaki export web` for itch.io or any host; `desktop` for Windows, macOS and Linux (Electron) with optional Steam achievements; `android` and `ios` projects (Capacitor).
 

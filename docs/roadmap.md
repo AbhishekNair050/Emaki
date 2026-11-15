@@ -89,6 +89,16 @@ What the port still drew as dead art, made real.
 - [x] `audio ... music "Title"`: a music room of the tracks heard so far; `scenes` and `music` elements for a game's own Extras screen, Scenes and Music tabs in the built-in one
 - [x] The demo game has two replayable scenes and three tracks; the port has its music room
 
+## ✅ Milestone 10 — Full-length games (done, 2026-11-15)
+Proved on a port of a full-length commercial VN (80,000 lines in 758 files, 151 choices, three routes, 31,000 pictures and voices), measured before and after:
+- [x] Packed story files (D-059): 31 MB → 19 MB (3.6 MB gzipped)
+- [x] Game data fetched as JSON, dev assets read on demand (D-060): the dev server starts in about 6 s instead of 45, the page loads in about 2 s instead of minutes, builds stop carrying the scripts' source lines
+- [x] Recompiling only what changed: an edit recompiles in 0.1 s instead of 2.5 s, and shows in the running game in about 3 s
+- [x] Analysis for VS Code and the editor compiles only for problems, with a shared cache: under 0.2 s per keystroke instead of 2-4 s
+- [x] The editor opens the game in about 5 s instead of 3 minutes, and typing keeps up; the story map lays out 1,500 labels in 60 ms instead of 1.6 s
+- [x] `emaki export web` builds it in about 70 s, and the build plays
+- [ ] Loading the story in parts (D-061, proposed): not needed at this size; for when a game or device needs it
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 
