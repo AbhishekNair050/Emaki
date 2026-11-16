@@ -100,6 +100,8 @@ Each line is one element: `kind ["text"] [options] [-> actions] [if condition]`.
 
 **Interface sounds.** `click_sound: sound/ui/click.ogg` and `hover_sound: sound/ui/hover.ogg` in the header play on every button of your screens, at the sound effects volume.
 
+**Opening the menu.** During the story, right-click or Esc opens `screen menu` (the settings when there's none), and right-click again closes it. So a game can hide the quick menu (`.quickmenu { display: none; }`) and still have its menu.
+
 **Gamepads.** Every screen works with a gamepad, with no setup: the d-pad or left stick moves to the nearest button in that direction (so any layout works), A presses it, or goes on with the story when nothing is chosen; B closes the screen on top, Start opens the menu, LB goes back a line and RB goes on. Left and right move sliders.
 
 **Editing them.** In the editor, put the cursor inside a `screen` and the game shows that screen, redrawn as you type.

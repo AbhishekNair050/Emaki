@@ -244,6 +244,13 @@ export class Player {
       if (this.stage.classList.contains('hide-ui') && this.mode === 'playing') { this.stage.classList.remove('hide-ui'); return; }
       this.onAdvance();
     });
+    // Right-click opens the menu during the story, as in most visual novels, and closes what's open; Esc does the same (onKey).
+    this.stage.addEventListener('contextmenu', (e) => {
+      if (this.mode !== 'playing') return;
+      e.preventDefault();
+      if (!this.overlayOpen) this.openGameMenu();
+      else if (!this.closeScreenOnTop()) this.closeOverlay();
+    });
     this.stage.addEventListener('wheel', (e) => {
       if (this.mode === 'playing' && !this.overlayOpen && e.deltaY < 0) this.back();
     }, { passive: true });
@@ -258,7 +265,7 @@ export class Player {
       cancel: () => { if (!this.closeScreenOnTop() && this.overlayOpen && this.mode === 'playing') this.closeOverlay(); },
       menu: () => {
         if (this.mode !== 'playing' || this.overlayOpen) return;
-        if (this.story.screens?.menu) this.openScreen('menu', true); else this.showSettings();
+        this.openGameMenu();
       },
       back: () => { if (!this.overlayOpen) this.back(); },
     });
@@ -2633,7 +2640,13 @@ export class Player {
       case 'l': this.showLog(); break;
       case 'h': this.stage.classList.toggle('hide-ui'); break;
       case 'o': this.showSettings(); break;
+      case 'Escape': this.openGameMenu(); break;
     }
+  }
+
+  /** The game's menu (`screen menu`), or the settings when the game has none. */
+  private openGameMenu(): void {
+    if (this.story.screens?.menu) this.openScreen('menu', true); else this.showSettings();
   }
 
   /** The phone's back button: close what's open, then offer to leave, then quit. */
