@@ -6,7 +6,7 @@
  * same Effect/Block contract later for shaders and particle effects.
  */
 import {
-  evaluate, isPercentPosition, type CallPlugin, parseAspect, parseCanvas, saveSlotCount,
+  evaluate, isPercentPosition, type CallPlugin, parseAspect, parseCanvas, saveSlotCount, keyActionOf,
   type CompiledScreenItem, type CompiledStory, type CompiledTranslation, type LayerProps, type ScreenAction, type Span, type Value,
 } from '@emaki/format';
 import { animationFrames, applyLayer, invertsFor, isFree, layerProps, outerOf, removeLayer } from './layers.ts';
@@ -245,10 +245,12 @@ export class Player {
       this.onAdvance();
     });
     // Right-click opens the menu during the story, as in most visual novels, and closes what's open; Esc does the same (onKey).
+    // `right_click:` in the header picks the action (D-063).
     this.stage.addEventListener('contextmenu', (e) => {
       if (this.mode !== 'playing') return;
       e.preventDefault();
-      if (!this.overlayOpen) this.openGameMenu();
+      if (this.stage.classList.contains('hide-ui')) { this.stage.classList.remove('hide-ui'); return; }
+      if (!this.overlayOpen) this.keyAction('right_click');
       else if (!this.closeScreenOnTop()) this.closeOverlay();
     });
     this.stage.addEventListener('wheel', (e) => {
@@ -2640,8 +2642,34 @@ export class Player {
       case 'l': this.showLog(); break;
       case 'h': this.stage.classList.toggle('hide-ui'); break;
       case 'o': this.showSettings(); break;
-      case 'Escape': this.openGameMenu(); break;
+      case 'Escape':
+        if (this.stage.classList.contains('hide-ui')) this.stage.classList.remove('hide-ui');
+        else this.keyAction('escape');
+        break;
     }
+  }
+
+  /** What Esc or a right-click does during the story: `escape:` / `right_click:` in the header (D-063), the menu by default. */
+  private keyAction(which: 'escape' | 'right_click'): void {
+    switch (keyActionOf(this.story.meta[which])) {
+      case 'menu': this.openGameMenu(); break;
+      case 'save': this.saveToFreeSlot(); break;
+      case 'quicksave': this.runActions([{ do: 'quicksave' }]); break;
+      case 'hide': this.stage.classList.add('hide-ui'); break;
+      case 'settings': this.showSettings(); break;
+      case 'history': this.showLog(); break;
+      case 'none': break;
+    }
+  }
+
+  /** Saves to the first empty save slot, or says they're all used. */
+  private saveToFreeSlot(): void {
+    if (!this.runner.block || this.runner.inReplay) return;
+    const count = saveSlotCount(this.story.meta.save_slots);
+    for (let i = 0; i < count; i++) {
+      if (storage.get(`${this.storeKey}:slot${i}`) === null) { this.saveTo(i); return; }
+    }
+    this.toast(this.t('ui.slots_full'));
   }
 
   /** The game's menu (`screen menu`), or the settings when the game has none. */

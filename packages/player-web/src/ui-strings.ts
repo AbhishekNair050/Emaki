@@ -84,6 +84,7 @@ export const UI_STRINGS = {
   'ui.at_a_choice': 'At a choice',
   'ui.saved_to_slot': 'Saved to slot {n}',
   'ui.quick_saved': 'Quick saved',
+  'ui.slots_full': 'Every save slot is used',
   'ui.yes': 'Yes',
   'ui.no': 'No',
   'ui.confirm_title': 'Return to the title? Unsaved progress will be lost.',

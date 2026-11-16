@@ -24,6 +24,7 @@ The first public version. Everything below is new.
 
 ### For players
 - Saves with thumbnails and pages, quick save and load, rollback, a history log with voice replay and rewind, auto mode, skip (read text or all), skip to the next choice and back to the previous one.
+- Esc and right-click open the menu during the story; a game can give each its own action instead (`escape:` / `right_click:`: save to an empty slot, quick save, hide the interface, settings, history).
 - Settings: text speed, auto speed, master, music, sound and voice volume with mutes, per-character voice volume, text size, text box opacity, reading fonts (Atkinson Hyperlegible, OpenDyslexic), animations, language, and which questions to confirm.
 - Keyboard, mouse, touch and gamepad; screen-reader support; reduced motion respected; a portrait layout for phones held upright.
 

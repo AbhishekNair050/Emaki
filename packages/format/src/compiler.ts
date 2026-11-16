@@ -14,7 +14,7 @@ import {
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, pluginCalls, type Expr, type Value } from './expr.ts';
 import { checkPluginCall, checkPluginFunctions, type PluginCommandSpec, type PluginManifest } from './plugins.ts';
-import { REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
+import { KEY_ACTIONS, REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
 import { compileLayerProps } from './layers.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse, type ParseResult } from './parser.ts';
@@ -685,6 +685,10 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   // --- Screens ----------------------------------------------------------
   const canvas = parseCanvas(meta.canvas);
   if (meta.save_slots !== undefined && !/^\d+$/.test(meta.save_slots)) warn(1, 'bad-save-slots', `'save_slots: ${meta.save_slots}' should be a number of save slots, like 60`);
+  for (const k of ['escape', 'right_click'] as const) {
+    const v = meta[k]?.trim().toLowerCase();
+    if (v !== undefined && !(KEY_ACTIONS as readonly string[]).includes(v)) warn(1, 'bad-key-action', `'${k}: ${meta[k]}' should be one of ${KEY_ACTIONS.join(', ')}`);
+  }
   if (meta.canvas !== undefined && !canvas) warn(1, 'bad-canvas', `'canvas: ${meta.canvas}' should be the size your UI art is drawn at, like 1920x1080`);
   const screenStrings: SourceString[] = [];
   const screens = compileScreens(program.screens, {

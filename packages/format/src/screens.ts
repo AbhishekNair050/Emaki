@@ -746,6 +746,16 @@ export function saveSlotCount(v: string | undefined): number {
   return Math.min(300, Math.max(1, n));
 }
 
+/** What Esc and a right-click can do during the story (`escape:` / `right_click:` in the header, D-063). */
+export const KEY_ACTIONS = ['menu', 'save', 'quicksave', 'hide', 'settings', 'history', 'none'] as const;
+export type KeyAction = (typeof KEY_ACTIONS)[number];
+
+/** The header's key action, or `menu` when absent or unknown. */
+export function keyActionOf(v: string | undefined): KeyAction {
+  const a = v?.trim().toLowerCase();
+  return (KEY_ACTIONS as readonly string[]).includes(a ?? '') ? (a as KeyAction) : 'menu';
+}
+
 /** `canvas: 1920x1080` → [1920, 1080]; null when absent or malformed. */
 export function parseCanvas(v: string | undefined): [number, number] | null {
   const m = v ? /^\s*(\d{2,5})\s*[x×]\s*(\d{2,5})\s*$/.exec(v) : null;

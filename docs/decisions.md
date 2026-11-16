@@ -229,3 +229,9 @@ with dissolve 0.4
 **Format.** New instructions `layer`, `animate`, `with`, `textbox`; `show` and `scene` gain optional properties, and the story carries `animations`, `grades` and `panels`. `FORMAT_VERSION` goes to 2, since a runtime that doesn't know these can't draw the story.
 
 **Proving it.** The port's converter turns the original's commands into these statements, and a harness screenshots the same moment in the original and in Emaki and measures the difference, scene by scene.
+## D-063 — What Esc and a right-click do (accepted, 2026-11-16)
+Commercial visual novels often show no quick menu: the player right-clicks or presses Esc to open the menu, or to hide the text and look at the picture. Emaki had no right-click at all, and Esc did nothing during the story.
+
+**Decision.** Both open the game's menu (`screen menu`, or the settings) by default, and right-click again closes what's open. Two header keys change that: `escape:` and `right_click:`, each one of `menu`, `save` (the first empty slot), `quicksave`, `hide`, `settings`, `history`, `none`. With the interface hidden, any click, Esc or right-click brings it back first. An unknown action is a warning and falls back to the menu.
+
+**Why the header.** One action per key covers what players expect from a game's keys without a key-binding language; full rebinding can come later as a player setting.

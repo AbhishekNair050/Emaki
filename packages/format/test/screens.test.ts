@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compile, parse, print } from '../src/index.ts';
+import { compile, keyActionOf, parse, print } from '../src/index.ts';
 
 const SRC = `---
 title: The Pier
@@ -76,6 +76,21 @@ describe('screens', () => {
     expect(at('image missing')).toEqual(['unknown-image']);
     expect(at('button "Go" -> close if x > 1')).toEqual([]);
     expect(compile('screen history:\n  text "x"\nlabel start:\n  "x"\n').diagnostics.map((d) => d.code)).not.toContain('reserved-screen'); // history can be replaced now
+  });
+});
+
+describe('what Esc and a right-click do (D-063)', () => {
+  it('takes an action from the header, the menu by default', () => {
+    expect(keyActionOf(undefined)).toBe('menu');
+    expect(keyActionOf(' Hide ')).toBe('hide');
+    expect(keyActionOf('history')).toBe('history');
+    expect(keyActionOf('dance')).toBe('menu');
+  });
+
+  it('warns about an action it does not know', () => {
+    const codes = (head: string) => compile(`---\n${head}\n---\nlabel start:\n  "x"\n`).diagnostics.map((d) => d.code);
+    expect(codes('escape: save\nright_click: hide')).not.toContain('bad-key-action');
+    expect(codes('right_click: dance')).toContain('bad-key-action');
   });
 });
 
