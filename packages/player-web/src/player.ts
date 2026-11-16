@@ -707,6 +707,9 @@ export class Player {
       arrive();
       return;
     }
+    // Draw what's typed so far at once: an NVL page lays the whole line out first (to find the page breaks),
+    // and it would show in full until the first tick.
+    this.renderText();
     this.typingTimer = window.setInterval(() => {
       this.shownChars++;
       this.renderText();
