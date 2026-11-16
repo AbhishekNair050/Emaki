@@ -196,6 +196,58 @@ label storm:
 - With the player's **Animations: reduced** setting, the camera jumps straight to its place and shakes and flashes are left out.
 - `shake`, `flash` and `camera` aren't reserved words: a character can still be called `flash` (`flash: Hi!` is dialogue).
 
+## Free layers
+Some games compose every shot: a background built from several pieces, a close-up made by zooming one picture, light laid over the scene, a slow pan under the text. Any image can be a layer, placed at a point and turned, zoomed and faded.
+
+```
+---
+canvas: 1920x1080
+---
+image street = "bg/street.png"
+image glow = "fx/glow.png"
+
+label night:
+  show street as far at 960 540 zoom 0.65
+  show glow at 25% 50% blend add opacity 0.8 depth 5
+  with dissolve 0.5
+  "The lamps came on one by one."
+  animate far zoom 0.75 at 900 520 over 6 ease in-out-sine
+  "Further down the street, something moved."
+```
+
+| Line | Meaning |
+|---|---|
+| `show street as far at 960 540` | Show an image as a layer called `far`, its middle at that point. A plain number is a pixel on the game's `canvas` (1920 x 1080 if the header doesn't say); `50%` is a percentage of the screen. Without `as`, the layer is called by the image's first word. |
+| `anchor 50% 100%` | Which point of the image goes at that point: across, then down, as percentages of the image (the middle by default). The image turns and zooms about it too. |
+| `zoom 0.65` / `zoom 1.2 0.8` | Size: 1 is the image's own size on the canvas. Two numbers zoom across and down separately; a negative one mirrors the image (`zoom -1 1` flips it left to right). |
+| `rotate -17.3` | Turn by degrees, clockwise. |
+| `opacity 0.8` | 0 is invisible, 1 solid. |
+| `depth 5` | Layers with a higher depth are in front (characters are at 0). Equal depths stack in the order they were shown. |
+| `blend add` | How the layer mixes with what's under it: `normal`, `add`, `subtract`, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `dodge`, `burn`, `hard-light`, `soft-light`, `difference`, `exclusion`. |
+| `show street night as far` | Put another image on the same layer: it keeps its place and properties. |
+| `animate far zoom 0.75 at 900 520 over 6 ease in-out-sine` | Move a layer toward new values (`at`, `anchor`, `zoom`, `rotate`, `opacity`) over seconds, without holding up the story. Eases: `linear`, or `in-`, `out-`, `in-out-` or `out-in-` with `quad`, `cubic`, `quart`, `quint`, `sine`, `circ`, `expo`, `elastic`, `back` or `bounce`. |
+| `with dissolve 0.5` | On its own line: every picture change since the last line appears together, through one transition (`dissolve`, `fade`). |
+
+For moves with several steps, or that repeat, declare an animation at the top and play it on a layer:
+
+```
+animation flicker loop:
+  0 opacity 0.6
+  0.4 opacity 1 ease out-sine
+  1.2 opacity 0.6
+
+label night:
+  animate light with flicker
+  "The lamp sputtered."
+  animate light stop
+```
+
+- Each key starts with its time in seconds, then the properties it sets (`at`, `anchor`, `zoom`, `rotate`, `opacity`); what a key leaves out holds. Its `ease` is how it moves toward the next key.
+- `loop` starts over from the first key, until `animate light stop`, `hide` or a new `scene`. An animation without `loop` leaves the layer at its last key.
+- Characters work as before (`show mira smile at left`), and can take `zoom`, `rotate`, `opacity`, `depth` and `blend` too.
+- A save, a load or going back shows layers where their moves were going. Skipping and **Animations: reduced** put them there at once.
+- `clip 0 135 1920 810` shows only that rectangle of the screen (x, y, width, height); `feather 32` fades the picture out over that far inside its edges. A clip stays where it is on the screen while the layer moves.
+
 ## Character moves
 Small moves bring a still sprite to life: a startled hop, a nod, a bow.
 

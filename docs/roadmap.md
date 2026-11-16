@@ -99,6 +99,16 @@ Proved on a port of a full-length commercial VN (80,000 lines in 758 files, 151 
 - [x] `emaki export web` builds it in about 70 s, and the build plays
 - [ ] Loading the story in parts (D-061, proposed): not needed at this size; for when a game or device needs it
 
+## Milestone 11 — Free layers (in progress)
+Composed shots, drawn the way the original game draws them (D-062). Proof: a second full-length commercial port matches its original side by side, scene by scene.
+- [x] Layers: `show ... as name at x y`, anchor, zoom (negative mirrors), rotation, opacity, depth, every blend including an exact subtract; `animate ... over s ease`; `with dissolve` for all changes since the last line
+- [x] Keyframed animations (`animation name [loop]:`, `animate x with name`): the port's 24,000 motion tracks
+- [x] Panels: `clip` with a feathered edge
+- [x] Line previews also replay the labels that run straight into the line's label
+- [x] Side-by-side harness against the original: on a sample of 24 moments, 14 within a small difference
+- [ ] Colour grades, silhouettes, brightness, contrast, blur
+- [ ] Wipes through rule pictures; `textbox hide`; several ambience loops
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 

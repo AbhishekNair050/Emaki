@@ -11,6 +11,8 @@ The first public version. Everything below is new.
 - Comments on their own line or at the end of any line; the formatter keeps them.
 - Friendly, line-numbered errors with "did you mean" suggestions; unreachable scenes are warned about.
 - Scenes: backgrounds, characters with expressions, layered characters (outfits × faces), side portraits, positions, transitions with lengths, character moves (`hop`, `nod`, `bow`, `shake`, endless `float`), camera zoom and pan, `shake`, `flash`, colour tones, movies.
+- Free layers for composed shots: any image placed at a point, anchored, zoomed, turned, faded, stacked by depth and blended (`add`, `multiply`, `screen`...); `animate` moves them along eased curves, and `animation` blocks give keyed and looping moves; `clip` with `feather` makes letterboxes and panels; `with dissolve` on its own line shows several changes through one transition.
+- Free layers for composed shots: any image placed at a point, anchored, zoomed, turned, faded, stacked by depth and blended (`add`, `multiply`, `screen`...); `animate` moves them along eased curves; `with dissolve` on its own line shows several changes through one transition.
 - Sound: music with fades, crossfades and gapless loops, an ambience channel, sound effects, and voice acting by convention (`voice:` in the header) with a recording script from `emaki voices`.
 - Text: bold, italic, colours, ruby (furigana), pauses inside a line, `{variables}`, and full-screen text (NVL mode).
 - `global var` for values kept across playthroughs.

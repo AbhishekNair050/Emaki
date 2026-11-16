@@ -1,4 +1,4 @@
-# Compiled story format (v1)
+# Compiled story format (v3)
 
 The contract between the compiler and every runtime. A runtime in any language that implements this document can play any Emaki story. Source of truth for types: `packages/format/src/compiled.ts` and `expr.ts`.
 
@@ -6,7 +6,7 @@ The contract between the compiler and every runtime. A runtime in any language t
 ```jsonc
 {
   "format": "emaki-story",
-  "version": 1,
+  "version": 3,                                // 1: before free layers; 3: with them (D-062)
   "meta": { "title": "...", "author": "..." },   // free-form strings from the header
   "start": 0,                                   // instruction index to begin at
   "characters": { "mira": { "name": "Mira", "color": "#e8b04b" } },
@@ -31,8 +31,10 @@ Every instruction has `op` and `src: { line, label, file? }` (`file` only for in
 | `wait` | `seconds` | **yes** | Pause. pc+1. |
 | `achieve` | `id` | no | Unlock achievement `id` (a key of `achievements`). Unlocking twice is harmless. pc+1. |
 | `scene` | `image (name, "black" or null), transition, duration?` | no | Background = image (`black`/null = none); remove all sprites; camera back to the whole picture. `duration` (seconds) only when the script gave one. |
-| `show` | `tag, attrs (array or null), at (null, "left"/"center"/"right" or a percentage like "30%"), transition, duration?` | no | If tag not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given, move if `at` given. Image name = `[tag, ...attrs].join(" ")`. For a layered tag see below. |
-| `hide` | `tag, transition` | no | Remove sprite if present. |
+| `show` | `tag, attrs (array or null), layer?, at (null, "left"/"center"/"right" or a percentage like "30%"), props?, transition, duration?` | no | The sprite is found by its name, `layer` or else `tag`. If not shown: add with attrs (null → image named exactly `tag`, else first image starting with `tag `) at `at` or center. If shown: replace attrs if given (a named layer given another image's `tag` takes that image and its attrs), move if `at` given. Image name = `[tag, ...attrs].join(" ")`. `props` (see Free layers) are merged into the sprite's own. For a layered tag see below. |
+| `hide` | `tag, transition` | no | Remove the sprite with that name if present. |
+| `animate` | `layer, props, duration, ease, animation?` | no | If the sprite named `layer` is shown, merge `props` into its own; the host moves it there over `duration` seconds along `ease` (Free layers). With `animation` (a key of `animations`): play it instead; one that loops is kept as the sprite's `track` (props: its first key), one that doesn't leaves its last key's values in props; `animation: null` removes `track`. Nothing happens if the sprite isn't shown. |
+| `with` | `transition, duration?` | no | The host shows every picture change made since the last block through this one transition (`dissolve`, `fade`), the old picture giving way to the new. Effect only. |
 | `play` | `channel (music/ambience/sound/voice), path, loop, fade` | no | `music`: music state = {path, loop}. `ambience` with `loop`: ambience state = {path}. `sound` with `loop`: looping sound state = {path, loop}. Voices and one-shot sounds aren't state. |
 | `stop` | `channel, fade` | no | That channel's state = null (`sound` also stops one-shot sounds still playing). |
 | `set` | `name, expr` | no | vars[name] = eval(expr). (`+=`/`-=` are compiled into the expr.) |
@@ -56,15 +58,17 @@ Every instruction has `op` and `src: { line, label, file? }` (`file` only for in
 
 **Layered characters.** `layered` maps a tag to its layers, bottom first: `{ path }` is always drawn; `{ group, options: {attr: path}, default }` draws the option currently chosen for the group (`default` until one is chosen; `null` means nothing). For a layered tag, a sprite's attrs are the chosen option per group. Each attr in a `show` or `say` replaces the option of the group that contains it; `-attr` clears that group. With no attrs, a new sprite starts with every group's default.
 
+**Free layers** (D-062). A sprite's `props` (absent when none) say where and how it is drawn; each is absent until set: `x`, `y` (percent of the screen: the point the sprite's anchor goes; with both, the sprite is placed there instead of on the bottom line), `anchor` ([ax, ay], percent of the image, default [50, 50]), `zoom` ([zx, zy], 1 = the image's own size, where an image pixel is a pixel of a `meta.canvas` of 1920 x 1080 when absent), `rotate` (degrees, clockwise, about the anchor), `opacity` (0 to 1), `depth` (higher in front; equal depths in the order shown) and `clip` ([x, y, width, height], percent of the screen: only that rectangle shows), `feather` ([across, down], percent: the fade inside the clip's edges) and `blend` (`normal`, `add`, `subtract`, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `dodge`, `burn`, `hard-light`, `soft-light`, `difference`, `exclusion`). `ease` is `linear` or `<in|out|in-out|out-in>-<quad|cubic|quart|quint|sine|circ|expo|elastic|back|bounce>` (Penner's curves; the reference is `ease()` in `packages/format/src/layers.ts`). A sprite in the state keeps its targets, so a load shows it where it was going. `animations` (absent when none) maps a name to `{ loop, duration, keys: [{ t, props, ease }] }`: at `t` seconds the props that key gives (the rest hold from the keys before, or the sprite's own), easing toward the next key; a loop starts over after `duration`.
+
 A runtime should guard against loops that execute many instructions without blocking (reference: 100,000).
 
-## Packed files (version 2)
-Story files written by the tools (`emaki build`, the player's own build) are **packed**: `version` is 2, and two things that repeat on almost every instruction are left out. A runtime expands them when it loads the file, then works with version 1 as described above.
+## Packed files
+Story files written by the tools (`emaki build`, the player's own build) are **packed**: `packed` is `true`, and two things that repeat on almost every instruction are left out. A runtime expands them when it loads the file, then works with the story as described above. (Before version 3, a packed file said `version: 2` instead, and held a version 1 story.)
 
 - `src.file` and `src.label` are written only when they differ from the previous instruction's. A `file` of `""` means story.vn again. The first instruction always has both.
 - On `say`, `who` is left out when it's `null` and `attrs` when it's `[]`.
 
-Everything else is unchanged. In a full-length game this takes the file from 31 MB to 19 MB. The reference loader is `loadStory()` in `packages/format/src/pack.ts`; a runtime can accept both versions by applying it only when `version` is 2.
+Everything else is unchanged. In a full-length game this takes the file from 31 MB to 19 MB. The reference loader is `loadStory()` in `packages/format/src/pack.ts`; a runtime applies it when `packed` is true or `version` is 2.
 
 ## Styled text
 `text` is always plain, with markup removed. When a line uses styling, `spans` is also present: an array of `{ text, b?: true, i?: true, color?: string, ruby?: string }` runs that join to make `text`. `ruby` is a reading shown in small type above that run (furigana); runtimes without ruby support show the text alone. Runtimes without styling support can ignore `spans`. `color` is a hex code or a plain colour name, validated by the compiler.

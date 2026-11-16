@@ -202,3 +202,30 @@ After D-059 and D-060, a full-length game (80,000 lines, 187,000 instructions) i
 - **What has to change with it:** saves store positions as (chunk, index); skipping to the next choice and back, rewinding through the history, and line previews have to cross chunk boundaries; translations and voices are split the same way. The story hash becomes a hash of chunk hashes (as it already is of label hashes, D-060).
 - **What it costs:** every runtime implements the loader, which makes the format contract (D-059) bigger, and every feature that scans the whole story (reachability, skip to next choice, the story map) has to work with parts. It's worth doing when a real game needs it, for example a long game on low-memory phones, and should be measured on that device first.
 
+
+### D-062 — Free layers: the picture as stacked, transformed images (provisional)
+Characters on a bottom line and one background cover most visual novels, but not games whose every shot is composed: a background built from several pieces, a close-up made by zooming one picture, a character's face crossfading on a copy of her layer, light layers in `add` or `multiply`, manga-style panels with feathered edges, slow pans that keep moving under the text. A port of a full-length commercial VN uses all of these on almost every page (about 55,000 picture placements, 24,000 keyframed moves, 25 blend modes and 80 colour grades). Emaki now draws that picture itself, in the same player, instead of approximating it.
+
+**The model.** Everything on the picture is a *layer*: a declared image with a name, a position, an anchor, a zoom (one or two axes), a rotation, an opacity, a depth, a blend mode, a colour grade and a blur. Backgrounds and characters stay what they are (`scene`, `show mira smile at left`) and are layers with defaults, so the old scripts draw exactly as before; a game that composes its shots uses the new properties.
+```
+show street as far at 50% 50% zoom 0.65 rotate -17.3 opacity 0.87 depth 26
+show glow as light at 960 540 blend add opacity 0.5
+animate far zoom 0.7 over 3 ease in-out-sine
+animate light with flicker
+with dissolve 0.4
+```
+- **Placement.** `at x y` puts the image's anchor at that point: percentages of the screen, or pixels when the game declares `canvas: 1920x1080` (screens already use it). The anchor is the middle unless the image declares one (`image aki pose = "..." anchor 56% 47%`). At zoom 1 an image's pixels are canvas pixels; without a canvas, 1920x1080 is assumed.
+- **Names.** `as far` names the layer, so the same image can be on screen twice and a layer can change its picture and keep its place (`show street_night as far`). Without `as`, the name is the image's tag, as for characters today.
+- **Moving.** `animate <layer> <properties> over <s> [ease <name>]` moves toward new values without holding up the story. The eases are linear and Penner's set (`in-`, `out-`, `in-out-` and `out-in-` of quad, cubic, quart, quint, sine, circ, expo, elastic, back and bounce). The state keeps the target, so a save, a load or a rollback shows the layer where it was going, as skipping does.
+- **Keyframed moves.** `animation flicker loop:` declares keys (`0.4 opacity 0.6 ease out-sine`). Each key sets only what it names; the rest hold. Curves the eases don't cover are written as closer keys. `animate light with flicker` starts it, `animate light stop` ends it. Shakes, quakes and sways are animations too, so they need nothing of their own.
+- **Changes shown together.** A `with` on its own line shows every picture change since the last line through one transition: `with dissolve 0.5`, or a wipe through a grey-scale rule picture, `with wipe "rules/diagonal.png" 0.8`. `scene` and `show ... with` keep working as before.
+- **Colour.** `grade dusk: gamma 0.94 0.78 0.57 levels #000010 #546b90 tint #ff6500 14% overlay` declares a colour grade, and `grade dusk` on a layer applies it; `silhouette #ffffe5`, `bright 1.2` and `contrast 0.8` are layer properties. `tone` (D-047) stays, and is a grade on the whole picture.
+- **Panels.** `clip 0 135 1920 810 feather 32` on a layer shows only that rectangle of the screen, its edges fading over 32 pixels: letterboxes, manga-style panels. Layers that share a panel each carry its clip.
+- **The text box.** `textbox hide [over s]` takes the text off the picture until the next line, for shots meant to be seen whole.
+- **Sound.** `play ambience "wind.ogg" as wind` gives several loops at once; `stop ambience wind` stops one.
+
+**How it is drawn.** The DOM player keeps one stacking order for all layers (absolutely placed elements with CSS transforms), CSS blend modes, SVG filters for grades (`feComponentTransfer` for gamma and levels, `feFlood` + `feBlend` for tints) and masks for panels; a `with` puts a frozen copy of the old picture over the new one and fades or wipes it away (a wipe steps through threshold masks made from the rule picture once). Subtractive blends have no CSS equivalent: the layer is added (`plus-lighter`) between two inversions of what is behind it (`backdrop-filter: invert(1)`), 1 - ((1 - b) + s) = b - s, which is exact. WebGL was considered: it would be exact everywhere, but it means a second renderer for pictures that the DOM already draws, and losing CSS for theming; it stays the fallback if side-by-side tests show the DOM can't match.
+
+**Format.** New instructions `layer`, `animate`, `with`, `textbox`; `show` and `scene` gain optional properties, and the story carries `animations`, `grades` and `panels`. `FORMAT_VERSION` goes to 2, since a runtime that doesn't know these can't draw the story.
+
+**Proving it.** The port's converter turns the original's commands into these statements, and a harness screenshots the same moment in the original and in Emaki and measures the difference, scene by scene.
