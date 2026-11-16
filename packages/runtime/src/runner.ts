@@ -8,16 +8,23 @@
  */
 import {
   EvalError, evaluate, loadStory, truthy,
-  type CallPlugin, type CompiledStory, type CompiledTranslation, type Instr, type Value, type Channel, type Span,
+  type CallPlugin, type CompiledStory, type CompiledTranslation, type Instr, type LayerProps, type Value, type Channel, type Span,
 } from '@emaki/format';
 
 export interface SpriteState {
+  /** The layer's name: the image's tag, or its `as` name (D-062). */
   tag: string;
+  /** The image's tag when the layer has a name of its own (`show street as far`). */
+  image?: string;
   /** The image's attributes; for a layered character, the option shown in each group, bottom first. */
   attrs: string[];
   at: string;
   /** An endless move (`float mira`, `shake mira forever`) until `still mira`; absent when she's still. */
   loop?: Motion;
+  /** Where and how the layer is drawn (D-062): the latest value of each property set; absent when none is. */
+  props?: LayerProps;
+  /** A looping `animation` it is playing (D-062), started again from its first key after a load. */
+  track?: string;
 }
 
 export type Motion = 'hop' | 'nod' | 'bow' | 'shake' | 'float';
@@ -99,7 +106,11 @@ export type Effect =
   /** `duration`: seconds, when the script set one (`with dissolve 1.5`). */
   | { type: 'scene'; bg: string | null; path: string | null; transition: string | null; duration?: number }
   /** `layers`: the images to stack, bottom first (one for a plain image; `path` is the first). */
-  | { type: 'show'; tag: string; attrs: string[]; path: string; layers: string[]; at: string; transition: string | null; duration?: number; isNew: boolean }
+  | { type: 'show'; tag: string; attrs: string[]; path: string; layers: string[]; at: string; props?: LayerProps; transition: string | null; duration?: number; isNew: boolean }
+  /** A layer moves toward `props` over `duration` seconds (D-062); with `animation`, plays that animation instead (null: stops it). */
+  | { type: 'animate'; tag: string; props: LayerProps; duration: number; ease: string; animation?: string | null }
+  /** The picture changes before this one in the step show together through a transition (D-062). */
+  | { type: 'with'; transition: string; duration?: number }
   | { type: 'hide'; tag: string; transition: string | null; duration?: number }
   | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
   | { type: 'stop'; channel: Channel; fade: number | null }
@@ -277,7 +288,16 @@ export class Runner {
     }
     if (pc < 0) throw new StoryError(`Line ${line} is past the end of ${opts.file ?? 'story.vn'}`, null);
     const label = code[pc]!.src.label;
-    const from = this.story.labels[label] ?? pc;
+    let from = this.story.labels[label] ?? pc;
+    // A label the one above it runs straight into (it ends by jumping here) starts with what that one put on screen:
+    // replay it too, and the ones before it that run into it the same way.
+    for (let guard = 0; guard < 100; guard++) {
+      const ret = code[from - 1], jump = code[from - 2];
+      if (ret?.op !== 'return' || jump?.op !== 'jump' || jump.target !== from) break;
+      const prev = this.story.labels[jump.src.label];
+      if (prev === undefined || prev >= from) break;
+      from = prev;
+    }
 
     this.state = this.initialState();
     for (const [name, v] of Object.entries(opts.vars ?? {})) {
@@ -291,13 +311,10 @@ export class Runner {
         scene.sprites = [];
         delete scene.camera; // a new scene shows the whole picture, as it does in play
       } else if (ins.op === 'show') {
-        let sp = scene.sprites.find((x) => x.tag === ins.tag);
-        if (!sp) scene.sprites.push(sp = { tag: ins.tag, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION });
-        else {
-          if (ins.attrs) sp.attrs = this.nextAttrs(ins.tag, sp.attrs, ins.attrs);
-          if (ins.at) sp.at = ins.at;
-        }
-        this.noteFace(ins.tag, sp.attrs);
+        this.applyShow(scene, ins);
+      } else if (ins.op === 'animate') {
+        const sp = scene.sprites.find((x) => x.tag === ins.layer);
+        if (sp) this.applyAnimate(sp, ins);
       } else if (ins.op === 'hide') {
         scene.sprites = scene.sprites.filter((x) => x.tag !== ins.tag);
       } else if (ins.op === 'say' && ins.who && ins.attrs.length) {
@@ -542,7 +559,7 @@ export class Runner {
 
   /** The images a sprite is drawn from, bottom first (one unless it's layered); null if it has none. */
   spriteLayers(s: SpriteState): string[] | null {
-    return this.resolveSprite(s.tag, s.attrs);
+    return this.resolveSprite(s.image ?? s.tag, s.attrs);
   }
 
   /**
@@ -669,7 +686,7 @@ export class Runner {
     if (idx < 0) return null;
     const imagesOk = (name: string | null) => !name || name === 'black' || this.story.images[name] !== undefined;
     const scene = imagesOk(data.state.scene.bg) ? data.state.scene : { bg: null, sprites: [] };
-    scene.sprites = scene.sprites.filter((sp) => this.resolveSprite(sp.tag, sp.attrs) !== null);
+    scene.sprites = scene.sprites.filter((sp) => this.resolveSprite(sp.image ?? sp.tag, sp.attrs) !== null);
     this.state = {
       ...clone(data.state),
       scene: clone(scene),
@@ -767,19 +784,26 @@ export class Runner {
           break;
         case 'show': {
           s.pc++;
-          let sp = s.scene.sprites.find((x) => x.tag === ins.tag);
-          const isNew = !sp;
-          if (!sp) {
-            sp = { tag: ins.tag, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION };
-            s.scene.sprites.push(sp);
-          } else {
-            if (ins.attrs) sp.attrs = this.nextAttrs(ins.tag, sp.attrs, ins.attrs);
-            if (ins.at) sp.at = ins.at;
-          }
-          this.noteFace(ins.tag, sp.attrs);
+          const { sp, isNew } = this.applyShow(s.scene, ins);
           effects.push(this.showEffect(sp, ins.transition, isNew, ins));
           break;
         }
+        case 'animate': {
+          s.pc++;
+          const sp = s.scene.sprites.find((x) => x.tag === ins.layer);
+          if (sp) {
+            this.applyAnimate(sp, ins);
+            effects.push({
+              type: 'animate', tag: sp.tag, props: { ...ins.props }, duration: ins.duration, ease: ins.ease,
+              ...(ins.animation !== undefined ? { animation: ins.animation } : {}),
+            });
+          }
+          break;
+        }
+        case 'with':
+          s.pc++;
+          effects.push({ type: 'with', transition: ins.transition, ...durationOf(ins) });
+          break;
         case 'hide':
           s.pc++;
           if (s.scene.sprites.some((x) => x.tag === ins.tag)) {
@@ -907,9 +931,51 @@ export class Runner {
   }
 
   private showEffect(sp: SpriteState, transition: string | null, isNew: boolean, ins: Instr): Effect {
-    const layers = this.resolveSprite(sp.tag, sp.attrs);
-    if (!layers?.length) throw new StoryError(`No image for '${[sp.tag, ...sp.attrs].join(' ')}'`, ins.src.line);
-    return { type: 'show', tag: sp.tag, attrs: [...sp.attrs], path: layers[0]!, layers, at: sp.at, transition, ...durationOf(ins), isNew };
+    const image = sp.image ?? sp.tag;
+    const layers = this.resolveSprite(image, sp.attrs);
+    if (!layers?.length) throw new StoryError(`No image for '${[image, ...sp.attrs].join(' ')}'`, ins.src.line);
+    return {
+      type: 'show', tag: sp.tag, attrs: [...sp.attrs], path: layers[0]!, layers, at: sp.at, ...(sp.props ? { props: { ...sp.props } } : {}),
+      transition, ...durationOf(ins), isNew,
+    };
+  }
+
+  /**
+   * An `animate`'s change to a layer's state: a move leaves it at its targets, an animation at its last key (a loop
+   * is remembered instead, to start again after a load, and rests at its first key), `stop` forgets the loop.
+   */
+  private applyAnimate(sp: SpriteState, ins: Extract<Instr, { op: 'animate' }>): void {
+    if (ins.animation === undefined) { sp.props = { ...sp.props, ...ins.props }; return; }
+    delete sp.track;
+    const anim = ins.animation ? this.story.animations?.[ins.animation] : undefined;
+    if (!anim) return;
+    const keys = anim.loop ? anim.keys.slice(0, 1) : anim.keys;
+    for (const k of keys) sp.props = { ...sp.props, ...k.props };
+    if (anim.loop) sp.track = ins.animation!;
+  }
+
+  /**
+   * A `show`'s change to the scene: a new layer, or a new picture, place or properties for one on screen. A layer
+   * named with `as` keeps its name when its picture changes (D-062).
+   */
+  private applyShow(scene: SceneState, ins: Extract<Instr, { op: 'show' }>): { sp: SpriteState; isNew: boolean } {
+    const name = ins.layer ?? ins.tag;
+    let sp = scene.sprites.find((x) => x.tag === name);
+    const isNew = !sp;
+    if (!sp) {
+      sp = { tag: name, attrs: this.nextAttrs(ins.tag, null, ins.attrs), at: ins.at ?? DEFAULT_POSITION };
+      if (ins.layer && ins.layer !== ins.tag) sp.image = ins.tag;
+      scene.sprites.push(sp);
+    } else {
+      if ((sp.image ?? sp.tag) !== ins.tag) {
+        if (ins.tag === sp.tag) delete sp.image; else sp.image = ins.tag;
+        sp.attrs = this.nextAttrs(ins.tag, null, ins.attrs);
+      } else if (ins.attrs) sp.attrs = this.nextAttrs(ins.tag, sp.attrs, ins.attrs);
+      if (ins.at) sp.at = ins.at;
+    }
+    if (ins.props) sp.props = { ...sp.props, ...ins.props };
+    if (!ins.layer) this.noteFace(ins.tag, sp.attrs);
+    return { sp, isNew };
   }
 
   /** A sprite's images, bottom first: the image named `tag attrs...`, or a layered character's layers. */
