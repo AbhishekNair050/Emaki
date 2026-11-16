@@ -1517,18 +1517,39 @@ export class Player {
     if (!screen) return;
     if (fresh) this.screenStack = [];
     if (this.screenStack[this.screenStack.length - 1] !== name) this.screenStack.push(name);
-    const focused = this.overlay.querySelector(':focus') ? [...this.overlay.querySelectorAll('button')].indexOf(document.activeElement as HTMLButtonElement) : -1;
+    // The screen showing now (several while one is still taking over), the newest last.
+    const old = this.overlayOpen && this.overlay.classList.contains('screen') ? [...this.overlay.querySelectorAll<HTMLElement>(':scope > .screen-root')] : [];
+    const top = old[old.length - 1];
+    const focused = top?.querySelector(':focus') ? [...top.querySelectorAll('button')].indexOf(document.activeElement as HTMLButtonElement) : -1;
     const node = renderScreen(name, screen, this.screenHost(name));
-    const shown = this.overlayOpen && this.overlay.querySelector<HTMLElement>(':scope > .screen-root')?.dataset.screen;
-    if (shown !== name) this.enter(node, screen);
+    if (top?.dataset.screen !== name) this.enter(node, screen);
     this.openOverlay(`screen screen-${name}`, node);
+    this.takeOver(node, old);
     // Esc closes a screen opened over the story or over another screen.
     this.overlay.onkeydown = (e) => {
       if (e.key !== 'Escape' || (this.screenStack.length <= 1 && this.mode !== 'playing')) return;
       e.preventDefault();
       this.runActions([{ do: 'close' }]);
     };
-    if (focused >= 0) this.overlay.querySelectorAll('button')[focused]?.focus({ preventScroll: true });
+    if (focused >= 0) node.querySelectorAll('button')[focused]?.focus({ preventScroll: true });
+  }
+
+  /**
+   * A screen replacing another (a tab, a page, a redraw after a setting changed) is drawn over the old one,
+   * which goes only once the new one's pictures are ready and its fade is over: so the story underneath
+   * never shows through for a frame.
+   */
+  private takeOver(node: HTMLElement, old: HTMLElement[]): void {
+    if (!old.length) return;
+    // (put back into the page, the old screen would start its own fade-in again)
+    for (const o of old) { o.inert = true; o.setAttribute('aria-hidden', 'true'); o.style.animation = 'none'; node.before(o); }
+    const fade = node.style.animation ? (this.story.screens?.[node.dataset.screen ?? '']?.duration ?? 0.3) * 1000 : 0;
+    const pictures = [...node.querySelectorAll('img')].map((img) => img.decode().catch(() => undefined));
+    const waitMost = new Promise((r) => window.setTimeout(r, 1000)); // a picture that never loads doesn't keep the old screen forever
+    void Promise.race([Promise.all(pictures), waitMost]).then(() => {
+      // one frame for the pictures to be laid out at their sizes, then the fade
+      requestAnimationFrame(() => window.setTimeout(() => { for (const o of old) o.remove(); }, fade));
+    });
   }
 
   /**
