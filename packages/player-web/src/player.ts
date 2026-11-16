@@ -7,8 +7,9 @@
  */
 import {
   evaluate, isPercentPosition, type CallPlugin, parseAspect, parseCanvas, saveSlotCount,
-  type CompiledScreenItem, type CompiledStory, type CompiledTranslation, type ScreenAction, type Span, type Value,
+  type CompiledScreenItem, type CompiledStory, type CompiledTranslation, type LayerProps, type ScreenAction, type Span, type Value,
 } from '@emaki/format';
+import { animationFrames, applyLayer, invertsFor, isFree, layerProps, outerOf, removeLayer } from './layers.ts';
 import {
   Runner, StoryError,
   type Block, type CameraState, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -93,6 +94,8 @@ export class Player {
   private readonly bgLayer: HTMLElement;
   private readonly spriteLayer: HTMLElement;
   private readonly fader: HTMLElement;
+  /** Applying the changes before a `with`: they happen at once, under the frozen picture (D-062). */
+  private grouping = false;
   /** `flash`: a colour over the whole picture and text box for a moment. */
   private readonly flashEl: HTMLElement;
   private readonly textbox: HTMLElement;
@@ -490,9 +493,23 @@ export class Player {
       const wait = instant || this.skip ? 0 : IMAGE_WAIT_MS;
       await Promise.all(needed.map((url) => this.images.ready(url, wait)));
       if (my !== this.epoch) return;
-      for (const fx of step.effects) {
+      // Changes before a `with` (D-062) happen under a frozen copy of the picture, which the transition then takes away.
+      let freeze: HTMLElement | null = null;
+      for (let i = 0; i < step.effects.length; i++) {
+        const fx = step.effects[i]!;
+        if (fx.type === 'with') {
+          this.grouping = false;
+          if (freeze) await this.endFreeze(freeze, fx, instant || this.skip);
+          freeze = null;
+          if (my !== this.epoch) return;
+          continue;
+        }
+        if (!freeze && step.effects.some((e, j) => j > i && e.type === 'with')) {
+          freeze = this.freezePicture();
+          this.grouping = true;
+        }
         await this.applyEffect(fx, instant || this.skip);
-        if (my !== this.epoch) return;
+        if (my !== this.epoch) { freeze?.remove(); this.grouping = false; return; }
       }
     } finally {
       if (my === this.epoch) this.busy = false;
@@ -849,7 +866,7 @@ export class Player {
    */
   private duration(fx: { transition: string | null; duration?: number }, instant: boolean): number {
     const t = fx.transition;
-    if (instant || this.reducedMotion || !t || t === 'none') return 0;
+    if (instant || this.grouping || this.reducedMotion || !t || t === 'none') return 0;
     if (fx.duration !== undefined) return t === 'fade' ? (fx.duration * 1000) / 2 : fx.duration * 1000;
     return t === 'fade' ? 450 : t === 'move' ? 500 : 400;
   }
@@ -879,14 +896,24 @@ export class Player {
         this.markSeen(`${fx.tag} ${fx.attrs.join(' ')}`.trim());
         const ms = this.duration(fx, instant);
         let sprite = this.spriteEl(fx.tag);
+        const props = fx.props ?? {};
         if (!sprite) {
           sprite = makeSprite(fx.tag, fx.layers.map(this.assetUrl), fx.at);
-          sprite.style.opacity = ms ? '0' : '1';
-          this.spriteLayer.append(sprite);
-          if (ms) await animateOpacity(sprite, 1, ms);
+          this.placeLayer(sprite, props);
+          sprite.style.opacity = ms ? '0' : sprite.style.opacity;
+          this.spriteLayer.append(outerOf(sprite));
+          invertsFor(sprite);
+          if (ms) await animateOpacity(sprite, props.opacity ?? 1, ms);
+        } else if (isFree(props) || isFree(layerProps(sprite))) {
+          // a layer at a point: a new picture in place, and with move glides it to its new place
+          setLayers(sprite, fx.layers.map(this.assetUrl));
+          const moving = fx.transition === 'move' && ms ? { keys: ['x', 'y', 'anchor', 'zoom', 'rotate', 'opacity'], ms, ease: 'in-out-sine' } : undefined;
+          this.placeLayer(sprite, props, moving);
+          if (moving) await delay(ms);
         } else {
           const left = positionLeft(fx.at) ?? sprite.style.left;
           setLayers(sprite, fx.layers.map(this.assetUrl));
+          this.placeLayer(sprite, props);
           if (fx.transition === 'move' && ms && left !== sprite.style.left) {
             sprite.style.transition = `left ${ms}ms ease-in-out`;
             sprite.style.left = left;
@@ -901,6 +928,17 @@ export class Player {
         if (sprite) await fadeOutAndRemove(sprite, this.duration(fx, instant));
         return;
       }
+      case 'animate': {
+        const sprite = this.spriteEl(fx.tag);
+        if (!sprite) return;
+        if (fx.animation !== undefined) { this.playAnimation(sprite, fx.animation, instant); return; }
+        const ms = instant || this.reducedMotion ? 0 : fx.duration * 1000;
+        if (ms) void sprite.offsetWidth; // a layer created this step has a style to move from
+        this.placeLayer(sprite, { ...layerProps(sprite), ...fx.props }, { keys: Object.keys(fx.props), ms, ease: fx.ease });
+        return;
+      }
+      case 'with':
+        return; // handled by present(), around the changes it shows
       case 'play': {
         const fadeMs = instant ? 0 : (fx.fade ?? 0) * 1000;
         if (fx.channel === 'music') this.playMusic(fx.path, fx.loop, fadeMs);
@@ -1107,6 +1145,91 @@ export class Player {
     if (isNew && !this.host.notifiesAchievements) this.toast(this.t('ui.achievement', { name }));
   }
 
+  /** The canvas a layer's picture pixels are measured on (D-062): the game's `canvas:`, or 1920 x 1080. */
+  private get canvas(): [number, number] {
+    return parseCanvas(this.story.meta.canvas) ?? [1920, 1080];
+  }
+
+  /**
+   * Put a layer's properties on its box (see layers.ts). A layer at a point is sized from its picture, so until the
+   * picture has loaded it stays hidden, then takes its place.
+   */
+  private placeLayer(node: HTMLElement, p: LayerProps, move?: { keys: string[]; ms: number; ease: string }): void {
+    const img = node.querySelector('img');
+    const size: [number, number] | null = img && img.naturalWidth ? [img.naturalWidth, img.naturalHeight] : null;
+    applyLayer(node, p, size, this.canvas, move);
+    const waiting = !size && !!img && isFree(p);
+    node.style.visibility = waiting ? 'hidden' : '';
+    if (!waiting) return;
+    img.decode().catch(() => undefined).then(() => {
+      if (!img.naturalWidth) return;
+      applyLayer(node, layerProps(node), [img.naturalWidth, img.naturalHeight], this.canvas);
+      node.style.visibility = '';
+    });
+  }
+
+  /**
+   * Play a declared `animation` on a layer (D-062), or stop the one playing (null). One that ends leaves the layer at
+   * its last key; skipping, going back and **Animations: reduced** put it there at once, and leave loops still.
+   */
+  private playAnimation(node: HTMLElement, name: string | null, instant: boolean): void {
+    for (const a of node.getAnimations()) if (a.id === TRACK_ID) a.cancel();
+    const anim = name ? this.story.animations?.[name] : undefined;
+    if (!anim) return;
+    const img = node.querySelector('img');
+    const start = () => {
+      const size: [number, number] = img && img.naturalWidth ? [img.naturalWidth, img.naturalHeight] : [this.canvas[0], this.canvas[1]];
+      const { frames, end } = animationFrames(layerProps(node), anim, size, this.canvas);
+      if (!anim.loop) this.placeLayer(node, end);
+      if (this.reducedMotion || (instant && !anim.loop) || !anim.duration) return;
+      const a = node.animate(frames, { duration: anim.duration * 1000, iterations: anim.loop ? Infinity : 1, id: TRACK_ID });
+      void a;
+    };
+    if (img && !img.naturalWidth && isFree(layerProps(node))) img.decode().catch(() => undefined).then(start);
+    else start();
+  }
+
+  /**
+   * A still copy of the picture over the live one (D-062), so the changes before a `with` happen out of sight. Layers
+   * caught mid-move are copied where they are now, not where they are going.
+   */
+  private freezePicture(): HTMLElement {
+    const freeze = el('div', 'layer freeze');
+    const bg = this.bgLayer.cloneNode(true) as HTMLElement;
+    const sprites = this.spriteLayer.cloneNode(true) as HTMLElement;
+    const live = [...this.spriteLayer.querySelectorAll<HTMLElement>('.sprite')];
+    [...sprites.querySelectorAll('.sprite')].forEach((copy, i) => {
+      const node = live[i];
+      const c = copy as HTMLElement;
+      c.style.transition = 'none';
+      if (!node || !node.getAnimations().length) return;
+      const cs = getComputedStyle(node);
+      for (const k of ['left', 'top', 'scale', 'rotate', 'opacity', 'translate'] as const) c.style[k] = cs[k];
+      c.getAnimations().forEach((a) => a.cancel());
+    });
+    freeze.append(bg, sprites);
+    this.stage.insertBefore(freeze, this.fader);
+    return freeze;
+  }
+
+  /** Take the frozen picture away through the `with`'s transition, once the new pictures are ready to show. */
+  private async endFreeze(freeze: HTMLElement, fx: { transition: string; duration?: number }, instant: boolean): Promise<void> {
+    const ms = this.duration(fx, instant);
+    if (ms) {
+      const pending = [...this.spriteLayer.querySelectorAll('img')].filter((i) => !i.complete).map((i) => i.decode().catch(() => undefined));
+      await Promise.race([Promise.all(pending), delay(IMAGE_WAIT_MS)]);
+    }
+    if (!ms) { freeze.remove(); return; }
+    if (fx.transition === 'fade') {
+      await this.fadeTo(1, ms);
+      freeze.remove();
+      await this.fadeTo(0, ms);
+      return;
+    }
+    await animateOpacity(freeze, 0, ms);
+    freeze.remove();
+  }
+
   private async setBackground(path: string | null, ms: number): Promise<void> {
     const next = el('div', 'bg');
     if (path) next.style.backgroundImage = `url("${this.assetUrl(path)}")`;
@@ -1138,7 +1261,10 @@ export class Player {
       const layers = this.runner.spriteLayers(sp);
       if (!layers?.length) continue;
       const node = makeSprite(sp.tag, layers.map(this.assetUrl), sp.at);
-      this.spriteLayer.append(node);
+      this.placeLayer(node, sp.props ?? {});
+      this.spriteLayer.append(outerOf(node));
+      invertsFor(node);
+      if (sp.track) this.playAnimation(node, sp.track, false);
       if (sp.loop && !this.reducedMotion) startLoop(node, sp.loop, u);
     }
   }
@@ -1608,7 +1734,11 @@ export class Player {
     box.append(bg);
     for (const sp of scene.sprites) {
       const layers = this.runner.spriteLayers(sp);
-      if (layers?.length) box.append(makeSprite(sp.tag, layers.map(this.assetUrl), sp.at));
+      if (!layers?.length) continue;
+      const node = makeSprite(sp.tag, layers.map(this.assetUrl), sp.at);
+      this.placeLayer(node, sp.props ?? {});
+      box.append(outerOf(node));
+      invertsFor(node);
     }
     if (scene.tone === 'sepia') box.style.filter = 'sepia(0.85) saturate(0.9)';
     else if (scene.tone === 'mono') box.style.filter = 'grayscale(1)';
@@ -2643,6 +2773,8 @@ function motionFrames(kind: MotionKind, u: number): { frames: Keyframe[]; ms: nu
 }
 
 const LOOP_ID = 'emaki-loop';
+/** A layer's `animation` (D-062). */
+const TRACK_ID = 'emaki-track';
 
 /** Start a sprite's endless move (replacing any it had). */
 function startLoop(sprite: HTMLElement, kind: MotionKind, u: number): void {
@@ -2700,7 +2832,7 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 async function fadeOutAndRemove(node: HTMLElement, ms: number): Promise<void> {
   await animateOpacity(node, 0, ms);
-  node.remove();
+  if (node.classList.contains('sprite')) removeLayer(node); else node.remove();
 }
 
 
