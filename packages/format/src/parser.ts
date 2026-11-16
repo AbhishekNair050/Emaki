@@ -463,9 +463,18 @@ export function parse(source: string): ParseResult {
           asset = { kind: 'name', name };
           rest = more.join(' ');
         }
+        // `as rain`: a named ambience loop, so several play at once
+        let as: string | undefined;
+        const am = /^as\s+(\S+)\s*(.*)$/.exec(rest.trim());
+        if (am) {
+          if (m[1] !== 'ambience') { err(ln.line, 'bad-play', `Only ambience loops have names ('play ambience rain as rain'), so several can play at once`); return null; }
+          if (!IDENT.test(am[1]!)) { err(ln.line, 'bad-play', `'as' needs a name for the loop, like 'as rain'`); return null; }
+          as = am[1];
+          rest = am[2]!;
+        }
         const opts = parseAudioOpts(rest, ln.line, true);
         if (!opts) return null;
-        return { type: 'play', channel: m[1] as Channel, asset, loop: opts.loop, fade: opts.fade, loc };
+        return { type: 'play', channel: m[1] as Channel, asset, loop: opts.loop, fade: opts.fade, ...(as ? { as } : {}), loc };
       }
       case 'stop': {
         const m = /^(\w+)\s*(.*)$/.exec(args);
@@ -473,9 +482,18 @@ export function parse(source: string): ParseResult {
           err(ln.line, 'bad-stop', `Expected 'stop music|ambience|sound|voice'`);
           return null;
         }
-        const opts = parseAudioOpts(m[2], ln.line, false);
+        // `stop ambience rain`: one named loop (without a name, the whole channel)
+        let restStop = m[2];
+        let as: string | undefined;
+        const nm = /^([A-Za-z_]\w*)\s*(.*)$/.exec(restStop);
+        if (nm && nm[1] !== 'fade') {
+          if (m[1] !== 'ambience') { err(ln.line, 'bad-stop', `Only ambience loops have names: 'stop ambience rain'`); return null; }
+          as = nm[1];
+          restStop = nm[2]!;
+        }
+        const opts = parseAudioOpts(restStop, ln.line, false);
         if (!opts) return null;
-        return { type: 'stop', channel: m[1] as Channel, fade: opts.fade, loc };
+        return { type: 'stop', channel: m[1] as Channel, fade: opts.fade, ...(as ? { as } : {}), loc };
       }
       case 'set': {
         const m = /^([A-Za-z_]\w*)\s*(\+=|-=|=)\s*(.+)$/.exec(args);

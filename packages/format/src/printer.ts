@@ -173,13 +173,13 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         break;
       case 'play':
         out.push(pad + [
-          'play', s.channel, asset(s.asset),
+          'play', s.channel, asset(s.asset), s.as ? `as ${s.as}` : '',
           s.loop === null ? '' : s.loop ? 'loop' : 'noloop',
           s.fade === null ? '' : `fade ${s.fade}`,
         ].filter(Boolean).join(' '));
         break;
       case 'stop':
-        out.push(pad + ['stop', s.channel, s.fade === null ? '' : `fade ${s.fade}`].filter(Boolean).join(' '));
+        out.push(pad + ['stop', s.channel, s.as ?? '', s.fade === null ? '' : `fade ${s.fade}`].filter(Boolean).join(' '));
         break;
       case 'set':
         out.push(`${pad}set ${s.name} ${s.op} ${printExpr(s.expr)}`);

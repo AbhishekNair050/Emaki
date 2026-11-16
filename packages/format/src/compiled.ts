@@ -44,8 +44,10 @@ export type Instr =
   /** `rule`: the rule picture's path, for a `wipe`. */
   | { op: 'with'; transition: string; rule?: string; duration?: number; src: SrcRef }
   | { op: 'hide'; tag: string; transition: string | null; duration?: number; src: SrcRef }
-  | { op: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null; src: SrcRef }
-  | { op: 'stop'; channel: Channel; fade: number | null; src: SrcRef }
+  /** `slot`: a named ambience loop (D-062); absent for the channel's own. */
+  | { op: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null; slot?: string; src: SrcRef }
+  /** `slot`: stop only that ambience loop; absent: the whole channel. */
+  | { op: 'stop'; channel: Channel; fade: number | null; slot?: string; src: SrcRef }
   | { op: 'set'; name: string; expr: Expr; src: SrcRef }
   | { op: 'jump'; target: number; label?: string; src: SrcRef }
   | { op: 'jumpIfNot'; cond: Expr; target: number; src: SrcRef }

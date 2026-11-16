@@ -53,6 +53,8 @@ export interface AudioState {
   sound?: { path: string; loop: true } | null;
   /** The ambience loop playing under the music. Missing in saves from before it existed. */
   ambience?: { path: string } | null;
+  /** Named ambience loops playing with it (`play ambience rain as rain`), by name. Absent when none. */
+  ambiences?: Record<string, { path: string }>;
 }
 
 export interface RunState {
@@ -112,8 +114,10 @@ export type Effect =
   /** The picture changes before this one in the step show together through a transition (D-062). */
   | { type: 'with'; transition: string; rule?: string; duration?: number }
   | { type: 'hide'; tag: string; transition: string | null; duration?: number }
-  | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
-  | { type: 'stop'; channel: Channel; fade: number | null }
+  /** `slot`: a named ambience loop. */
+  | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null; slot?: string }
+  /** `slot`: stop only that ambience loop; without it, an ambience stop ends them all. */
+  | { type: 'stop'; channel: Channel; fade: number | null; slot?: string }
   /** The story reached a declared ending (`end light_holds`); `name` is translated. */
   | { type: 'ending'; id: string; name: string }
   /** A `global var` changed: the host should store `values` (all globals) for future playthroughs. */
@@ -817,13 +821,13 @@ export class Runner {
           s.pc++;
           if (ins.channel === 'voice') voice = ins.path;
           trackAudio(s.audio, ins);
-          effects.push({ type: 'play', channel: ins.channel, path: ins.path, loop: ins.loop, fade: ins.fade });
+          effects.push({ type: 'play', channel: ins.channel, path: ins.path, loop: ins.loop, fade: ins.fade, ...(ins.slot ? { slot: ins.slot } : {}) });
           break;
         case 'stop':
           s.pc++;
           if (ins.channel === 'voice') voice = null;
           trackAudio(s.audio, ins);
-          effects.push({ type: 'stop', channel: ins.channel, fade: ins.fade });
+          effects.push({ type: 'stop', channel: ins.channel, fade: ins.fade, ...(ins.slot ? { slot: ins.slot } : {}) });
           break;
         case 'nvl':
           s.pc++;
@@ -1168,7 +1172,12 @@ function trackAudio(audio: AudioState, ins: Extract<Instr, { op: 'play' | 'stop'
     if (ins.op === 'stop') audio.sound = null;
     else if (ins.loop) audio.sound = { path: ins.path, loop: true };
   } else if (ins.channel === 'ambience') {
-    audio.ambience = ins.op === 'play' && ins.loop ? { path: ins.path } : null;
+    if (ins.slot) {
+      const named = { ...audio.ambiences };
+      if (ins.op === 'play' && ins.loop) named[ins.slot] = { path: ins.path }; else delete named[ins.slot];
+      if (Object.keys(named).length) audio.ambiences = named; else delete audio.ambiences;
+    } else if (ins.op === 'play') audio.ambience = ins.loop ? { path: ins.path } : null;
+    else { audio.ambience = null; delete audio.ambiences; } // stop ambience: all of them
   }
 }
 

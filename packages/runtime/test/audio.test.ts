@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compile } from '@emaki/format';
+import { compile, parse, print } from '@emaki/format';
 import { Runner } from '../src/index.ts';
 
 const SRC = `label a:
@@ -76,5 +76,41 @@ describe('the ambience channel', () => {
     expect(other.audio().ambience?.path).toBe('audio/rain.ogg');
     other.startAtLine(7);
     expect(other.audio().ambience?.path).toBe('audio/rain.ogg');
+  });
+
+  it('plays several named loops at once, stops one by name, and all without one', () => {
+    const SRC2 = `label a:
+  play ambience "audio/rain.ogg" as rain
+  play ambience "audio/wind.ogg" as wind fade 1
+  play ambience "audio/crowd.ogg"
+  "Everything at once."
+  stop ambience wind fade 2
+  "The wind dies down."
+  stop ambience
+  "Quiet."
+`;
+    const r = compile(SRC2);
+    expect(r.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const run = new Runner(r.story!);
+    const step = run.start();
+    expect(step.effects.map((e) => e.type === 'play' && e.slot)).toEqual(['rain', 'wind', undefined]);
+    expect(run.audio().ambiences).toEqual({ rain: { path: 'audio/rain.ogg' }, wind: { path: 'audio/wind.ogg' } });
+    expect(run.audio().ambience).toEqual({ path: 'audio/crowd.ogg' });
+    const save = run.save();
+    expect(run.advance().effects).toContainEqual({ type: 'stop', channel: 'ambience', fade: 2, slot: 'wind' });
+    expect(run.audio().ambiences).toEqual({ rain: { path: 'audio/rain.ogg' } });
+    run.advance();
+    expect(run.audio().ambiences).toBeUndefined();
+    expect(run.audio().ambience).toBeNull();
+    const other = new Runner(r.story!);
+    other.load(save);
+    expect(Object.keys(other.audio().ambiences ?? {})).toEqual(['rain', 'wind']);
+  });
+
+  it('prints named loops back, and only ambience loops have names', () => {
+    const src = 'label a:\n  play ambience "audio/rain.ogg" as rain fade 1\n  stop ambience rain\n  "x"\n';
+    expect(print(parse(src).program)).toContain('  play ambience "audio/rain.ogg" as rain fade 1\n  stop ambience rain\n');
+    expect(compile('label a:\n  play music "m.ogg" as theme\n  "x"\n').diagnostics.map((d) => d.message).join()).toMatch(/Only ambience loops have names/);
+    expect(compile('label a:\n  stop music theme\n  "x"\n').diagnostics.map((d) => d.message).join()).toMatch(/Only ambience loops have names/);
   });
 });

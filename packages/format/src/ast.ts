@@ -137,8 +137,10 @@ export type Stmt = Trivia & (
   /** `with wipe rule_13 0.8`: `rule` is the rule picture (an image's name, or a path). */
   | { type: 'with'; transition: string; rule?: string; duration?: number; loc: Loc }
   | { type: 'hide'; tag: string; transition: string | null; duration?: number; loc: Loc }
-  | { type: 'play'; channel: Channel; asset: AssetRef; loop: boolean | null; fade: number | null; loc: Loc }
-  | { type: 'stop'; channel: Channel; fade: number | null; loc: Loc }
+  /** `as`: an ambience loop's name, so several can play at once (`play ambience rain as rain`). */
+  | { type: 'play'; channel: Channel; asset: AssetRef; loop: boolean | null; fade: number | null; as?: string; loc: Loc }
+  /** `as`: the ambience loop to stop (`stop ambience rain`); without it, all of them. */
+  | { type: 'stop'; channel: Channel; fade: number | null; as?: string; loc: Loc }
   | { type: 'set'; name: string; op: AssignOp; expr: Expr; loc: Loc }
   | { type: 'jump'; target: string; loc: Loc }
   | { type: 'call'; target: string; loc: Loc }

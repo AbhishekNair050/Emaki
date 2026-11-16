@@ -447,11 +447,11 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         if (s.asset.kind === 'path') path = s.asset.path;
         else if (audio[s.asset.name]) path = audio[s.asset.name];
         else error(s.loc, 'unknown-audio', `Unknown audio '${s.asset.name}'. Add: audio ${s.asset.name} = "audio/file.ogg"`);
-        frag.code.push({ op: 'play', channel: s.channel, path, loop: s.loop ?? (s.channel === 'music' || s.channel === 'ambience'), fade: s.fade, src });
+        frag.code.push({ op: 'play', channel: s.channel, path, loop: s.loop ?? (s.channel === 'music' || s.channel === 'ambience'), fade: s.fade, ...(s.as ? { slot: s.as } : {}), src });
         return;
       }
       case 'stop':
-        frag.code.push({ op: 'stop', channel: s.channel, fade: s.fade, src });
+        frag.code.push({ op: 'stop', channel: s.channel, fade: s.fade, ...(s.as ? { slot: s.as } : {}), src });
         return;
       case 'set': {
         if (!Object.prototype.hasOwnProperty.call(vars, s.name)) {

@@ -93,6 +93,7 @@ A `#` starts a comment when it has a space before it and a space (or the end of 
 | `hide mira with dissolve` | Remove a character. |
 | `play music "audio/theme.ogg"` / `play sound rain` | Audio. Music loops by default, with no gap at the loop point. Options: `loop`, `noloop`, `fade 1.5`. |
 | `play ambience rain fade 2` | A background loop that plays under the music (rain, wind, a crowd), separate from sound effects, so `stop sound` leaves it alone. Loops by default; follows the sound effects volume. |
+| `play ambience wind as wind` | A named ambience loop: several named ones play at once (rain, wind and a crowd together), and `stop ambience wind` stops just that one. `stop ambience` stops them all. |
 | `play voice "voice/ann_001.ogg"` | A voice line, put just before the line it belongs to. It stops when the player moves on, and auto mode waits for it to finish. A fully voiced game doesn't need these: see [Voiced games](#voiced-games). |
 | `stop music fade 2` | Stop a channel (`music`, `ambience`, `sound`, `voice`). `stop sound` stops a looping sound and any effects still playing. |
 | `set trust += 1` | Change a variable. Also `=` and `-=`. |

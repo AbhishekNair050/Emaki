@@ -203,7 +203,7 @@ After D-059 and D-060, a full-length game (80,000 lines, 187,000 instructions) i
 - **What it costs:** every runtime implements the loader, which makes the format contract (D-059) bigger, and every feature that scans the whole story (reachability, skip to next choice, the story map) has to work with parts. It's worth doing when a real game needs it, for example a long game on low-memory phones, and should be measured on that device first.
 
 
-### D-062 — Free layers: the picture as stacked, transformed images (provisional)
+### D-062 — Free layers: the picture as stacked, transformed images (accepted, 2026-11-16)
 Characters on a bottom line and one background cover most visual novels, but not games whose every shot is composed: a background built from several pieces, a close-up made by zooming one picture, a character's face crossfading on a copy of her layer, light layers in `add` or `multiply`, manga-style panels with feathered edges, slow pans that keep moving under the text. A port of a full-length commercial VN uses all of these on almost every page (about 55,000 picture placements, 24,000 keyframed moves, 25 blend modes and 80 colour grades). Emaki now draws that picture itself, in the same player, instead of approximating it.
 
 **The model.** Everything on the picture is a *layer*: a declared image with a name, a position, an anchor, a zoom (one or two axes), a rotation, an opacity, a depth, a blend mode, a colour grade and a blur. Backgrounds and characters stay what they are (`scene`, `show mira smile at left`) and are layers with defaults, so the old scripts draw exactly as before; a game that composes its shots uses the new properties.

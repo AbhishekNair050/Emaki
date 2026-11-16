@@ -99,7 +99,7 @@ Proved on a port of a full-length commercial VN (80,000 lines in 758 files, 151 
 - [x] `emaki export web` builds it in about 70 s, and the build plays
 - [ ] Loading the story in parts (D-061, proposed): not needed at this size; for when a game or device needs it
 
-## Milestone 11 — Free layers (in progress)
+## ✅ Milestone 11 — Free layers (done, 2026-11-16)
 Composed shots, drawn the way the original game draws them (D-062). Proof: a second full-length commercial port matches its original side by side, scene by scene.
 - [x] Layers: `show ... as name at x y`, anchor, zoom (negative mirrors), rotation, opacity, depth, every blend including an exact subtract; `animate ... over s ease`; `with dissolve` for all changes since the last line
 - [x] Keyframed animations (`animation name [loop]:`, `animate x with name`): the port's 24,000 motion tracks
@@ -109,7 +109,7 @@ Composed shots, drawn the way the original game draws them (D-062). Proof: a sec
 - [x] Colour grades (`grade dusk: gamma ... levels ... tint ...`), silhouettes, brightness, contrast, blur: the port's 83 colour presets drawn as SVG curves; the side-by-side sample goes from 23.4 to 15.5
 - [x] Esc and right-click actions from the header: menu, save to an empty slot, quick save, hide, settings, history (D-063); the port's own title, menu, save, load and settings screens
 - [x] Wipes through rule pictures (`with wipe rule_13 0.8`) and `textbox hide` / `show`: the port's 943 wipes and 1,574 window fades
-- [ ] Several ambience loops
+- [x] Several ambience loops at once (`play ambience wind as wind`, `stop ambience wind`): the port's sound channels each keep their own loop
 
 ## ⏸ On hold
 - Ren'Py importer (common subset)

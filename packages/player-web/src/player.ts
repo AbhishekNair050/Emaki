@@ -142,8 +142,8 @@ export class Player {
   /** Music, ambience and looping sounds, looped without a gap. */
   private readonly loops = new LoopAudio();
   private music: Track | null = null;
-  /** The ambience loop under the music (`play ambience rain`). */
-  private ambience: Track | null = null;
+  /** The ambience loops under the music, by name ('' for the unnamed one: `play ambience rain`). */
+  private ambiences = new Map<string, Track>();
   /** The voice line playing now; a new line (or the next click) stops it. */
   private voice: HTMLAudioElement | null = null;
   /** The looping sound playing now (rain, a crowd), kept until stopped or replaced. */
@@ -960,7 +960,7 @@ export class Player {
       case 'play': {
         const fadeMs = instant ? 0 : (fx.fade ?? 0) * 1000;
         if (fx.channel === 'music') this.playMusic(fx.path, fx.loop, fadeMs);
-        else if (fx.channel === 'ambience') this.playAmbience(fx.path, fx.loop, fadeMs);
+        else if (fx.channel === 'ambience') this.playAmbience(fx.path, fx.loop, fadeMs, fx.slot);
         else if (fx.channel === 'sound' && fx.loop) this.playLoopSound(fx.path, fadeMs);
         // Skipping, rolling back or loading: don't fire a burst of old sound effects or voices.
         else if (instant) return;
@@ -971,7 +971,7 @@ export class Player {
       case 'stop': {
         const fadeMs = instant ? 0 : (fx.fade ?? 0) * 1000;
         if (fx.channel === 'music') this.stopMusic(fadeMs);
-        else if (fx.channel === 'ambience') this.stopAmbience(fadeMs);
+        else if (fx.channel === 'ambience') this.stopAmbience(fadeMs, fx.slot);
         else if (fx.channel === 'sound') this.stopSounds(fadeMs);
         else this.stopVoice();
         return;
@@ -1318,25 +1318,32 @@ export class Player {
     this.music = null;
   }
 
-  /** `play ambience rain`: a loop under the music, at the sound effects volume. */
-  private playAmbience(path: string, loop: boolean, fadeMs = 0): void {
-    if (this.ambience?.path === path) return;
-    this.stopAmbience(fadeMs);
-    this.ambience = this.loops.play(path, asset(path), loop, this.vol('sound'), fadeMs);
+  /** `play ambience rain [as name]`: a loop under the music, at the sound effects volume; named ones play together. */
+  private playAmbience(path: string, loop: boolean, fadeMs = 0, slot = ''): void {
+    const now = this.ambiences.get(slot);
+    if (now?.path === path) return;
+    now?.stop(fadeMs);
+    this.ambiences.set(slot, this.loops.play(path, asset(path), loop, this.vol('sound'), fadeMs));
   }
 
-  private stopAmbience(fadeMs = 0): void {
-    this.ambience?.stop(fadeMs);
-    this.ambience = null;
+  /** One ambience loop, or (without a name) all of them. */
+  private stopAmbience(fadeMs = 0, slot?: string): void {
+    for (const [k, t] of this.ambiences) {
+      if (slot !== undefined && k !== slot) continue;
+      t.stop(fadeMs);
+      this.ambiences.delete(k);
+    }
   }
 
   /** Match the audio to the story's state after a jump in time (load, rollback, edit). */
   private syncAudio(): void {
-    const { music, sound, ambience } = this.runner.audio();
+    const { music, sound, ambience, ambiences } = this.runner.audio();
     if (music) this.playMusic(music.path, music.loop);
     else this.stopMusic();
-    if (ambience) this.playAmbience(ambience.path, true);
-    else this.stopAmbience();
+    const want = new Map(Object.entries(ambiences ?? {}).map(([k, v]) => [k, v.path]));
+    if (ambience) want.set('', ambience.path);
+    for (const k of [...this.ambiences.keys()]) if (!want.has(k)) this.stopAmbience(0, k);
+    for (const [k, p] of want) this.playAmbience(p, true, 0, k);
     this.stopVoice();
     for (const a of this.sounds) a.pause();
     this.sounds.clear();
@@ -2495,7 +2502,7 @@ export class Player {
     this.stage.classList.toggle('full-motion', s.motion === 'full');
     void this.music?.fadeTo(this.vol('music'), 0);
     void this.loopSound?.fadeTo(this.vol('sound'), 0);
-    void this.ambience?.fadeTo(this.vol('sound'), 0);
+    for (const t of this.ambiences.values()) void t.fadeTo(this.vol('sound'), 0);
     if (this.voice) this.voice.volume = this.vol('voice', this.voiceWho);
   }
 
