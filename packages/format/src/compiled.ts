@@ -8,11 +8,13 @@
 import type { Channel } from './ast.ts';
 import type { Expr, Value } from './expr.ts';
 import type { Span } from './markup.ts';
+import type { LayerProps } from './layers.ts';
 
 export const FORMAT_ID = 'emaki-story';
 import type { CompiledScreen } from './screens.ts';
 
-export const FORMAT_VERSION = 1;
+/** 3: free layers (D-062): `show` properties, `animate`, `with`. (2 was a packed version-1 story, before `packed` existed: see pack.ts.) */
+export const FORMAT_VERSION = 3;
 
 export interface SrcRef {
   /** 1-based line in the source .vn file. */
@@ -28,7 +30,18 @@ export type Instr =
   | { op: 'say'; id: string; who: string | null; attrs: string[]; text: string; spans?: Span[]; src: SrcRef }
   /** `duration` (seconds) only when the script gives one: `with dissolve 1.5`. */
   | { op: 'scene'; image: string | null; transition: string | null; duration?: number; src: SrcRef }
-  | { op: 'show'; tag: string; attrs: string[] | null; at: string | null; transition: string | null; duration?: number; src: SrcRef }
+  /**
+   * `tag` and `attrs` name the image; `layer` is the name it is shown as when that isn't `tag`
+   * (`show street as far`). `props`: where and how it is drawn (D-062), positions in percent of the screen.
+   */
+  | { op: 'show'; tag: string; attrs: string[] | null; layer?: string; at: string | null; props?: LayerProps; transition: string | null; duration?: number; src: SrcRef }
+  /**
+   * Move a layer toward `props` over `duration` seconds along `ease` (D-062). Non-blocking; the state keeps the targets.
+   * With `animation`, play that declared animation instead (null: stop the one playing).
+   */
+  | { op: 'animate'; layer: string; props: LayerProps; duration: number; ease: string; animation?: string | null; src: SrcRef }
+  /** Show the picture changes since the last block through one transition (D-062). */
+  | { op: 'with'; transition: string; duration?: number; src: SrcRef }
   | { op: 'hide'; tag: string; transition: string | null; duration?: number; src: SrcRef }
   | { op: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null; src: SrcRef }
   | { op: 'stop'; channel: Channel; fade: number | null; src: SrcRef }
@@ -78,6 +91,12 @@ export type Instr =
    */
   | { op: 'camera'; zoom: number; x: number; y: number; duration?: number; src: SrcRef };
 
+/**
+ * An `animation`: keys at `t` seconds setting `props` (the rest hold), easing toward the next key along `ease`;
+ * `duration` is the last key's time; a `loop` starts over from its first key.
+ */
+export interface CompiledAnimation { loop: boolean; duration: number; keys: Array<{ t: number; props: LayerProps; ease: string }> }
+
 /** A layer of a layered character: always drawn, or the group's chosen option (`default` when none was chosen; null for an optional group). */
 export type CompiledLayer =
   | { path: string }
@@ -94,6 +113,8 @@ export interface CompiledChoice {
 export interface CompiledStory {
   format: typeof FORMAT_ID;
   version: number;
+  /** The code is packed (pack.ts); runtimes expand it with `loadStory` first. */
+  packed?: true;
   meta: Record<string, string>;
   /** Instruction index where the story begins. */
   start: number;
@@ -101,6 +122,8 @@ export interface CompiledStory {
   /** Image name ("mira smile", "kitchen") -> asset path. */
   images: Record<string, string>;
   audio: Record<string, string>;
+  /** Keyed moves (`animation drift:`, D-062) by name; absent when none. */
+  animations?: Record<string, CompiledAnimation>;
   /** Characters drawn from layers (`layered mira:`): tag -> layers, bottom first. Absent when none. */
   layered?: Record<string, CompiledLayer[]>;
   /** The game's own screens (`screen title:`), by name. Absent when it has none. */

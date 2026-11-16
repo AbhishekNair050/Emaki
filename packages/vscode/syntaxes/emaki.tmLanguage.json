@@ -333,6 +333,100 @@
           }
         },
         {
+          "begin": "^\\s+(show)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s+(?!(?:as|at|anchor|zoom|rotate|opacity|depth|blend|with)\\b)-?[A-Za-z_][A-Za-z0-9_]*)*)(?=\\s+(?:as|at|anchor|zoom|rotate|opacity|depth|blend|with)\\b)",
+          "end": "$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.show.emaki"
+            },
+            "2": {
+              "name": "entity.name.type.asset.emaki"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#inline-comment"
+            },
+            {
+              "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+              "captures": {
+                "1": {
+                  "name": "keyword.other.as.emaki"
+                },
+                "2": {
+                  "name": "entity.name.tag.emaki"
+                }
+              }
+            },
+            {
+              "match": "\\b(at|anchor|zoom|rotate|opacity|depth|blend|over|ease|with)\\b",
+              "name": "keyword.other.layer.emaki"
+            },
+            {
+              "match": "\\b(normal|add|subtract|multiply|screen|overlay|darken|lighten|dodge|burn|hard-light|soft-light|difference|exclusion|linear|(?:in|out|in-out|out-in)-(?:quad|cubic|quart|quint|sine|circ|expo|elastic|back|bounce)|left|center|right|fade|dissolve|move|none)\\b",
+              "name": "constant.language.emaki"
+            },
+            {
+              "match": "-?\\d+(?:\\.\\d+)?%?",
+              "name": "constant.numeric.emaki"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s+(animate)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "end": "$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.animate.emaki"
+            },
+            "2": {
+              "name": "entity.name.tag.emaki"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#inline-comment"
+            },
+            {
+              "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+              "captures": {
+                "1": {
+                  "name": "keyword.other.as.emaki"
+                },
+                "2": {
+                  "name": "entity.name.tag.emaki"
+                }
+              }
+            },
+            {
+              "match": "\\b(at|anchor|zoom|rotate|opacity|depth|blend|over|ease|with)\\b",
+              "name": "keyword.other.layer.emaki"
+            },
+            {
+              "match": "\\b(normal|add|subtract|multiply|screen|overlay|darken|lighten|dodge|burn|hard-light|soft-light|difference|exclusion|linear|(?:in|out|in-out|out-in)-(?:quad|cubic|quart|quint|sine|circ|expo|elastic|back|bounce)|left|center|right|fade|dissolve|move|none)\\b",
+              "name": "constant.language.emaki"
+            },
+            {
+              "match": "-?\\d+(?:\\.\\d+)?%?",
+              "name": "constant.numeric.emaki"
+            }
+          ]
+        },
+        {
+          "match": "^\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(\\d+(?:\\.\\d+)?))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
+          "captures": {
+            "1": {
+              "name": "keyword.other.with.emaki"
+            },
+            "2": {
+              "name": "constant.language.transition.emaki"
+            },
+            "3": {
+              "name": "constant.numeric.emaki"
+            }
+          }
+        },
+        {
           "match": "^\\s+(hide)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {

@@ -1,5 +1,5 @@
 /**
- * The compiled story as a file: a packed form of `CompiledStory` (version 2)
+ * The compiled story as a file: a packed form of `CompiledStory` (`packed: true`)
  * that leaves out what repeats on almost every instruction, and the loader
  * that expands it again. Runtimes always work with the expanded form.
  *
@@ -12,7 +12,8 @@
  */
 import type { CompiledStory, Instr, SrcRef } from './compiled.ts';
 
-export const PACKED_VERSION = 2;
+/** Packed files written before the `packed` flag (D-062) say version 2 and hold a version-1 story. */
+export const OLD_PACKED_VERSION = 2;
 
 type PackedSrc = { line: number; file?: string; label?: string };
 
@@ -35,7 +36,7 @@ export function packStory(story: CompiledStory): CompiledStory {
     }
     return out as unknown as Instr;
   });
-  return { ...story, version: PACKED_VERSION, code };
+  return { ...story, packed: true, code };
 }
 
 /**
@@ -43,7 +44,8 @@ export function packStory(story: CompiledStory): CompiledStory {
  * aren't packed come back as they are.
  */
 export function loadStory(story: CompiledStory): CompiledStory {
-  if (story.version !== PACKED_VERSION) return story;
+  const old = story.version === OLD_PACKED_VERSION;
+  if (!story.packed && !old) return story;
   let file: string | undefined;
   let label = '';
   const code = story.code.map((ins) => {
@@ -58,5 +60,6 @@ export function loadStory(story: CompiledStory): CompiledStory {
     }
     return out;
   });
-  return { ...story, version: 1, code };
+  const { packed: _, ...rest } = story;
+  return { ...rest, version: old ? 1 : story.version, code };
 }

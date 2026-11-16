@@ -13,6 +13,7 @@
  * declarations (characters, images, audio, variables) and each label. Inside
  * blocks, blank lines are kept where the writer put them (collapsed to one).
  */
+import { printLayerProps } from './layers.ts';
 import type { AssetRef, Program, Stmt, Trivia } from './ast.ts';
 import { printExpr } from './expr.ts';
 import { printScreenLine, type ScreenItem } from './screens.ts';
@@ -68,6 +69,16 @@ export function print(program: Program): string {
         trivia(o.leading, INDENT + INDENT, out);
         out.push(`${INDENT}${INDENT}${o.attr} ${q(o.path)}${tail(o)}`);
       }
+    }
+  }
+
+  for (const a of program.animations ?? []) {
+    blank();
+    trivia(a.leading, '', out);
+    out.push(`animation ${a.name}${a.loop ? ' loop' : ''}:${tail(a)}`);
+    for (const k of a.keys) {
+      trivia(k.leading, INDENT, out);
+      out.push(INDENT + [String(k.time), ...printLayerProps(k.props), k.ease ? `ease ${k.ease}` : ''].filter(Boolean).join(' ') + tail(k));
     }
   }
 
@@ -139,7 +150,14 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         out.push(pad + ['scene', s.image, withT(s.transition, s.duration)].filter(Boolean).join(' '));
         break;
       case 'show':
-        out.push(pad + ['show', s.tag, ...s.attrs, s.at ? `at ${s.at}` : '', withT(s.transition, s.duration)].filter(Boolean).join(' '));
+        out.push(pad + ['show', s.tag, ...s.attrs, s.as ? `as ${s.as}` : '', s.at ? `at ${s.at}` : '', ...printLayerProps(s.props ?? {}), withT(s.transition, s.duration)].filter(Boolean).join(' '));
+        break;
+      case 'animate':
+        if (s.animation !== undefined) out.push(pad + `animate ${s.target} ${s.animation === null ? 'stop' : `with ${s.animation}`}`);
+        else out.push(pad + ['animate', s.target, ...printLayerProps(s.props), `over ${s.over}`, s.ease ? `ease ${s.ease}` : ''].filter(Boolean).join(' '));
+        break;
+      case 'with':
+        out.push(pad + withT(s.transition, s.duration));
         break;
       case 'hide':
         out.push(pad + ['hide', s.tag, withT(s.transition, s.duration)].filter(Boolean).join(' '));

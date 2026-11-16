@@ -6,7 +6,7 @@
  * once.
  */
 import type {
-  AchievementDef, EndingDef,
+  AchievementDef, AnimationDef, AnimationKey, EndingDef,
   AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, ReplayDef, ScreenMode, Stmt,
   Motion, Tone, Trivia, VarDef,
 } from './ast.ts';
@@ -14,6 +14,7 @@ import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
 import { TONES } from './ast.ts';
 import { SCREEN_TRANSITIONS, parseScreenLine, type ScreenDef, type ScreenItem } from './screens.ts';
 import { parsePluginCall } from './plugins.ts';
+import { EASES, hasProps, parseLayerProps, type LayerPropsSource } from './layers.ts';
 
 interface Line {
   indent: number;
@@ -53,7 +54,9 @@ export const KEYWORDS = new Set([
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Statements that aren't keywords: `flash: Hi!` is still a character named flash speaking. */
-export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone']);
+export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone', 'animate']);
+/** Words that end a `show`'s image name: its layer's name and properties (D-062). */
+const SHOW_PROPS = new Set(['at', 'anchor', 'zoom', 'rotate', 'opacity', 'depth', 'blend', 'clip', 'feather']);
 /** Colours `flash` accepts besides #rgb / #rrggbb. */
 export const FLASH_COLORS = ['white', 'black', 'red'];
 const SECONDS = /^\d+(\.\d+)?$/;
@@ -149,6 +152,11 @@ export function parse(source: string): ParseResult {
 
     if (word === 'layered') {
       parseLayered(ln);
+      return;
+    }
+
+    if (word === 'animation') {
+      parseAnimation(ln);
       return;
     }
 
@@ -248,7 +256,7 @@ export function parse(source: string): ParseResult {
     }
 
     err(ln.line, 'bad-toplevel',
-      `Only define, image, audio, var, achievement, ending, replay, screen and label can appear at the top level. Indent story lines under a label.`);
+      `Only define, image, audio, var, achievement, ending, replay, animation, screen and label can appear at the top level. Indent story lines under a label.`);
   }
 
   function parseBlock(lines: Line[]): Stmt[] {
@@ -387,20 +395,40 @@ export function parse(source: string): ParseResult {
       case 'show': {
         if (/^screen(\s|$)/.test(args)) return screenStmt('show', args, ln);
         const { words, transition, duration } = splitWith(args, ln.line);
-        let at: string | null = null;
-        const atIdx = words.indexOf('at');
-        if (atIdx >= 0) {
-          at = words[atIdx + 1] ?? null;
-          if (!at) err(ln.line, 'bad-show', `'at' needs a position (left, center, right)`);
-          if (words.length > atIdx + 2) err(ln.line, 'bad-show', `Unexpected '${words.slice(atIdx + 2).join(' ')}'`);
-          words.splice(atIdx);
+        // the image's words end at `as` or the first layer property (D-062)
+        let end = words.findIndex((w) => w === 'as' || SHOW_PROPS.has(w));
+        if (end < 0) end = words.length;
+        const image = words.slice(0, end);
+        let rest = words.slice(end);
+        let as: string | undefined;
+        if (rest[0] === 'as') {
+          as = rest[1];
+          if (!as || !IDENT.test(as)) { err(ln.line, 'bad-show', `'as' needs a name for the layer, e.g. 'show street as far'`); return null; }
+          rest = rest.slice(2);
         }
-        if (words.length === 0) { err(ln.line, 'bad-show', `'show' needs an image, e.g. 'show mira smile'`); return null; }
-        if (!IDENT.test(words[0]) || !words.slice(1).every((w) => IDENT.test(w.replace(/^-/, '')))) {
+        let at: string | null = null;
+        let props: LayerPropsSource | undefined;
+        if (rest.length) {
+          const r = parseLayerProps(rest);
+          if ('error' in r) { err(ln.line, 'bad-show', r.error); return null; }
+          at = r.at ?? null;
+          if (hasProps(r.props)) props = r.props;
+        }
+        if (image.length === 0) { err(ln.line, 'bad-show', `'show' needs an image, e.g. 'show mira smile'`); return null; }
+        if (!IDENT.test(image[0]!) || !image.slice(1).every((w) => IDENT.test(w.replace(/^-/, '')))) {
           err(ln.line, 'bad-show', `Image names may only use letters, digits and _`);
           return null;
         }
-        return { type: 'show', tag: words[0], attrs: words.slice(1), at, transition, ...(duration !== undefined ? { duration } : {}), loc };
+        return {
+          type: 'show', tag: image[0]!, attrs: image.slice(1), ...(as ? { as } : {}), at, ...(props ? { props } : {}),
+          transition, ...(duration !== undefined ? { duration } : {}), loc,
+        };
+      }
+      case 'with': {
+        // on its own line: the picture changes since the last line, through one transition
+        const { words, transition, duration } = splitWith(t, ln.line);
+        if (words.length || !transition) { err(ln.line, 'bad-with', `Expected 'with dissolve' or 'with dissolve 0.5'`); return null; }
+        return { type: 'with', transition, ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'hide': {
         if (/^screen(\s|$)/.test(args)) return screenStmt('hide', args, ln);
@@ -518,6 +546,40 @@ export function parse(source: string): ParseResult {
   }
 
   /**
+   * `animation drift loop:` and its keys, one per line: seconds, then layer properties, then an optional ease
+   * toward the next key (D-062):
+   *     0 opacity 0.6
+   *     1.5 opacity 1 zoom 1.02 ease in-out-sine
+   */
+  function parseAnimation(ln: Line): void {
+    const m = /^animation\s+([A-Za-z_]\w*)(\s+loop)?\s*:$/.exec(ln.text);
+    if (!m) { err(ln.line, 'bad-animation', `Expected 'animation name:' or 'animation name loop:'`); return; }
+    if (!ln.children.length) err(ln.line, 'empty-block', `'animation ${m[1]}' has no keys`);
+    const def: AnimationDef = { name: m[1]!, loop: !!m[2], keys: [], loc: { line: ln.line } };
+    let last = -1;
+    ln.children.forEach((c, i) => {
+      noChildren(c);
+      const words = c.text.split(/\s+/).filter(Boolean);
+      const t = words.shift() ?? '';
+      if (!SECONDS.test(t)) { err(c.line, 'bad-animation', `A key starts with its time in seconds, like '1.5 opacity 0'`); return; }
+      const time = Number(t);
+      if (time < last) { err(c.line, 'bad-animation', `Keys go in order of time: ${t} comes after ${last}`); return; }
+      last = time;
+      let ease: string | null = null;
+      const ei = words.indexOf('ease');
+      if (ei >= 0) {
+        ease = words[ei + 1] ?? '';
+        if (!EASES.includes(ease)) { err(c.line, 'bad-animation', `Unknown ease '${ease}' (linear, or in-, out-, in-out- or out-in- with quad, cubic, quart, quint, sine, circ, expo, elastic, back or bounce)`); return; }
+        words.splice(ei, 2);
+      }
+      const r = parseLayerProps(words, true);
+      if ('error' in r) { err(c.line, 'bad-animation', r.error); return; }
+      def.keys.push(attach<AnimationKey>({ time, props: r.props, ease, loc: { line: c.line } }, c, i === 0));
+    });
+    (program.animations ??= []).push(attach(def, ln, program.animations.length === 0));
+  }
+
+  /**
    * screen title:
    *   image "ui/title.png"
    *   column at 80% 60%:
@@ -559,6 +621,37 @@ export function parse(source: string): ParseResult {
       if (n > max) { err(ln.line, `bad-${word}`, `${w} seconds is too long for '${word}' (${max} at most)`); return null; }
       return n;
     };
+    // `animate far zoom 0.7 opacity 1 over 3 ease in-out-sine` (D-062)
+    if (word === 'animate') {
+      const usage = `Expected 'animate name zoom 1.2 over 2' (properties: at, anchor, zoom, rotate, opacity; then 'over' seconds and an optional 'ease')`;
+      const target = words.shift();
+      if (!target || !IDENT.test(target)) { err(ln.line, 'bad-animate', usage); return null; }
+      if (words[0] === 'stop' || words[0] === 'with') {
+        const name = words[0] === 'with' ? words[1] : null;
+        if ((words[0] === 'with' && (!name || !IDENT.test(name) || words.length !== 2)) || (words[0] === 'stop' && words.length !== 1)) {
+          err(ln.line, 'bad-animate', `Expected 'animate ${target} with animation_name' or 'animate ${target} stop'`);
+          return null;
+        }
+        return { type: 'animate', target, props: {}, over: 0, ease: null, animation: name ?? null, loc };
+      }
+      const oi = words.indexOf('over');
+      if (oi < 0) { err(ln.line, 'bad-animate', `'animate' needs 'over' and seconds. ${usage}`); return null; }
+      const over = seconds(words[oi + 1], 600, 'over');
+      if (over === null) return null;
+      const tail = words.splice(oi);
+      tail.splice(0, 2);
+      let ease: string | null = null;
+      if (tail[0] === 'ease') {
+        ease = tail[1] ?? '';
+        if (!EASES.includes(ease)) { err(ln.line, 'bad-animate', `Unknown ease '${ease}' (linear, or in-, out-, in-out- or out-in- with quad, cubic, quart, quint, sine, circ, expo, elastic, back or bounce, like in-out-sine)`); return null; }
+        tail.splice(0, 2);
+      }
+      if (tail.length) { err(ln.line, 'bad-animate', `Unexpected '${tail.join(' ')}'. ${usage}`); return null; }
+      const r = parseLayerProps(words, true);
+      if ('error' in r) { err(ln.line, 'bad-animate', r.error); return null; }
+      if (!hasProps(r.props)) { err(ln.line, 'bad-animate', `Nothing to animate. ${usage}`); return null; }
+      return { type: 'animate', target, props: r.props, over, ease, loc };
+    }
     // A character's move: `hop mira`, `nod mira 2`, `shake textbox`, `shake mira forever`, `float mira`.
     if ((word === 'shake' && words[0] && /^[A-Za-z_]/.test(words[0])) || word === 'hop' || word === 'nod' || word === 'bow' || word === 'float') {
       const usage = word === 'float'

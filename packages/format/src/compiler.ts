@@ -10,11 +10,12 @@
 import type { Diagnostic, Loc, Program, Stmt } from './ast.ts';
 import {
   FORMAT_ID, FORMAT_VERSION,
-  type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
+  type CompiledAnimation, type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
 } from './compiled.ts';
 import { EvalError, evaluate, freeVars, pluginCalls, type Expr, type Value } from './expr.ts';
 import { checkPluginCall, checkPluginFunctions, type PluginCommandSpec, type PluginManifest } from './plugins.ts';
 import { REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
+import { compileLayerProps } from './layers.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse, type ParseResult } from './parser.ts';
 
@@ -147,6 +148,7 @@ export function combineFiles(main: string, parts: StoryFile[] = [], opts: Compil
     (program as unknown as Record<string, unknown[]>)[k] = [...mainResult.program[k]];
   }
   if (program.replays) program.replays = [...program.replays];
+  if (program.animations) program.animations = [...program.animations];
   const all: Diagnostic[] = [...mainResult.diagnostics];
   for (const part of parts) {
     const r = parseFile(part.path, part.source);
@@ -163,6 +165,7 @@ export function combineFiles(main: string, parts: StoryFile[] = [], opts: Compil
     program.achievements.push(...r.program.achievements);
     program.endings.push(...r.program.endings);
     if (r.program.replays?.length) (program.replays ??= []).push(...r.program.replays);
+    if (r.program.animations?.length) (program.animations ??= []).push(...r.program.animations);
     program.labels.push(...r.program.labels);
   }
   return { program, diagnostics: all };
@@ -297,6 +300,24 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   }
 
   const imageTags = new Set([...Object.keys(images), ...BUILTIN_IMAGES, ...Object.keys(layered)].map((n) => n.split(' ')[0]));
+  // Layers named with `as` (D-062), anywhere in the story, and the canvas their pixel positions are on.
+  const layerNames = new Set<string>();
+  const findNames = (stmts: Stmt[]): void => {
+    for (const s of stmts) {
+      if (s.type === 'show' && s.as) layerNames.add(s.as);
+      else if (s.type === 'if') s.branches.forEach((b) => findNames(b.body));
+      else if (s.type === 'menu') s.choices.forEach((c) => findNames(c.body));
+    }
+  };
+  for (const l of program.labels) findNames(l.body);
+  const layerCanvas = parseCanvas(meta.canvas);
+  const animations: Record<string, CompiledAnimation> = {};
+  for (const a of program.animations ?? []) {
+    if (animations[a.name]) { error(a.loc, 'duplicate', `Animation '${a.name}' is already defined`); continue; }
+    const keys = a.keys.map((k) => ({ t: k.time, props: compileLayerProps(k.props, layerCanvas), ease: k.ease ?? 'linear' }));
+    if (a.loop && (keys.at(-1)?.t ?? 0) <= 0) error(a.loc, 'bad-animation', `A looping animation needs keys after 0 seconds`);
+    animations[a.name] = { loop: a.loop, duration: keys.at(-1)?.t ?? 0, keys };
+  }
 
   // --- Code generation --------------------------------------------------
   const code: Instr[] = [];
@@ -378,11 +399,30 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         }
         if (s.at && !POSITIONS.includes(s.at) && !isPercentPosition(s.at)) error(s.loc, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')}, or a percentage of the screen's width like 30%)`);
         checkTransition(s.transition, s.loc);
-        frag.code.push({ op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, at: s.at, transition: s.transition, ...dur(s), src });
+        frag.code.push({
+          op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, ...(s.as ? { layer: s.as } : {}), at: s.at,
+          ...(s.props ? { props: compileLayerProps(s.props, layerCanvas) } : {}), transition: s.transition, ...dur(s), src,
+        });
         return;
       }
+      case 'animate':
+        if (s.animation && !animations[s.animation]) {
+          error(s.loc, 'unknown-animation', didYouMean(s.animation, Object.keys(animations)) ?? `No animation named '${s.animation}'. Declare it at the top: animation ${s.animation}:`);
+        }
+        if (!imageTags.has(s.target) && !layerNames.has(s.target)) {
+          error(s.loc, 'unknown-image', didYouMean(s.target, [...imageTags, ...layerNames]) ?? `Nothing called '${s.target}' is ever shown, so it can't be animated`);
+        }
+        frag.code.push({
+          op: 'animate', layer: s.target, props: compileLayerProps(s.props, layerCanvas), duration: s.over, ease: s.ease ?? 'linear',
+          ...(s.animation !== undefined ? { animation: s.animation } : {}), src,
+        });
+        return;
+      case 'with':
+        checkTransition(s.transition, s.loc);
+        frag.code.push({ op: 'with', transition: s.transition, ...dur(s), src });
+        return;
       case 'hide':
-        if (!imageTags.has(s.tag)) warn(s.loc, 'unknown-image', `Nothing called '${s.tag}' can be shown, so it can't be hidden`);
+        if (!imageTags.has(s.tag) && !layerNames.has(s.tag)) warn(s.loc, 'unknown-image', `Nothing called '${s.tag}' can be shown, so it can't be hidden`);
         checkTransition(s.transition, s.loc);
         frag.code.push({ op: 'hide', tag: s.tag, transition: s.transition, ...dur(s), src });
         return;
@@ -552,6 +592,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   const declKey = fnv1a(JSON.stringify([
     characters, images, layered, audio, vars, endings, achievements,
     program.screens.map((d) => [d.name, screenCanLeave(d)]), opts.plugins ?? null,
+    layerCanvas, [...layerNames].sort(), Object.keys(animations).sort(),
   ]));
   const labelHashes: string[] = [];
   for (const l of program.labels) {
@@ -678,6 +719,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     version: FORMAT_VERSION,
     meta, start, characters, images, audio,
     ...(Object.keys(layered).length ? { layered } : {}),
+    ...(Object.keys(animations).length ? { animations } : {}),
     ...(Object.keys(screens).length ? { screens } : {}),
     ...(Object.keys(achievements).length ? { achievements } : {}),
     ...(Object.keys(endings).length ? { endings } : {}),

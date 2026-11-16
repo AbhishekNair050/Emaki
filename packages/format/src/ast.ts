@@ -1,3 +1,4 @@
+import type { LayerPropsSource } from './layers.ts';
 import type { ScreenDef } from './screens.ts';
 import type { Expr } from './expr.ts';
 import type { PluginCall } from './plugins.ts';
@@ -49,6 +50,11 @@ export type LayerDef = Trivia & (
   /** `optional`: nothing is drawn until one of its options is shown (`show mira blush`, `show mira -blush`). */
   | { kind: 'group'; name: string; optional: boolean; options: LayerOption[]; loc: Loc }
 );
+/** One key of an `animation`: at `time` seconds, these properties (the rest hold), easing toward the next key. */
+export interface AnimationKey extends Trivia { time: number; props: LayerPropsSource; ease: string | null; loc: Loc }
+/** `animation flicker loop:` keyed moves a layer can play (D-062). */
+export interface AnimationDef extends Trivia { name: string; loop: boolean; keys: AnimationKey[]; loc: Loc }
+
 /** `layered mira:` a character drawn from stacked layers (body, outfit, face), bottom first. */
 export interface LayeredDef extends Trivia { tag: string; layers: LayerDef[]; loc: Loc }
 export interface VarDef extends Trivia {
@@ -74,6 +80,8 @@ export interface Program {
   images: ImageDef[];
   audio: AudioDef[];
   layered: LayeredDef[];
+  /** `animation` declarations (D-062); absent when there are none. */
+  animations?: AnimationDef[];
   /** `screen title:` and friends: the game's own screens (see screens.ts). */
   screens: ScreenDef[];
   vars: VarDef[];
@@ -110,7 +118,18 @@ export type Stmt = Trivia & (
   | { type: 'say'; who: string | null; attrs: string[]; text: string; loc: Loc }
   /** `duration`: seconds, from `with dissolve 1.5` (the transition's default when absent). */
   | { type: 'scene'; image: string | null; transition: string | null; duration?: number; loc: Loc }
-  | { type: 'show'; tag: string; attrs: string[]; at: string | null; transition: string | null; duration?: number; loc: Loc }
+  /**
+   * `as`: the layer's name when it isn't the image's tag (`show street as far`); `props`: where and how it is
+   * drawn (D-062), including a point for `at x y`, while `at` keeps a character's place on the bottom line.
+   */
+  | { type: 'show'; tag: string; attrs: string[]; as?: string; at: string | null; props?: LayerPropsSource; transition: string | null; duration?: number; loc: Loc }
+  /**
+   * `animate far zoom 0.7 over 3 ease in-out-sine`: move a layer toward new values, without holding up the story.
+   * `animate far with drift` plays a declared `animation` instead (`animation`), and `animate far stop` stops one (null).
+   */
+  | { type: 'animate'; target: string; props: LayerPropsSource; over: number; ease: string | null; animation?: string | null; loc: Loc }
+  /** `with dissolve 0.5` on its own line: every picture change since the last line shows through one transition. */
+  | { type: 'with'; transition: string; duration?: number; loc: Loc }
   | { type: 'hide'; tag: string; transition: string | null; duration?: number; loc: Loc }
   | { type: 'play'; channel: Channel; asset: AssetRef; loop: boolean | null; fade: number | null; loc: Loc }
   | { type: 'stop'; channel: Channel; fade: number | null; loc: Loc }

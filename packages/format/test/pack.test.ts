@@ -1,15 +1,23 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { compile, compileFiles, loadStory, packStory, PACKED_VERSION } from '../src/index.ts';
+import { compile, compileFiles, loadStory, packStory, FORMAT_VERSION, OLD_PACKED_VERSION } from '../src/index.ts';
 
 const demo = compile(readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8')).story!;
 
 describe('packed stories', () => {
   it('load back exactly as compiled', () => {
     const packed = JSON.parse(JSON.stringify(packStory(demo)));
-    expect(packed.version).toBe(PACKED_VERSION);
+    expect(packed.packed).toBe(true);
+    expect(packed.version).toBe(FORMAT_VERSION);
     expect(loadStory(packed)).toEqual(demo);
+  });
+
+  it('written before the packed flag (version 2) still load, as version 1', () => {
+    const { packed: _, ...old } = JSON.parse(JSON.stringify(packStory(demo)));
+    const loaded = loadStory({ ...old, version: OLD_PACKED_VERSION });
+    expect(loaded.version).toBe(1);
+    expect(loaded.code).toEqual(demo.code);
   });
 
   it('are smaller: file and label are written only when they change', () => {
