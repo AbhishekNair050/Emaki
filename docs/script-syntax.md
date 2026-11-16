@@ -248,6 +248,33 @@ label night:
 - A save, a load or going back shows layers where their moves were going. Skipping and **Animations: reduced** put them there at once.
 - `clip 0 135 1920 810` shows only that rectangle of the screen (x, y, width, height); `feather 32` fades the picture out over that far inside its edges. A clip stays where it is on the screen while the layer moves.
 
+### Colour on layers
+```
+grade dusk: gamma 0.94 0.78 0.57 levels #000010 #546b90 tint #ff6500 14% overlay
+grade memory: gray tint #a06030 30%
+
+label night:
+  show street as far grade dusk
+  show mira silhouette #000000
+  show glow bright 1.2 contrast 0.8 blur 6
+```
+
+| Property | Meaning |
+|---|---|
+| `grade dusk` | Colours the layer with a grade declared at the top. `grade none` takes it off. |
+| `silhouette #000000` | Only the layer's shape, in one colour. `silhouette none` takes it off. |
+| `bright 1.2` | Brightness: 1 is unchanged, each 0.1 adds a tenth of white, lower darkens (0 to 2). |
+| `contrast 0.8` | Contrast: 1 is unchanged, lower is flatter, higher harsher (0 to 3). |
+| `blur 6` | Blurs the layer by that radius (canvas pixels, or a percentage of the screen's width); `blur 0` sharpens it again. |
+
+A grade is a line of steps, done in this order whatever order they're written in:
+- `gray`: the picture in grey first.
+- `gamma 0.9 0.8 0.6`: bends each channel (red, green, blue; one number for all three). Below 1 darkens the middle tones, above 1 lightens them.
+- `levels #000010 #546b90`: where black and white go. `levels #ffffff #000000` is a negative.
+- `tint #ff6500 14% overlay`: lays a colour over the picture, that strongly. Modes: `normal` (the default), `add`, `plus`, `multiply`, `screen`, `overlay`, `dodge`. Several tints apply one after another.
+
+These are set with `show`; `animate` can't move them. The whole picture's `tone` (`tone sepia`) still works as before.
+
 ## Character moves
 Small moves bring a still sprite to life: a startled hop, a nod, a bow.
 

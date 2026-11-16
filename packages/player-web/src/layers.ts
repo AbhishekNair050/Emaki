@@ -7,6 +7,7 @@
  * depth and blend still apply.
  */
 import { ease, type Blend, type CompiledAnimation, type LayerProps } from '@emaki/format';
+import { layerFilter } from './grades.ts';
 
 /**
  * CSS for each blend. CSS has no subtract: the layer adds (plus-lighter) between two inversions of everything behind it,
@@ -55,6 +56,7 @@ export function layerStyle(p: LayerProps, size: [number, number] | null, canvas:
   s.opacity = p.opacity === undefined || p.opacity === 1 ? '' : String(round(p.opacity));
   s.zIndex = p.depth ? String(Math.max(-999999, Math.min(999999, p.depth))) : ''; // under the stage's text and menus (style.css)
   s.mixBlendMode = p.blend && p.blend !== 'normal' ? BLEND_CSS[p.blend] : '';
+  s.filter = layerFilter(p);
   if (isFree(p)) {
     const [ax, ay] = p.anchor ?? [50, 50];
     s.transformOrigin = `${round(ax)}% ${round(ay)}%`;

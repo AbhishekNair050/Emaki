@@ -8,7 +8,7 @@
 import type { Channel } from './ast.ts';
 import type { Expr, Value } from './expr.ts';
 import type { Span } from './markup.ts';
-import type { LayerProps } from './layers.ts';
+import type { Grade, LayerProps } from './layers.ts';
 
 export const FORMAT_ID = 'emaki-story';
 import type { CompiledScreen } from './screens.ts';
@@ -124,6 +124,8 @@ export interface CompiledStory {
   audio: Record<string, string>;
   /** Keyed moves (`animation drift:`, D-062) by name; absent when none. */
   animations?: Record<string, CompiledAnimation>;
+  /** Colour grades (`grade dusk: ...`, D-062) by name; absent when none. */
+  grades?: Record<string, Grade>;
   /** Characters drawn from layers (`layered mira:`): tag -> layers, bottom first. Absent when none. */
   layered?: Record<string, CompiledLayer[]>;
   /** The game's own screens (`screen title:`), by name. Absent when it has none. */

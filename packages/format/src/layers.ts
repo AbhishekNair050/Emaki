@@ -36,6 +36,16 @@ export interface LayerPropsSource {
   clip?: [Coord, Coord, Coord, Coord];
   /** How far in from the clip's sides the picture fades out. */
   feather?: Coord;
+  /** A declared colour grade (`grade dusk`), or `none`. */
+  grade?: string;
+  /** The picture's shape in one colour (`#000000`), or `none`. */
+  silhouette?: string;
+  /** Brightness: 1 is unchanged; each 0.1 adds a tenth of white (0 to 2). */
+  bright?: number;
+  /** Contrast: 1 is unchanged; lower is flatter, higher is harsher (0 to 3). */
+  contrast?: number;
+  /** Blur radius: canvas pixels, or a percentage of the screen's width. */
+  blur?: Coord;
 }
 
 /** Layer properties as runtimes see them: positions in percent of the screen. */
@@ -52,10 +62,129 @@ export interface LayerProps {
   clip?: [number, number, number, number];
   /** [across, down] in percent of the screen's width and height. */
   feather?: [number, number];
+  grade?: string;
+  silhouette?: string;
+  bright?: number;
+  contrast?: number;
+  /** In percent of the screen's width. */
+  blur?: number;
 }
 
 /** The properties `animate` can move (a blend or a depth can't be tweened). */
 export const ANIMATABLE = ['x', 'y', 'anchor', 'zoom', 'rotate', 'opacity'] as const;
+
+// ---------------------------------------------------------------- colour grades
+
+/** How a grade's tint lies on the picture. */
+export const TINT_MODES = ['normal', 'add', 'plus', 'multiply', 'screen', 'overlay', 'dodge'] as const;
+export type TintMode = (typeof TINT_MODES)[number];
+export interface GradeTint { color: [number, number, number]; amount: number; mode: TintMode }
+/**
+ * `grade dusk: gray gamma 0.94 0.78 0.57 levels #000010 #546b90 tint #ff6500 14% overlay` (D-062). Applied in this
+ * order whatever the order written: grey, then gamma and levels, then each tint. Colours are 0-255.
+ */
+export interface Grade {
+  gray?: true;
+  gamma?: [number, number, number];
+  /** Where black and white go: [low, high], each [r, g, b]. */
+  levels?: [[number, number, number], [number, number, number]];
+  tints?: GradeTint[];
+}
+
+const HEX = /^#([0-9a-fA-F]{6})$/;
+const hexRgb = (w: string): [number, number, number] | null => {
+  const m = HEX.exec(w);
+  if (!m) return null;
+  const n = parseInt(m[1]!, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const rgbHex = (c: readonly number[]) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+
+/** Reads a grade's words; returns it, or an error message for the writer. */
+export function parseGrade(words: string[]): Grade | { error: string } {
+  const g: Grade = {};
+  for (let i = 0; i < words.length;) {
+    const k = words[i++]!;
+    switch (k) {
+      case 'gray': case 'grey': g.gray = true; break;
+      case 'gamma': {
+        const v: number[] = [];
+        while (v.length < 3 && NUM.test(words[i] ?? '')) v.push(Number(words[i++]));
+        if (v.length !== 1 && v.length !== 3) return { error: `'gamma' needs one number, or three (red, green, blue): 'gamma 0.9 0.8 0.6'` };
+        if (v.some((n) => n < 0 || n > 10)) return { error: `gamma goes from 0 to 10 (1 is unchanged)` };
+        g.gamma = v.length === 1 ? [v[0]!, v[0]!, v[0]!] : [v[0]!, v[1]!, v[2]!];
+        break;
+      }
+      case 'levels': {
+        const lo = hexRgb(words[i] ?? ''), hi = hexRgb(words[i + 1] ?? '');
+        if (!lo || !hi) return { error: `'levels' needs two colours, where black goes then where white goes: 'levels #000010 #546b90'` };
+        g.levels = [lo, hi];
+        i += 2;
+        break;
+      }
+      case 'tint': {
+        const c = hexRgb(words[i] ?? ''), a = PCT.exec(words[i + 1] ?? '');
+        if (!c || !a) return { error: `'tint' needs a colour and how much: 'tint #ff6500 14%', then a mode if not normal (${TINT_MODES.join(', ')})` };
+        i += 2;
+        let mode: TintMode = 'normal';
+        if ((TINT_MODES as readonly string[]).includes(words[i] ?? '')) mode = words[i++] as TintMode;
+        (g.tints ??= []).push({ color: c, amount: Math.max(0, Math.min(100, Number(a[1]))) / 100, mode });
+        break;
+      }
+      default:
+        return { error: `Unexpected '${k}' in a grade (gray, gamma, levels, tint)` };
+    }
+  }
+  if (!g.gray && !g.gamma && !g.levels && !g.tints) return { error: `A grade needs something to do: gray, gamma, levels or tint` };
+  return g;
+}
+
+/** A grade's words, in the canonical order. */
+export function printGrade(g: Grade): string[] {
+  const out: string[] = [];
+  if (g.gray) out.push('gray');
+  if (g.gamma) out.push('gamma', ...(g.gamma[0] === g.gamma[1] && g.gamma[1] === g.gamma[2] ? [fmt(g.gamma[0])] : g.gamma.map(fmt)));
+  if (g.levels) out.push('levels', rgbHex(g.levels[0]), rgbHex(g.levels[1]));
+  for (const t of g.tints ?? []) out.push('tint', rgbHex(t.color), `${fmt(t.amount * 100)}%`, ...(t.mode === 'normal' ? [] : [t.mode]));
+  return out;
+}
+
+const clamp255 = (v: number) => Math.max(0, Math.min(255, v));
+
+/** One tint over a channel value (0-255). */
+function tintValue(v: number, c: number, a: number, mode: TintMode): number {
+  switch (mode) {
+    case 'normal': return v + (c - v) * a;
+    case 'add': return Math.min(v + c * a, 255);
+    case 'plus': return v + (Math.min(v + c, 255) - v) * a;
+    case 'multiply': return v + ((c * v) / 255 - v) * a;
+    case 'screen': return v + (255 - ((255 - c) * (255 - v)) / 255 - v) * a;
+    case 'overlay': {
+      const cn = c / 255;
+      const t = v < 128 ? v * 2 * cn : 255 - (255 - v) * (2 - 2 * cn);
+      return v + (t - v) * a;
+    }
+    case 'dodge': return v <= 3 ? 0 : Math.min((v * 255) / Math.max(255 - c * a, 0.001), 255);
+  }
+}
+
+/**
+ * What a grade, a brightness and a contrast do to one channel (0 red, 1 green, 2 blue) of a value 0-255, after the
+ * grade's grey (the one step that mixes channels). Runtimes draw from this curve.
+ */
+export function gradeChannel(g: Grade | undefined, channel: 0 | 1 | 2, v: number, bright = 1, contrast = 1): number {
+  if (g?.gamma || g?.levels) {
+    const gm = g.gamma?.[channel] ?? 1;
+    if (gm <= 0) v = 0;
+    else if (gm !== 1) v = ((v / 255) ** (1 / gm)) * 255;
+    const lo = g.levels?.[0][channel] ?? 0, hi = g.levels?.[1][channel] ?? 255;
+    v = lo + ((hi - lo) * v) / 255;
+  }
+  for (const t of g?.tints ?? []) v = tintValue(v, t.color[channel], t.amount, t.mode);
+  v = clamp255(v + 255 * (bright - 1));
+  const k = contrast <= 1 ? (200 * contrast + 55) / 255 : 127.5 / Math.max(0.5, 127.5 - (100 * contrast - 100));
+  return clamp255((v - 127.5) * k + 127.5);
+}
 
 // ---------------------------------------------------------------- easing
 
@@ -206,8 +335,37 @@ export function parseLayerProps(words: string[], animate = false): { props: Laye
         props.feather = c;
         break;
       }
+      case 'grade': {
+        if (animate) return { error: `'grade' can't be animated; set it with 'show'` };
+        const g = words[i++];
+        if (!g || !/^[A-Za-z_]\w*$/.test(g)) return { error: `'grade' needs a grade's name (declared with 'grade name: ...'), or none` };
+        props.grade = g;
+        break;
+      }
+      case 'silhouette': {
+        if (animate) return { error: `'silhouette' can't be animated; set it with 'show'` };
+        const c = words[i++];
+        if (!c || (c !== 'none' && !HEX.test(c))) return { error: `'silhouette' needs a colour like #000000, or none` };
+        props.silhouette = c.toLowerCase();
+        break;
+      }
+      case 'bright': case 'contrast': {
+        if (animate) return { error: `'${k}' can't be animated; set it with 'show'` };
+        const max = k === 'bright' ? 2 : 3;
+        const v = num(words[i++], k, (n) => n >= 0 && n <= max, `0 to ${max}; 1 is unchanged`);
+        if (typeof v === 'string') return { error: v };
+        props[k] = v;
+        break;
+      }
+      case 'blur': {
+        if (animate) return { error: `'blur' can't be animated; set it with 'show'` };
+        const c = coord(words[i++]);
+        if (!c || c.v < 0) return { error: `'blur' needs a radius: canvas pixels (8) or a percentage of the screen's width` };
+        props.blur = c;
+        break;
+      }
       default:
-        return { error: `Unexpected '${k}' (layer properties: at, anchor, zoom, rotate, opacity, depth, blend, clip, feather)` };
+        return { error: `Unexpected '${k}' (layer properties: at, anchor, zoom, rotate, opacity, depth, blend, clip, feather, grade, silhouette, bright, contrast, blur)` };
     }
   }
   return at !== undefined ? { props, at } : { props };
@@ -232,6 +390,11 @@ export function printLayerProps(p: LayerPropsSource): string[] {
   if (p.blend) out.push('blend', p.blend);
   if (p.clip) out.push('clip', ...p.clip.map(coordText));
   if (p.feather) out.push('feather', coordText(p.feather));
+  if (p.grade) out.push('grade', p.grade);
+  if (p.silhouette) out.push('silhouette', p.silhouette);
+  if (p.bright !== undefined) out.push('bright', fmt(p.bright));
+  if (p.contrast !== undefined) out.push('contrast', fmt(p.contrast));
+  if (p.blur) out.push('blur', coordText(p.blur));
   return out;
 }
 
@@ -250,6 +413,11 @@ export function compileLayerProps(p: LayerPropsSource, canvas: [number, number] 
   if (p.blend) out.blend = p.blend;
   if (p.clip) out.clip = [pct(p.clip[0], w), pct(p.clip[1], h), pct(p.clip[2], w), pct(p.clip[3], h)];
   if (p.feather) out.feather = [pct(p.feather, w), pct(p.feather, h)];
+  if (p.grade) out.grade = p.grade;
+  if (p.silhouette) out.silhouette = p.silhouette;
+  if (p.bright !== undefined) out.bright = p.bright;
+  if (p.contrast !== undefined) out.contrast = p.contrast;
+  if (p.blur) out.blur = pct(p.blur, w);
   return out;
 }
 

@@ -13,7 +13,7 @@
  * declarations (characters, images, audio, variables) and each label. Inside
  * blocks, blank lines are kept where the writer put them (collapsed to one).
  */
-import { printLayerProps } from './layers.ts';
+import { printGrade, printLayerProps } from './layers.ts';
 import type { AssetRef, Program, Stmt, Trivia } from './ast.ts';
 import { printExpr } from './expr.ts';
 import { printScreenLine, type ScreenItem } from './screens.ts';
@@ -80,6 +80,12 @@ export function print(program: Program): string {
       trivia(k.leading, INDENT, out);
       out.push(INDENT + [String(k.time), ...printLayerProps(k.props), k.ease ? `ease ${k.ease}` : ''].filter(Boolean).join(' ') + tail(k));
     }
+  }
+
+  if (program.grades?.length) blank();
+  for (const g of program.grades ?? []) {
+    trivia(g.leading, '', out);
+    out.push(`grade ${g.name}: ${printGrade(g.grade).join(' ')}${tail(g)}`);
   }
 
   for (const sc of program.screens) {

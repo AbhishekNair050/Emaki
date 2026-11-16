@@ -10,6 +10,7 @@ import {
   type CompiledScreenItem, type CompiledStory, type CompiledTranslation, type LayerProps, type ScreenAction, type Span, type Value,
 } from '@emaki/format';
 import { animationFrames, applyLayer, invertsFor, isFree, layerProps, outerOf, removeLayer } from './layers.ts';
+import { useGrades } from './grades.ts';
 import {
   Runner, StoryError,
   type Block, type CameraState, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -160,6 +161,7 @@ export class Player {
 
   constructor(root: HTMLElement, story: CompiledStory, opts: PlayerOptions = {}) {
     this.story = story;
+    useGrades(story.grades);
     this.runner = new Runner(story);
     this.runner.callPlugin = this.callPlugin;
     this.opts = opts;
@@ -308,6 +310,7 @@ export class Player {
   reload(story: CompiledStory): boolean {
     const save = this.mode === 'playing' && this.runner.block ? this.runner.save() : null;
     this.story = story;
+    useGrades(story.grades);
     this.applyStageShape();
     this.runner = new Runner(story);
     this.runner.callPlugin = this.callPlugin;

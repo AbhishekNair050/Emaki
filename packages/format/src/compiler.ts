@@ -15,7 +15,7 @@ import {
 import { EvalError, evaluate, freeVars, pluginCalls, type Expr, type Value } from './expr.ts';
 import { checkPluginCall, checkPluginFunctions, type PluginCommandSpec, type PluginManifest } from './plugins.ts';
 import { KEY_ACTIONS, REPLACEABLE_SCREENS, compileScreens, parseCanvas, saveSlotCount, screenCanLeave, screenTargets } from './screens.ts';
-import { compileLayerProps } from './layers.ts';
+import { compileLayerProps, type Grade, type LayerPropsSource } from './layers.ts';
 import { parseMarkup, type Span } from './markup.ts';
 import { parse, type ParseResult } from './parser.ts';
 
@@ -149,6 +149,7 @@ export function combineFiles(main: string, parts: StoryFile[] = [], opts: Compil
   }
   if (program.replays) program.replays = [...program.replays];
   if (program.animations) program.animations = [...program.animations];
+  if (program.grades) program.grades = [...program.grades];
   const all: Diagnostic[] = [...mainResult.diagnostics];
   for (const part of parts) {
     const r = parseFile(part.path, part.source);
@@ -166,6 +167,7 @@ export function combineFiles(main: string, parts: StoryFile[] = [], opts: Compil
     program.endings.push(...r.program.endings);
     if (r.program.replays?.length) (program.replays ??= []).push(...r.program.replays);
     if (r.program.animations?.length) (program.animations ??= []).push(...r.program.animations);
+    if (r.program.grades?.length) (program.grades ??= []).push(...r.program.grades);
     program.labels.push(...r.program.labels);
   }
   return { program, diagnostics: all };
@@ -318,6 +320,14 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     if (a.loop && (keys.at(-1)?.t ?? 0) <= 0) error(a.loc, 'bad-animation', `A looping animation needs keys after 0 seconds`);
     animations[a.name] = { loop: a.loop, duration: keys.at(-1)?.t ?? 0, keys };
   }
+  const grades: Record<string, Grade> = {};
+  for (const g of program.grades ?? []) {
+    if (grades[g.name]) { error(g.loc, 'duplicate', `Grade '${g.name}' is already defined`); continue; }
+    grades[g.name] = g.grade;
+  }
+  const checkGrade = (p: LayerPropsSource | undefined, loc: Loc) => {
+    if (p?.grade && p.grade !== 'none' && !grades[p.grade]) error(loc, 'unknown-grade', didYouMean(p.grade, Object.keys(grades)) ?? `No grade named '${p.grade}'. Declare it at the top: grade ${p.grade}: ...`);
+  };
 
   // --- Code generation --------------------------------------------------
   const code: Instr[] = [];
@@ -399,6 +409,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         }
         if (s.at && !POSITIONS.includes(s.at) && !isPercentPosition(s.at)) error(s.loc, 'bad-position', `Unknown position '${s.at}' (use ${POSITIONS.join(', ')}, or a percentage of the screen's width like 30%)`);
         checkTransition(s.transition, s.loc);
+        checkGrade(s.props, s.loc);
         frag.code.push({
           op: 'show', tag: s.tag, attrs: s.attrs.length ? s.attrs : null, ...(s.as ? { layer: s.as } : {}), at: s.at,
           ...(s.props ? { props: compileLayerProps(s.props, layerCanvas) } : {}), transition: s.transition, ...dur(s), src,
@@ -592,7 +603,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   const declKey = fnv1a(JSON.stringify([
     characters, images, layered, audio, vars, endings, achievements,
     program.screens.map((d) => [d.name, screenCanLeave(d)]), opts.plugins ?? null,
-    layerCanvas, [...layerNames].sort(), Object.keys(animations).sort(),
+    layerCanvas, [...layerNames].sort(), Object.keys(animations).sort(), Object.keys(grades).sort(),
   ]));
   const labelHashes: string[] = [];
   for (const l of program.labels) {
@@ -724,6 +735,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     meta, start, characters, images, audio,
     ...(Object.keys(layered).length ? { layered } : {}),
     ...(Object.keys(animations).length ? { animations } : {}),
+    ...(Object.keys(grades).length ? { grades } : {}),
     ...(Object.keys(screens).length ? { screens } : {}),
     ...(Object.keys(achievements).length ? { achievements } : {}),
     ...(Object.keys(endings).length ? { endings } : {}),

@@ -6,7 +6,7 @@
  * once.
  */
 import type {
-  AchievementDef, AnimationDef, AnimationKey, EndingDef,
+  AchievementDef, AnimationDef, AnimationKey, EndingDef, GradeDef,
   AssetRef, AudioDef, Channel, CharacterDef, Choice, Diagnostic, IfBranch, ImageDef, LabelDef, LayerDef, LayeredDef, LayerOption, Program, ReplayDef, ScreenMode, Stmt,
   Motion, Tone, Trivia, VarDef,
 } from './ast.ts';
@@ -14,7 +14,7 @@ import { ExprError, parseExpr, readQuoted, type Expr } from './expr.ts';
 import { TONES } from './ast.ts';
 import { SCREEN_TRANSITIONS, parseScreenLine, type ScreenDef, type ScreenItem } from './screens.ts';
 import { parsePluginCall } from './plugins.ts';
-import { EASES, hasProps, parseLayerProps, type LayerPropsSource } from './layers.ts';
+import { EASES, hasProps, parseGrade, parseLayerProps, type LayerPropsSource } from './layers.ts';
 
 interface Line {
   indent: number;
@@ -56,7 +56,10 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Statements that aren't keywords: `flash: Hi!` is still a character named flash speaking. */
 export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone', 'animate']);
 /** Words that end a `show`'s image name: its layer's name and properties (D-062). */
-const SHOW_PROPS = new Set(['at', 'anchor', 'zoom', 'rotate', 'opacity', 'depth', 'blend', 'clip', 'feather']);
+const COLOUR_PROPS = new Set(['grade', 'silhouette', 'bright', 'contrast', 'blur']);
+const propValue = (k: string, v: string | undefined): boolean =>
+  v !== undefined && (k === 'grade' ? /^[A-Za-z_]\w*$/.test(v) : k === 'silhouette' ? /^(#[0-9a-fA-F]{6}|none)$/.test(v) : /^-?\d+(\.\d+)?%?$/.test(v));
+const SHOW_PROPS = new Set(['at', 'anchor', 'zoom', 'rotate', 'opacity', 'depth', 'blend', 'clip', 'feather', 'grade', 'silhouette', 'bright', 'contrast', 'blur']);
 /** Colours `flash` accepts besides #rgb / #rrggbb. */
 export const FLASH_COLORS = ['white', 'black', 'red'];
 const SECONDS = /^\d+(\.\d+)?$/;
@@ -157,6 +160,11 @@ export function parse(source: string): ParseResult {
 
     if (word === 'animation') {
       parseAnimation(ln);
+      return;
+    }
+
+    if (word === 'grade') {
+      parseGradeDef(ln);
       return;
     }
 
@@ -396,7 +404,8 @@ export function parse(source: string): ParseResult {
         if (/^screen(\s|$)/.test(args)) return screenStmt('show', args, ln);
         const { words, transition, duration } = splitWith(args, ln.line);
         // the image's words end at `as` or the first layer property (D-062)
-        let end = words.findIndex((w) => w === 'as' || SHOW_PROPS.has(w));
+        // (the colour words only when a value follows, so an expression called 'bright' still names the image)
+        let end = words.findIndex((w, i) => w === 'as' || (SHOW_PROPS.has(w) && (!COLOUR_PROPS.has(w) || propValue(w, words[i + 1]))));
         if (end < 0) end = words.length;
         const image = words.slice(0, end);
         let rest = words.slice(end);
@@ -577,6 +586,17 @@ export function parse(source: string): ParseResult {
       def.keys.push(attach<AnimationKey>({ time, props: r.props, ease, loc: { line: c.line } }, c, i === 0));
     });
     (program.animations ??= []).push(attach(def, ln, program.animations.length === 0));
+  }
+
+  /** `grade dusk: gamma 0.94 0.78 0.57 levels #000010 #546b90 tint #ff6500 14% overlay` (D-062). */
+  function parseGradeDef(ln: Line): void {
+    noChildren(ln);
+    const m = /^grade\s+([A-Za-z_]\w*)\s*:\s*(.*)$/.exec(ln.text);
+    if (!m) { err(ln.line, 'bad-grade', `Expected 'grade name: ...', like 'grade dusk: gamma 0.9 0.8 0.6 tint #ff6500 14% overlay'`); return; }
+    if (m[1] === 'none') { err(ln.line, 'bad-grade', `'none' takes a layer's grade off, so it can't be a grade's name`); return; }
+    const r = parseGrade(m[2]!.split(/\s+/).filter(Boolean));
+    if ('error' in r) { err(ln.line, 'bad-grade', r.error); return; }
+    (program.grades ??= []).push(attach<GradeDef>({ name: m[1]!, grade: r, loc: { line: ln.line } }, ln, program.grades.length === 0));
   }
 
   /**

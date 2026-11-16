@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compile, ease, EASES, parse, print, type Instr } from '../src/index.ts';
+import { compile, ease, EASES, gradeChannel, parse, print, type Instr } from '../src/index.ts';
 
 const SRC = `---
 title: Layers
@@ -134,6 +134,62 @@ label start:
     expect(bad('animation wobble:\n  0 depth 3')[0]).toMatch(/can't be animated/);
     expect(bad('animation other:\n  0 zoom 1')[0]).toMatch(/No animation named 'wobble'/);
     expect(bad('animation wobble loop:\n  0 zoom 1')[0]).toMatch(/needs keys after 0/);
+  });
+
+  it('declare colour grades and put them, silhouettes, brightness, contrast and blur on layers', () => {
+    const src = `---
+canvas: 1920x1080
+---
+image sky = "bg/sky.png"
+image sky bright = "bg/sky_bright.png"
+image mira = "m.png"
+
+grade dusk: gamma 0.94 0.78 0.57 levels #000010 #546b90 tint #ff6500 14% overlay tint #d73d00 8%
+grade old: gray gamma 1.1
+
+label start:
+  show sky bright
+  show sky as back grade dusk bright 1.2 contrast 0.8 blur 8
+  show mira silhouette #000000
+  "One."
+  show mira silhouette none grade none
+`;
+    const p = parse(src);
+    expect(p.diagnostics).toEqual([]);
+    expect(p.program.grades![0]).toMatchObject({ name: 'dusk', grade: { gamma: [0.94, 0.78, 0.57], levels: [[0, 0, 16], [84, 107, 144]], tints: [{ color: [255, 101, 0], amount: 0.14, mode: 'overlay' }, { color: [215, 61, 0], amount: 0.08, mode: 'normal' }] } });
+    const body = p.program.labels[0]!.body;
+    expect(body[0]).toMatchObject({ tag: 'sky', attrs: ['bright'] }); // an expression called 'bright' is still the image
+    expect(body[0]).not.toHaveProperty('props');
+    expect(body[1]).toMatchObject({ props: { grade: 'dusk', bright: 1.2, contrast: 0.8, blur: { v: 8, unit: 'px' } } });
+    const printed = print(p.program);
+    expect(printed).toContain('grade dusk: gamma 0.94 0.78 0.57 levels #000010 #546b90 tint #ff6500 14% overlay tint #d73d00 8%\ngrade old: gray gamma 1.1\n');
+    expect(printed).toContain('  show sky as back grade dusk bright 1.2 contrast 0.8 blur 8\n');
+    expect(print(parse(printed).program)).toBe(printed);
+    const r = compile(src);
+    expect(r.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(Object.keys(r.story!.grades!)).toEqual(['dusk', 'old']);
+    expect(shows(r.story!.code)[1]!.props).toMatchObject({ grade: 'dusk', blur: 8 / 19.2 });
+    expect(shows(r.story!.code)[3]!.props).toEqual({ silhouette: 'none', grade: 'none' });
+  });
+
+  it('draw a grade as curves on each channel, as the original engine does', () => {
+    expect(gradeChannel(undefined, 0, 100)).toBeCloseTo(100); // nothing: unchanged
+    expect(gradeChannel({ levels: [[255, 255, 255], [0, 0, 0]] }, 1, 55)).toBeCloseTo(200); // a negative
+    expect(gradeChannel({ gamma: [0.5, 1, 1] }, 0, 127.5)).toBeCloseTo(63.75); // gamma below 1 darkens
+    expect(gradeChannel({ tints: [{ color: [255, 0, 0], amount: 0.5, mode: 'normal' }] }, 0, 0)).toBeCloseTo(127.5);
+    expect(gradeChannel(undefined, 2, 100, 1 + 20 / 255)).toBeCloseTo(120); // brightness adds
+    expect(gradeChannel(undefined, 2, 127.5, 1, 0.5)).toBeCloseTo(127.5); // contrast turns about the middle
+    expect(gradeChannel(undefined, 2, 255, 1, 0)).toBeCloseTo(127.5 + 127.5 * 55 / 255);
+  });
+
+  it('explain mistakes in grades', () => {
+    const bad = (decl: string, line = 'show a grade dusk') => compile(`image a = "a.png"\n${decl}\nlabel start:\n  ${line}\n`).diagnostics.filter((d) => d.severity === 'error').map((d) => d.message);
+    expect(bad('grade dusk: gamma 1 2')[0]).toMatch(/one number, or three/);
+    expect(bad('grade dusk: tint #ff0000')[0]).toMatch(/'tint' needs a colour and how much/);
+    expect(bad('grade dusk: sparkle')[0]).toMatch(/Unexpected 'sparkle'/);
+    expect(bad('grade dusky: gray')[0]).toMatch(/No grade named 'dusk'|dusky/);
+    expect(bad('grade dusk: gray', 'show a silhouette black')[0]).toMatch(/silhouette black/); // no colour after it: read as the image's name
+    expect(bad('grade dusk: gray', 'animate a bright 2 over 1')[0]).toMatch(/can't be animated/);
   });
 
   it('leave scripts without layer properties as they were', () => {

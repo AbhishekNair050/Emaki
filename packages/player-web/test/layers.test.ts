@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { animationFrames, easingCss, freeBox, layerStyle } from '../src/layers.ts';
+import { curve } from '../src/grades.ts';
 
 const canvas: [number, number] = [1920, 1080];
 
@@ -34,5 +35,14 @@ describe('drawing free layers (D-062)', () => {
     expect(frames[1]!.easing).toMatch(/^linear\(/);
     expect(frames[2]).toMatchObject({ offset: 1, left: '50%', opacity: '0', scale: '2 2' });
     expect(end).toEqual({ x: 75, y: 50, opacity: 0, zoom: [2, 2] });
+  });
+
+  it('blurs, and draws a grade as a table on each channel', () => {
+    expect(layerStyle({ blur: 0.5 }, null, canvas).filter).toBe('blur(0.5cqw)');
+    expect(layerStyle({}, null, canvas).filter).toBe('');
+    const neg = curve({ levels: [[255, 255, 255], [0, 0, 0]] }, 0, 1, 1);
+    expect(neg[0]).toBe(1);
+    expect(neg.at(-1)).toBe(0);
+    expect(curve(undefined, 0, 1, 1)[64]).toBeCloseTo(0.5, 2);
   });
 });

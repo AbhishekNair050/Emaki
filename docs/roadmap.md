@@ -106,7 +106,7 @@ Composed shots, drawn the way the original game draws them (D-062). Proof: a sec
 - [x] Panels: `clip` with a feathered edge
 - [x] Line previews also replay the labels that run straight into the line's label
 - [x] Side-by-side harness against the original: on a sample of 24 moments, 14 within a small difference
-- [ ] Colour grades, silhouettes, brightness, contrast, blur
+- [x] Colour grades (`grade dusk: gamma ... levels ... tint ...`), silhouettes, brightness, contrast, blur: the port's 83 colour presets drawn as SVG curves; the side-by-side sample goes from 23.4 to 15.5
 - [x] Esc and right-click actions from the header: menu, save to an empty slot, quick save, hide, settings, history (D-063); the port's own title, menu, save, load and settings screens
 - [ ] Wipes through rule pictures; `textbox hide`; several ambience loops
 

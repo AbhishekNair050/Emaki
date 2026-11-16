@@ -1,4 +1,4 @@
-import type { LayerPropsSource } from './layers.ts';
+import type { Grade, LayerPropsSource } from './layers.ts';
 import type { ScreenDef } from './screens.ts';
 import type { Expr } from './expr.ts';
 import type { PluginCall } from './plugins.ts';
@@ -55,6 +55,9 @@ export interface AnimationKey extends Trivia { time: number; props: LayerPropsSo
 /** `animation flicker loop:` keyed moves a layer can play (D-062). */
 export interface AnimationDef extends Trivia { name: string; loop: boolean; keys: AnimationKey[]; loc: Loc }
 
+/** `grade dusk: gamma 0.94 0.78 0.57 tint #ff6500 14% overlay`: a colour grade layers can wear (D-062). */
+export interface GradeDef extends Trivia { name: string; grade: Grade; loc: Loc }
+
 /** `layered mira:` a character drawn from stacked layers (body, outfit, face), bottom first. */
 export interface LayeredDef extends Trivia { tag: string; layers: LayerDef[]; loc: Loc }
 export interface VarDef extends Trivia {
@@ -82,6 +85,8 @@ export interface Program {
   layered: LayeredDef[];
   /** `animation` declarations (D-062); absent when there are none. */
   animations?: AnimationDef[];
+  /** `grade` declarations (D-062); absent when there are none. */
+  grades?: GradeDef[];
   /** `screen title:` and friends: the game's own screens (see screens.ts). */
   screens: ScreenDef[];
   vars: VarDef[];
