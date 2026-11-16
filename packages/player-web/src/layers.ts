@@ -53,7 +53,7 @@ export function layerStyle(p: LayerProps, size: [number, number] | null, canvas:
   s.scale = zx === 1 && zy === 1 ? '' : `${round(zx)} ${round(zy)}`;
   s.rotate = p.rotate ? `${round(p.rotate)}deg` : '';
   s.opacity = p.opacity === undefined || p.opacity === 1 ? '' : String(round(p.opacity));
-  s.zIndex = p.depth ? String(p.depth) : '';
+  s.zIndex = p.depth ? String(Math.max(-999999, Math.min(999999, p.depth))) : ''; // under the stage's text and menus (style.css)
   s.mixBlendMode = p.blend && p.blend !== 'normal' ? BLEND_CSS[p.blend] : '';
   if (isFree(p)) {
     const [ax, ay] = p.anchor ?? [50, 50];

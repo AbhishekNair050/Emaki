@@ -79,6 +79,13 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 /* A layer at a point (D-062): placed and sized by layers.ts, turned and zoomed about its anchor. */
 .sprite.free { bottom: auto; transform: none; transition: none; filter: none; }
 .sprite.free img { width: 100%; height: 100%; }
+/*
+ * Layers stack by depth among themselves and blend with the background, so their container makes no stacking context
+ * of its own: everything above them on the stage (text, menus, screens, the picture a `with` freezes) stays above any
+ * depth, and movies above all.
+ */
+.stage > .sprite-layer ~ * { z-index: 1000000; }
+.stage > .movie { z-index: 1000001; }
 /* A subtracting layer's inversions (D-062, layers.ts invertsFor). */
 .invert { position: absolute; inset: 0; pointer-events: none; backdrop-filter: invert(1); }
 /* A clipped layer's box (D-062): the screen, masked to the clip. */
