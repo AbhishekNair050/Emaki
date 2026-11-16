@@ -54,7 +54,7 @@ export const KEYWORDS = new Set([
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Statements that aren't keywords: `flash: Hi!` is still a character named flash speaking. */
-export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone', 'animate']);
+export const EFFECTS = new Set(['shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone', 'animate', 'textbox']);
 /** Words that end a `show`'s image name: its layer's name and properties (D-062). */
 const COLOUR_PROPS = new Set(['grade', 'silhouette', 'bright', 'contrast', 'blur']);
 const propValue = (k: string, v: string | undefined): boolean =>
@@ -435,9 +435,9 @@ export function parse(source: string): ParseResult {
       }
       case 'with': {
         // on its own line: the picture changes since the last line, through one transition
-        const { words, transition, duration } = splitWith(t, ln.line);
+        const { words, transition, rule, duration } = splitWith(t, ln.line, true);
         if (words.length || !transition) { err(ln.line, 'bad-with', `Expected 'with dissolve' or 'with dissolve 0.5'`); return null; }
-        return { type: 'with', transition, ...(duration !== undefined ? { duration } : {}), loc };
+        return { type: 'with', transition, ...(rule ? { rule } : {}), ...(duration !== undefined ? { duration } : {}), loc };
       }
       case 'hide': {
         if (/^screen(\s|$)/.test(args)) return screenStmt('hide', args, ln);
@@ -703,6 +703,19 @@ export function parse(source: string): ParseResult {
       if (words.length) { err(ln.line, 'bad-tone', `Unexpected '${words.join(' ')}'. ${usage}`); return null; }
       return { type: 'tone', tone: tone as Tone, over, loc };
     }
+    if (word === 'textbox') {
+      const usage = `Expected 'textbox hide' or 'textbox show', optionally with 'over 0.5'`;
+      const how = words.shift();
+      if (how !== 'hide' && how !== 'show') { err(ln.line, 'bad-textbox', usage); return null; }
+      let over: number | null = null;
+      if (words[0] === 'over') {
+        words.shift();
+        over = seconds(words.shift(), 10, 'over');
+        if (over === null) return null;
+      }
+      if (words.length) { err(ln.line, 'bad-textbox', `Unexpected '${words.join(' ')}'. ${usage}`); return null; }
+      return { type: 'textbox', show: how === 'show', over, loc };
+    }
     if (word === 'movie') {
       if (!args.startsWith('"')) { err(ln.line, 'bad-movie', `Expected 'movie "movie/opening.mp4"' (a video file in assets/)`); return null; }
       const qv = safeQuoted(args, ln.line);
@@ -791,13 +804,21 @@ export function parse(source: string): ParseResult {
   }
 
   /** `... with dissolve` or `... with dissolve 1.5` (seconds). */
-  function splitWith(args: string, line: number): { words: string[]; transition: string | null; duration?: number } {
+  function splitWith(args: string, line: number, allowRule = false): { words: string[]; transition: string | null; rule?: string; duration?: number } {
     const words = args.split(/\s+/).filter(Boolean);
     const wi = words.indexOf('with');
     if (wi < 0) return { words, transition: null };
     const transition = words[wi + 1] ?? null;
     if (!transition) err(line, 'bad-transition', `'with' needs a transition name (fade, dissolve)`);
     let rest = words.slice(wi + 2);
+    let rule: string | undefined;
+    if (transition === 'wipe') {
+      // the rule picture: dark parts change first
+      if (!allowRule) err(line, 'bad-transition', `A wipe goes on its own line after the changes: 'with wipe rule_13 0.8'`);
+      rule = rest[0]?.replace(/^"(.*)"$/, '$1');
+      if (!rule || /^\d+(\.\d+)?$/.test(rule)) err(line, 'bad-transition', `'with wipe' needs a rule picture: an image's name or a path, like 'with wipe rule_13 0.8'`);
+      else rest = rest.slice(1);
+    }
     let duration: number | undefined;
     if (rest.length && /^\d+(\.\d+)?$/.test(rest[0]!)) {
       duration = Number(rest[0]);
@@ -805,7 +826,7 @@ export function parse(source: string): ParseResult {
       rest = rest.slice(1);
     }
     if (rest.length) err(line, 'bad-transition', `Unexpected '${rest.join(' ')}' after the transition (only a duration in seconds can follow, like 'with dissolve 1.5')`);
-    return { words: words.slice(0, wi), transition, ...(duration !== undefined ? { duration } : {}) };
+    return { words: words.slice(0, wi), transition, ...(rule ? { rule } : {}), ...(duration !== undefined ? { duration } : {}) };
   }
 
   function parseAudioOpts(rest: string, line: number, allowLoop: boolean): { loop: boolean | null; fade: number | null } | null {

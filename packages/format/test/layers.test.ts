@@ -192,6 +192,41 @@ label start:
     expect(bad('grade dusk: gray', 'animate a bright 2 over 1')[0]).toMatch(/can't be animated/);
   });
 
+  it('wipe through a rule picture, and take the text off the picture', () => {
+    const src = `image a = "a.png"
+image rule_13 = "rules/RULE_13.png"
+
+label start:
+  show a
+  with wipe rule_13 0.8
+  textbox hide over 0.5
+  wait 1
+  show a
+  with wipe "rules/RULE_02.png"
+  textbox show
+  "Back."
+`;
+    const p = parse(src);
+    expect(p.diagnostics).toEqual([]);
+    const body = p.program.labels[0]!.body;
+    expect(body[1]).toEqual({ type: 'with', transition: 'wipe', rule: 'rule_13', duration: 0.8, loc: { line: 6 } });
+    expect(body[2]).toMatchObject({ type: 'textbox', show: false, over: 0.5 });
+    const printed = print(p.program);
+    expect(printed).toContain('  with wipe rule_13 0.8\n  textbox hide over 0.5\n');
+    expect(printed).toContain('  with wipe "rules/RULE_02.png"\n  textbox show\n');
+    expect(print(parse(printed).program)).toBe(printed);
+    const r = compile(src);
+    expect(r.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const withs = r.story!.code.filter((i) => i.op === 'with');
+    expect(withs.map((w) => (w as { rule?: string }).rule)).toEqual(['rules/RULE_13.png', 'rules/RULE_02.png']);
+    expect(r.story!.code.filter((i) => i.op === 'textbox')).toMatchObject([{ show: false, duration: 0.5 }, { show: true }]);
+    const bad = (line: string) => compile(`image a = "a.png"\nlabel start:\n  ${line}\n`).diagnostics.filter((d) => d.severity === 'error').map((d) => d.message);
+    expect(bad('with wipe 0.8')[0]).toMatch(/needs a rule picture/);
+    expect(bad('with wipe nothing')[0]).toMatch(/No image named 'nothing'/);
+    expect(bad('show a with wipe rule')[0]).toMatch(/on its own line/);
+    expect(bad('textbox away')[0]).toMatch(/textbox hide/);
+  });
+
   it('leave scripts without layer properties as they were', () => {
     const r = compile('image mira smile = "m.png"\nlabel start:\n  show mira smile at 30% with dissolve\n  "Hi."\n');
     expect(shows(r.story!.code)[0]).toEqual(expect.objectContaining({ tag: 'mira', attrs: ['smile'], at: '30%', transition: 'dissolve' }));

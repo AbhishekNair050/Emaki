@@ -381,7 +381,8 @@ export class Analysis {
     const values = (xs: string[], detail: string) => xs.map((x): Completion => ({ label: x, kind: 'value', detail }));
     const images = syms.filter((s) => s.kind === 'image');
 
-    if (/\bwith\s+\w*$/.test(before)) return values(TRANSITIONS, 'transition');
+    // a wipe goes only on a 'with' line of its own
+    if (/\bwith\s+\w*$/.test(before)) return values(/^\s*with\s+\w*$/.test(before) ? TRANSITIONS : TRANSITIONS.filter((t) => t !== 'wipe'), 'transition');
     if (/^\s+show\s.*\bat\s+\w*$/.test(before)) return values(POSITIONS, 'position');
     if (/^\s*(jump|call)\s+\w*$/.test(before) || /^replay\s+\w*$/.test(before) || /^replay\s.*\buntil\s+\w*$/.test(before)
       || (/^start\s*:\s*\w*$/.test(before) && this.inHeader(line))) return of('label');

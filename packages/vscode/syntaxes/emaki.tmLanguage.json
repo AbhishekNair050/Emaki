@@ -577,6 +577,15 @@
           }
         },
         {
+          "match": "^\\s+(textbox)\\s+(hide|show)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
+          "captures": {
+            "1": { "name": "keyword.other.textbox.emaki" },
+            "2": { "name": "constant.language.emaki" },
+            "3": { "name": "keyword.other.over.emaki" },
+            "4": { "name": "constant.numeric.emaki" }
+          }
+        },
+        {
           "match": "^\\s+(tone)\\s+(sepia|mono|none)(?:\\s+(over)\\s+(\\d+(?:\\.\\d+)?))?\\s*(?=$|(?<=\\s)#(?:\\s|$))",
           "captures": {
             "1": {

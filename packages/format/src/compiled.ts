@@ -41,7 +41,8 @@ export type Instr =
    */
   | { op: 'animate'; layer: string; props: LayerProps; duration: number; ease: string; animation?: string | null; src: SrcRef }
   /** Show the picture changes since the last block through one transition (D-062). */
-  | { op: 'with'; transition: string; duration?: number; src: SrcRef }
+  /** `rule`: the rule picture's path, for a `wipe`. */
+  | { op: 'with'; transition: string; rule?: string; duration?: number; src: SrcRef }
   | { op: 'hide'; tag: string; transition: string | null; duration?: number; src: SrcRef }
   | { op: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null; src: SrcRef }
   | { op: 'stop'; channel: Channel; fade: number | null; src: SrcRef }
@@ -68,6 +69,7 @@ export type Instr =
   | { op: 'still'; target: string; src: SrcRef }
   /** Tint the picture (`sepia`, `mono`; `none` for normal colours) over `duration` seconds. Lasts across scenes. */
   | { op: 'tone'; tone: 'sepia' | 'mono' | 'none'; duration?: number; src: SrcRef }
+  | { op: 'textbox'; show: boolean; duration?: number; src: SrcRef }
   /** A full-screen video; blocks until it ends or the player skips it. */
   | { op: 'movie'; path: string; src: SrcRef }
   /**

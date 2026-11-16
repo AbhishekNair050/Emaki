@@ -11,6 +11,7 @@ import {
 } from '@emaki/format';
 import { animationFrames, applyLayer, invertsFor, isFree, layerProps, outerOf, removeLayer } from './layers.ts';
 import { useGrades } from './grades.ts';
+import { runWipe, wipeMasks } from './wipe.ts';
 import {
   Runner, StoryError,
   type Block, type CameraState, type Effect, type SaveData, type SayBlock, type SceneState, type Step,
@@ -539,6 +540,8 @@ export class Player {
 
   private renderBlock(b: Block, instant: boolean): void {
     this.clearTimers();
+    // `textbox hide` lasts until the next line (or choice)
+    if (b.type === 'say' || b.type === 'menu') this.setTextShown(true, 0);
     this.choicesEl.replaceChildren();
     this.drawStoryScreens(b);
     // The game's own text box: its buttons follow what can be done now (Back at the first line can't).
@@ -1015,6 +1018,9 @@ export class Player {
       case 'tone':
         this.setTone(fx.tone, instant || this.reducedMotion ? 0 : (fx.duration ?? 0) * 1000);
         return;
+      case 'textbox':
+        this.setTextShown(fx.show, instant || this.reducedMotion ? 0 : (fx.duration ?? 0) * 1000);
+        return;
       case 'movie':
         if (!instant) await this.playMovie(fx.path);
         return;
@@ -1227,14 +1233,26 @@ export class Player {
     return freeze;
   }
 
+  /** `textbox hide` / `show` (D-062): the text box and the NVL page leave the picture, or come back, over `ms`. */
+  private setTextShown(show: boolean, ms: number): void {
+    this.stage.style.setProperty('--text-fade', `${Math.round(ms)}ms`);
+    this.stage.classList.toggle('text-hidden', !show);
+  }
+
   /** Take the frozen picture away through the `with`'s transition, once the new pictures are ready to show. */
-  private async endFreeze(freeze: HTMLElement, fx: { transition: string; duration?: number }, instant: boolean): Promise<void> {
+  private async endFreeze(freeze: HTMLElement, fx: { transition: string; rule?: string; duration?: number }, instant: boolean): Promise<void> {
     const ms = this.duration(fx, instant);
+    // a wipe's masks are made from its rule picture the first time (a rule that can't be read dissolves instead)
+    const masks = ms && fx.transition === 'wipe' && fx.rule ? wipeMasks(this.assetUrl(fx.rule)) : null;
     if (ms) {
       const pending = [...this.spriteLayer.querySelectorAll('img')].filter((i) => !i.complete).map((i) => i.decode().catch(() => undefined));
       await Promise.race([Promise.all(pending), delay(IMAGE_WAIT_MS)]);
     }
     if (!ms) { freeze.remove(); return; }
+    if (masks) {
+      const m = await Promise.race([masks, delay(IMAGE_WAIT_MS).then(() => null)]);
+      if (m) { await runWipe(freeze, m, ms); freeze.remove(); return; }
+    }
     if (fx.transition === 'fade') {
       await this.fadeTo(1, ms);
       freeze.remove();

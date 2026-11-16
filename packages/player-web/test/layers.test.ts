@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { animationFrames, easingCss, freeBox, layerStyle } from '../src/layers.ts';
 import { curve } from '../src/grades.ts';
+import { wipeAlpha } from '../src/wipe.ts';
 
 const canvas: [number, number] = [1920, 1080];
 
@@ -44,5 +45,13 @@ describe('drawing free layers (D-062)', () => {
     expect(neg[0]).toBe(1);
     expect(neg.at(-1)).toBe(0);
     expect(curve(undefined, 0, 1, 1)[64]).toBeCloseTo(0.5, 2);
+  });
+
+  it('wipes the old picture away where the rule is dark first', () => {
+    expect(wipeAlpha(0, 0)).toBe(1);   // at the start the old picture is whole
+    expect(wipeAlpha(255, 0)).toBe(1);
+    expect(wipeAlpha(0, 1)).toBe(0);   // at the end it has gone
+    expect(wipeAlpha(255, 1)).toBe(0);
+    expect(wipeAlpha(30, 0.5)).toBeLessThan(wipeAlpha(220, 0.5)); // halfway: gone from the dark parts first
   });
 });

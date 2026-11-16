@@ -134,7 +134,8 @@ export type Stmt = Trivia & (
    */
   | { type: 'animate'; target: string; props: LayerPropsSource; over: number; ease: string | null; animation?: string | null; loc: Loc }
   /** `with dissolve 0.5` on its own line: every picture change since the last line shows through one transition. */
-  | { type: 'with'; transition: string; duration?: number; loc: Loc }
+  /** `with wipe rule_13 0.8`: `rule` is the rule picture (an image's name, or a path). */
+  | { type: 'with'; transition: string; rule?: string; duration?: number; loc: Loc }
   | { type: 'hide'; tag: string; transition: string | null; duration?: number; loc: Loc }
   | { type: 'play'; channel: Channel; asset: AssetRef; loop: boolean | null; fade: number | null; loc: Loc }
   | { type: 'stop'; channel: Channel; fade: number | null; loc: Loc }
@@ -160,6 +161,8 @@ export type Stmt = Trivia & (
   | { type: 'still'; target: string; loc: Loc }
   /** `tone sepia`, `tone mono over 2`, `tone none`: tint the picture (not the text) until changed. */
   | { type: 'tone'; tone: Tone; over: number | null; loc: Loc }
+  /** `textbox hide`: the text off the picture until the next line or `textbox show` (D-062). */
+  | { type: 'textbox'; show: boolean; over: number | null; loc: Loc }
   /** `movie "movie/op.mp4"`: a full-screen video; the story waits until it ends or the player skips it. */
   | { type: 'movie'; path: string; loc: Loc }
   /**

@@ -243,6 +243,10 @@ ruby rt { font-size: 0.5em; line-height: 1; opacity: 0.9; }
 .quickmenu button[aria-pressed='true'] { color: var(--accent); }
 .quickmenu button:disabled { opacity: 0.35; cursor: default; }
 
+/* `textbox hide` (D-062): the text leaves the picture until the next line */
+.stage :is(.textbox, .nvl-page) { transition: opacity var(--text-fade, 0ms) ease; }
+.stage.text-hidden :is(.textbox, .nvl-page) { opacity: 0; pointer-events: none; }
+
 .stage.hide-ui .textbox, .stage.hide-ui .quickmenu, .stage.hide-ui .nvl-page, .stage.hide-ui .screen-layer .shown { display: none; }
 
 /* ---- Overlays (title, panels) ---- */

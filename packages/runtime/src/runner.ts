@@ -110,7 +110,7 @@ export type Effect =
   /** A layer moves toward `props` over `duration` seconds (D-062); with `animation`, plays that animation instead (null: stops it). */
   | { type: 'animate'; tag: string; props: LayerProps; duration: number; ease: string; animation?: string | null }
   /** The picture changes before this one in the step show together through a transition (D-062). */
-  | { type: 'with'; transition: string; duration?: number }
+  | { type: 'with'; transition: string; rule?: string; duration?: number }
   | { type: 'hide'; tag: string; transition: string | null; duration?: number }
   | { type: 'play'; channel: Channel; path: string; loop: boolean; fade: number | null }
   | { type: 'stop'; channel: Channel; fade: number | null }
@@ -129,6 +129,8 @@ export type Effect =
   | { type: 'still'; target: string }
   /** Tint the picture (null: normal colours) over `duration` seconds. */
   | { type: 'tone'; tone: Tone | null; duration?: number }
+  /** The text box and NVL page leave the picture (or come back) over `duration` seconds, until the next line (D-062). */
+  | { type: 'textbox'; show: boolean; duration?: number }
   /** Play a full-screen video; the host waits for it to end (or be skipped) before showing the next line. */
   | { type: 'movie'; path: string }
   /** The screens shown over the story changed (`show screen`, `hide screen`): all of them now, bottom first. */
@@ -802,7 +804,7 @@ export class Runner {
         }
         case 'with':
           s.pc++;
-          effects.push({ type: 'with', transition: ins.transition, ...durationOf(ins) });
+          effects.push({ type: 'with', transition: ins.transition, ...(ins.rule ? { rule: ins.rule } : {}), ...durationOf(ins) });
           break;
         case 'hide':
           s.pc++;
@@ -851,6 +853,10 @@ export class Runner {
           effects.push({ type: 'still', target: ins.target });
           break;
         }
+        case 'textbox':
+          s.pc++;
+          effects.push({ type: 'textbox', show: ins.show, ...durationOf(ins) });
+          break;
         case 'tone':
           s.pc++;
           if (ins.tone === 'none') delete s.scene.tone; else s.scene.tone = ins.tone;

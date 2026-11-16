@@ -163,7 +163,10 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         else out.push(pad + ['animate', s.target, ...printLayerProps(s.props), `over ${s.over}`, s.ease ? `ease ${s.ease}` : ''].filter(Boolean).join(' '));
         break;
       case 'with':
-        out.push(pad + withT(s.transition, s.duration));
+        if (s.rule) {
+          const rule = /^[A-Za-z_]\w*$/.test(s.rule) ? s.rule : `"${s.rule}"`;
+          out.push(`${pad}with wipe ${rule}${s.duration !== undefined ? ` ${s.duration}` : ''}`);
+        } else out.push(pad + withT(s.transition, s.duration));
         break;
       case 'hide':
         out.push(pad + ['hide', s.tag, withT(s.transition, s.duration)].filter(Boolean).join(' '));
@@ -210,6 +213,9 @@ function printBlock(stmts: Stmt[], depth: number, out: string[]): void {
         break;
       case 'tone':
         out.push(pad + ['tone', s.tone, s.over !== null ? `over ${s.over}` : ''].filter(Boolean).join(' '));
+        break;
+      case 'textbox':
+        out.push(pad + ['textbox', s.show ? 'show' : 'hide', s.over !== null ? `over ${s.over}` : ''].filter(Boolean).join(' '));
         break;
       case 'movie':
         out.push(`${pad}movie ${q(s.path)}`);

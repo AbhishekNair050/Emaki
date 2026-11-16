@@ -227,6 +227,8 @@ label night:
 | `show street night as far` | Put another image on the same layer: it keeps its place and properties. |
 | `animate far zoom 0.75 at 900 520 over 6 ease in-out-sine` | Move a layer toward new values (`at`, `anchor`, `zoom`, `rotate`, `opacity`) over seconds, without holding up the story. Eases: `linear`, or `in-`, `out-`, `in-out-` or `out-in-` with `quad`, `cubic`, `quart`, `quint`, `sine`, `circ`, `expo`, `elastic`, `back` or `bounce`. |
 | `with dissolve 0.5` | On its own line: every picture change since the last line appears together, through one transition (`dissolve`, `fade`). |
+| `with wipe rule_13 0.8` | The same, wiping through a grey-scale *rule* picture (an image's name, or a path in quotes): the new picture comes in where the rule is dark first, with a soft edge. |
+| `textbox hide over 0.5` | Takes the text box (or NVL page) off the picture, so a shot can be seen whole; it comes back with the next line, or with `textbox show`. |
 
 For moves with several steps, or that repeat, declare an animation at the top and play it on a layer:
 

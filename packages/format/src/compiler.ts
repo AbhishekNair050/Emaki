@@ -19,7 +19,7 @@ import { compileLayerProps, type Grade, type LayerPropsSource } from './layers.t
 import { parseMarkup, type Span } from './markup.ts';
 import { parse, type ParseResult } from './parser.ts';
 
-export const TRANSITIONS = ['fade', 'dissolve', 'move', 'none'];
+export const TRANSITIONS = ['fade', 'dissolve', 'move', 'wipe', 'none'];
 export const POSITIONS = ['left', 'center', 'right'];
 
 /** `at 30%`: the sprite's centre, as a percentage of the screen's width from the left (may go past the edges). */
@@ -430,7 +430,12 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         return;
       case 'with':
         checkTransition(s.transition, s.loc);
-        frag.code.push({ op: 'with', transition: s.transition, ...dur(s), src });
+        let rule: string | undefined;
+        if (s.rule) {
+          rule = images[s.rule] ?? (/[./]/.test(s.rule) ? s.rule : undefined);
+          if (!rule) error(s.loc, 'unknown-image', didYouMean(s.rule, Object.keys(images)) ?? `No image named '${s.rule}' for the wipe's rule picture`);
+        }
+        frag.code.push({ op: 'with', transition: s.transition, ...(rule ? { rule } : {}), ...dur(s), src });
         return;
       case 'hide':
         if (!imageTags.has(s.tag) && !layerNames.has(s.tag)) warn(s.loc, 'unknown-image', `Nothing called '${s.tag}' can be shown, so it can't be hidden`);
@@ -508,6 +513,9 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
         return;
       case 'tone':
         frag.code.push({ op: 'tone', tone: s.tone, ...(s.over !== null ? { duration: s.over } : {}), src });
+        return;
+      case 'textbox':
+        frag.code.push({ op: 'textbox', show: s.show, ...(s.over !== null ? { duration: s.over } : {}), src });
         return;
       case 'movie':
         frag.code.push({ op: 'movie', path: s.path, src });
