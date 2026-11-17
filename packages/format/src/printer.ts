@@ -33,7 +33,9 @@ export function print(program: Program): string {
     program.meta.forEach(([k, v], i) => {
       const t = program.metaTrivia?.[i];
       for (const c of t?.leading ?? []) if (c) out.push(c);
-      out.push(`${k}: ${v}${tail(t)}`);
+      // A header value containing a comment marker must stay quoted after formatting.
+      const value = splitComment(v).comment || v.startsWith('"') ? q(v) : v;
+      out.push(`${k}: ${value}${tail(t)}`);
     });
     for (const c of program.metaTrailing ?? []) out.push(c);
     out.push('---');

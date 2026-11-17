@@ -15,5 +15,5 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true
   },
-  "include": ["packages/*/src", "packages/*/test", "packages/*/*.ts"]
+  "include": ["packages/*/src", "packages/*/test", "packages/*/*.ts", "packages/cli/launcher"]
 }

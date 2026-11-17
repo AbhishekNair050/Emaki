@@ -8,11 +8,12 @@
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { splitComment } from '@emaki/format';
 
 /** The starter story. `title` goes in the header. */
 export function starterStory(title: string): string {
   return `---
-title: ${title}
+title: ${splitComment(title).comment || title.startsWith('"') ? JSON.stringify(title) : title}
 start: start
 ---
 

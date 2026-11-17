@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json",
     "emaki": "node packages/cli/src/main.ts",
+    "launch": "node packages/cli/src/main.ts launch",
     "check": "node packages/cli/src/main.ts check games/gullwing/story.vn",
     "fmt": "node packages/cli/src/main.ts fmt games/gullwing/story.vn --write",
     "fmt:check": "node packages/cli/src/main.ts fmt games/gullwing/story.vn --check",

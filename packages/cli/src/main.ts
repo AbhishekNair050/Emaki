@@ -33,6 +33,9 @@ import { newGame } from './new.ts';
 const [cmd, file, ...rest] = process.argv.slice(2);
 
 const USAGE = `Usage:
+  emaki launch [--port 5175] [--no-open]          open the project launcher
+  emaki edit  <game folder> [--no-open]           open the editor for a game
+  emaki play  <game folder> [--no-open]           play a game with live reload
   emaki new   <folder> [--title "Name"]            start a new game in a new folder
   emaki check <story.vn>
   emaki build <story.vn> [out.json]
@@ -41,6 +44,38 @@ const USAGE = `Usage:
   emaki strings <story.vn> [--lang fr,de] [--csv]   translation files in lang/ (without --lang: progress)
   emaki voices  <story.vn>                          recording script and missing voice files (header 'voice:')
   emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]`;
+
+if (cmd === 'launch' || cmd === 'edit' || cmd === 'play') {
+  try {
+    const { installShutdown, openOnDesktop, Sessions } = await import('./serve.ts');
+    const args = process.argv.slice(3);
+    const open = !args.includes('--no-open');
+    if (cmd === 'launch') {
+      const unknown = args.filter((a, i) => a !== '--no-open' && a !== '--port' && args[i - 1] !== '--port');
+      if (unknown.length) throw new Error(`Unknown launcher option: ${unknown[0]}`);
+      const portIndex = args.indexOf('--port');
+      const port = portIndex < 0 ? 5175 : Number(args[portIndex + 1]);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('--port must be a number from 1 to 65535.');
+      const { startLauncher } = await import('./launcher.ts');
+      const launcher = await startLauncher({ port, open });
+      installShutdown(() => launcher.close());
+      console.log(`\nEmaki launcher: ${launcher.url}\nKeep this terminal open. Press Ctrl+C to stop the launcher and its previews.\n`);
+    } else {
+      if (!file || file.startsWith('--')) throw new Error(`Usage: emaki ${cmd} <game folder> [--no-open]`);
+      if (rest.some((a) => a !== '--no-open')) throw new Error(`Unknown option: ${rest.find((a) => a !== '--no-open')}`);
+      const sessions = new Sessions();
+      const session = await sessions.start(file, cmd === 'edit' ? 'editor' : 'play');
+      installShutdown(() => sessions.close());
+      console.log(`\n${cmd === 'edit' ? 'Editor' : 'Player'}: ${session.url}\nPress Ctrl+C to stop.\n`);
+      if (open) await openOnDesktop(session.url).catch(() => console.log('Open the address above in your browser.'));
+    }
+    // Servers keep Node alive. The remaining CLI commands run only in the other branch.
+    await new Promise<never>(() => {});
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
 
 if (!cmd || !file || cmd === 'help' || cmd === '--help') {
   console.log(USAGE);

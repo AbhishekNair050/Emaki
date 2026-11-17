@@ -5,6 +5,9 @@
   "license": "MIT",
   "type": "module",
   "private": true,
+  "exports": {
+    "./config": "./src/server/config.ts"
+  },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.11.1",

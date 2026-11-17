@@ -1,7 +1,7 @@
 {
   "name": "@emaki/cli",
   "version": "0.1.0",
-  "description": "Emaki command line: check, build, graph, fmt, strings, export.",
+  "description": "Emaki project launcher and command line tools.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@emaki/desktop": "0.1.0",
+    "@emaki/editor": "0.1.0",
     "@emaki/format": "0.1.0",
     "@emaki/mobile": "0.1.0",
     "@emaki/player-web": "0.1.0"
