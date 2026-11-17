@@ -30,6 +30,7 @@ You need Node.js 22.18 or newer.
 git clone https://github.com/AbhishekNair050/Emaki.git
 cd Emaki
 npm install
+npm run launch                       # open the project launcher
 npm run dev                          # play the demo, The Keeper of Gullwing Point
 npm run emaki -- new ../my-game      # start your own game
 ```
@@ -54,6 +55,7 @@ npm run emaki -- new ../my-game      # start your own game
 - Plays on phones, upright or sideways.
 
 **Tools**
+- **The launcher** (`npm run launch`): create or open a game, return to recent projects, open the editor or player, and export for the web or your desktop. Includes a folder browser; no environment variables needed.
 - **The editor** (`npm run edit`): the script, the game and a flowchart of the story side by side. Type and the game updates in place; Ctrl+Enter plays from the cursor; shape the story in the flowchart; drag assets in.
 - **VS Code extension**: highlighting, errors as you type, completion, go to definition, hover, formatting, and "play from this line".
 - **Story map and line preview** while developing: see every scene, jump anywhere, set variables to test other routes, or open the game at any line (`?line=52&trust=2`).

@@ -33,6 +33,7 @@ games/plugin-demo    a small game using the example plugins (plugins/weather, me
 CI (`.github/workflows/ci.yml`) runs all of these, the demo build, the VS Code extension build and a web export on every push and pull request.
 
 Other commands:
+- `npm run launch`: the local project launcher (recent games, new/open, editor/player sessions, web/desktop export). `npm run emaki -- edit <game>` / `play <game>` launch a game directly without environment variables.
 - `npm run strings -- --lang fr`: create/update a translation of the demo (lang/fr.po).
 - `npm run export -- <web|desktop|android|ios> games/gullwing`: package the demo (into games/gullwing/export/).
 - `npm run edit`: the editor on the demo (edits games/gullwing/story.vn; `EMAKI_GAME=...` for another game).

@@ -2,6 +2,13 @@
 
 Emaki's tools all read the same script and report the same problems, so use whichever suits you: the web editor, VS Code, or any text editor with the dev server.
 
+## The project launcher
+Run `npm run launch` to open the project manager in your browser. Create a game with **New project**, or select **Open existing project** and browse to a folder containing `story.vn`. Choose a recent project to open its editor or player, or export it for the web or your desktop. **Try the example game** adds the bundled demo to the list.
+
+Editor and player sessions open in separate tabs. Reopening a session reuses its server; use **Stop** in the launcher to close it. Keep the launcher terminal open: Ctrl+C stops the launcher and all its sessions. Closing a browser tab alone does not stop a session. Recent projects are stored in `~/.emaki/launcher.json`; removing one from the list never deletes the game. Missing or moved folders stay listed until you remove or reopen them.
+
+`npm run emaki -- launch --port 5180` selects a different launcher port. Add `--no-open` to print the address without opening a browser. The launcher runs locally and requires the same Node installation as the other tools; it is not yet a standalone desktop application.
+
 ## The editor
 `npm run edit` opens the editor in your browser (http://localhost:5174): the script on the left, the game and a flowchart of the story on the right, always pointing at the same place. For your own game: `EMAKI_GAME=../my-game npm run edit` (in PowerShell: `$env:EMAKI_GAME="../my-game"; npm run edit`).
 
@@ -33,6 +40,9 @@ Run from the Emaki folder as `npm run emaki -- <command>`:
 
 | Command | |
 |---|---|
+| `launch [--port 5175] [--no-open]` | The project manager: recent games, new/open, editor, play and export. |
+| `edit <game folder> [--no-open]` | Open the editor for a game, without environment variables. |
+| `play <game folder> [--no-open]` | Play a game with live reload, without environment variables. |
 | `new <folder> [--title "Name"]` | Start a game: a short story that runs as it is. |
 | `check <story.vn>` | Every problem in the story (and its plugins), with line numbers. |
 | `fmt <story.vn> [--write \| --check]` | Tidy the layout, keeping comments and blank lines. |

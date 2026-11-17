@@ -2,6 +2,8 @@
 
 One command turns a game folder into something players can run. Everything goes into `<game>/export/`, which git ignores.
 
+You can also use **Export game** in the project launcher (`npm run launch`). Select Web or Desktop, then Export. Build output appears below the controls; once it finishes, **Open export folder** opens the output location. Desktop uses your computer's platform and architecture. For cross-platform desktop builds and mobile projects, use the commands below.
+
 ```sh
 npm run export -- web     games/mygame    # a website (itch.io, any host)
 npm run export -- desktop games/mygame    # a Windows, macOS or Linux app

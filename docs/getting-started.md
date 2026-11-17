@@ -12,13 +12,19 @@ cd Emaki
 npm install
 ```
 
-Check that everything works by playing the demo, *The Keeper of Gullwing Point*:
+Open the project launcher:
 
 ```sh
-npm run dev
+npm run launch
 ```
 
-Open the address it prints (usually http://localhost:5173).
+It opens in your browser (usually http://127.0.0.1:5175). Keep the terminal open while working; Ctrl+C stops the launcher and its editor/player sessions.
+
+Choose **New project**, enter your game's title and location, then **Create project**. Select **Open editor** to write with the game running beside your script, or **Play** to open the game on its own. **Try the example game** opens *The Keeper of Gullwing Point* in the project list.
+
+Use **Open existing project** for a game you already have: paste its folder path or use **Browse** to find the folder containing `story.vn`. Recent projects are remembered between launcher sessions. Removing a project from the list does not delete its files.
+
+The rest of this guide also shows the terminal commands, if you prefer those.
 
 ## 2. Start your game
 
@@ -43,6 +49,15 @@ The game can live anywhere; keeping it outside the Emaki folder keeps your work 
 ## 3. Play it while you write
 
 Point the dev server at your game:
+
+```sh
+npm run emaki -- play ../my-game
+npm run emaki -- edit ../my-game
+```
+
+These commands open the player or editor in your browser, without changing environment variables. Paths with spaces should be quoted. Add `--no-open` to print the address without opening a browser.
+
+The original development commands also work:
 
 ```sh
 # macOS, Linux, Git Bash
