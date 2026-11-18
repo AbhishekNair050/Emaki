@@ -22,8 +22,8 @@ export interface ScriptPaneHooks {
   onChange(): void;
   /** Ctrl+Enter: play from this 1-based line. */
   onRun(line: number): void;
-  /** The cursor moved to another line (1-based). */
-  onCursor?(line: number): void;
+  /** The cursor moved (1-based line); `typing` when it moved because the text changed. */
+  onCursor?(line: number, typing: boolean): void;
   /** Ctrl+S. */
   onSave?(): void;
   /**
@@ -128,7 +128,7 @@ export class ScriptPane {
       }),
       EditorView.updateListener.of((u) => {
         if (u.docChanged && !this.applyingExternal) this.hooks.onChange();
-        if (u.selectionSet || u.docChanged) this.hooks.onCursor?.(lineAt(u.view));
+        if (u.selectionSet || u.docChanged) this.hooks.onCursor?.(lineAt(u.view), u.docChanged);
       }),
     ];
     this.view = new EditorView({ parent, state: EditorState.create({ doc: text, extensions: this.extensions }) });
@@ -193,6 +193,18 @@ export class ScriptPane {
   applyEdit(text: string, line: number): void {
     if (text !== this.text) this.view.dispatch({ changes: minimalChange(this.view.state.doc, text), userEvent: 'input.emaki' });
     this.revealLine(line);
+  }
+
+  /** Replace one line (1-based) as an edit the writer made: undoable, saved and played like typing. */
+  replaceLine(line: number, text: string): void {
+    const l = this.view.state.doc.line(line);
+    if (l.text !== text) this.view.dispatch({ changes: { from: l.from, to: l.to, insert: text }, userEvent: 'input.emaki' });
+  }
+
+  /** The text of a 1-based line, read from the editor without copying the file. */
+  lineText(line: number): string {
+    const doc = this.view.state.doc;
+    return line >= 1 && line <= doc.lines ? doc.line(line).text : '';
   }
 
   /** Scroll a 1-based line into view, optionally putting the cursor at its start. */

@@ -12,6 +12,9 @@ Editor and player sessions open in separate tabs. Reopening a session reuses its
 ## The editor
 `npm run edit` opens the editor in your browser (http://localhost:5174): the script on the left, the game and a flowchart of the story on the right, always pointing at the same place. For your own game: `EMAKI_GAME=../my-game npm run edit` (in PowerShell: `$env:EMAKI_GAME="../my-game"; npm run edit`).
 
+- Three workspaces, switched at the top or with **Alt+1/2/3**: **Write** (the script and the game), **Stage** (the game large, an inspector and the scene's lines) and **Story** (the flowchart large, the game and the inspector beside it). Switching keeps the game running, and each workspace remembers how wide you made the script. The bar beside the switch shows where the cursor is.
+- In Stage, the **inspector** shows the line under the cursor: a character's look (as pictures), place and transition, a scene's background, the look a speaker has while talking. A change rewrites only that line, keeps its comment, can be undone with Ctrl+Z, and shows in the game at once. The game follows the cursor: rest on a line and it shows that moment.
+- Under the game, the scene's **lines** run left to right, one column for each line of dialogue or choice, with what changes the picture, the sound and the story's flow on the way. Click a column to go to that line.
 - Type and the game updates in place: same line, same music, your edit on screen. While the script has errors the game keeps running the last version that worked.
 - **Ctrl+Enter** plays from the line the cursor is on. Click a scene in the flowchart to find it in the script; double-click to play it.
 - The line the game is showing is marked in the script, and its scene in the flowchart. With the cursor inside a `screen` block, the game shows that screen.

@@ -10,9 +10,9 @@
  *  - drag images and audio from the asset browser (or your computer) onto the script
  *  - a story can span several files: pick one above the script, or add one
  */
-import { buildGraph, compileFiles, createCompileCache, voiceMap, type CompiledStory, type Diagnostic, type Stmt } from '@emaki/format';
+import { buildGraph, compileFiles, createCompileCache, voiceMap, type CompiledStory, type Diagnostic, type LabelDef, type Program, type Stmt } from '@emaki/format';
 import {
-  addScene, connectScenes, declareAsset, deleteScene, dropAsset, renameScene, type EditResult, type SceneContext, type StorySymbol,
+  addScene, connectScenes, declareAsset, deleteScene, dropAsset, editLine, renameScene, type EditResult, type SceneContext, type StorySymbol,
 } from '@emaki/language';
 import { Player } from '@emaki/player-web';
 import '@emaki/player-web/style.css';
@@ -22,6 +22,8 @@ import 'virtual:emaki-theme';
 import { manifests as pluginManifests, plugins } from 'virtual:emaki-plugins';
 import { AssetPanel, type AssetInfo } from './assets.ts';
 import { Flowchart } from './flowchart.ts';
+import { Inspector } from './inspector.ts';
+import { Timeline } from './timeline.ts';
 import { ScriptPane } from './script/script-pane.ts';
 import { StorySync, type SaveStatus, type StoryText } from './sync.ts';
 import './editor.css';
@@ -38,6 +40,11 @@ interface Doc {
   sync: StorySync;
 }
 const SPLIT_KEY = 'emaki-editor:split';
+const WORKSPACE_KEY = 'emaki-editor:workspace';
+const WORKSPACES = ['write', 'stage', 'story'] as const;
+type Workspace = typeof WORKSPACES[number];
+/** How long the cursor rests on a line before the Stage workspace's game shows it. */
+const FOLLOW_DELAY_MS = 220;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
@@ -212,7 +219,7 @@ async function main(): Promise<void> {
   const script = new ScriptPane($('.cm-host'), initial.text, {
     onChange: () => { edited(); scheduleCompile(); },
     onRun: (line) => runFrom(line),
-    onCursor: (line) => { flow.setCursor(labelAt(line)); previewAt(line); },
+    onCursor: (line, typing) => cursorMoved(line, typing),
     onSave: () => { syncText(); void doc().sync.saveNow(); },
     onDrop: (drop, line) => void dropOnScript(drop, line),
     context: () => ({
@@ -308,9 +315,104 @@ async function main(): Promise<void> {
     recompile();
   }
 
+  // ---------------------------------------------------------------- workspaces, inspector, timeline (D-065)
+
+  const inspector = new Inspector($('.inspector-host'), {
+    change: (line, change) => {
+      const r = editLine(script.lineText(line), change);
+      if (!r.ok) return r.error;
+      script.replaceLine(line, r.text);
+      // Show the change straight away: a reload keeps the picture the game already drew.
+      if (workspace !== 'write') runFrom(line);
+      return null;
+    },
+  });
+  const timeline = new Timeline($('.timeline-host'), {
+    go: (line, file) => {
+      if ((file ?? MAIN) !== active) openFile(file ?? MAIN);
+      script.revealLine(line);
+    },
+    colorOf: (who) => story?.characters[who]?.color ?? null,
+  });
+  /** The program of the last compile, and its scenes by name (made when first needed). */
+  let lastProgram: Program | null = null;
+  let labelsByName: Map<string, LabelDef> | null = null;
+  const labelNamed = (name: string): LabelDef | null => {
+    if (!lastProgram) return null;
+    labelsByName ??= new Map(lastProgram.labels.map((l) => [l.name, l]));
+    return labelsByName.get(name) ?? null;
+  };
+
+  let workspace: Workspace = 'write';
+  const splitter = setupSplitter(() => workspace);
+  function setWorkspace(ws: Workspace): void {
+    workspace = ws;
+    document.body.dataset.workspace = ws;
+    for (const b of document.querySelectorAll<HTMLButtonElement>('.workspaces [data-workspace]')) b.setAttribute('aria-pressed', String(b.dataset.workspace === ws));
+    try { localStorage.setItem(WORKSPACE_KEY, ws); } catch { /* storage unavailable */ }
+    splitter.restore();
+    // The panes that were hidden catch up with where the cursor is.
+    cursorLabel = undefined;
+    cursorMoved(script.cursorLine, false, true);
+  }
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.workspaces [data-workspace]')) {
+    b.addEventListener('click', () => setWorkspace(b.dataset.workspace as Workspace));
+  }
+
+  /** Where the cursor is, for every panel. */
+  let cursorLabel: string | null | undefined;
+  let cursorLineNo = 0;
+  let followTimer = 0;
+  let panelFrame = 0;
+  const position = $('.position');
+  function cursorMoved(line: number, typing: boolean, now = false): void {
+    const label = labelAt(line);
+    const lineChanged = line !== cursorLineNo;
+    cursorLineNo = line;
+    if (label !== cursorLabel) {
+      cursorLabel = label;
+      flow.setCursor(label);
+    }
+    previewAt(line);
+    // The rest is drawn once per frame at most, and only for panels on screen.
+    if (!panelFrame) panelFrame = requestAnimationFrame(() => { panelFrame = 0; updatePanels(); });
+    if (now) { cancelAnimationFrame(panelFrame); panelFrame = 0; updatePanels(); }
+    // In Stage, the game shows the line the cursor rests on (not while typing: that would restart the line).
+    if (workspace === 'stage' && lineChanged && !typing) {
+      window.clearTimeout(followTimer);
+      followTimer = window.setTimeout(() => {
+        if (script.cursorLine === line && script.lineText(line).trim()) runFrom(line);
+      }, FOLLOW_DELAY_MS);
+    }
+  }
+  function updatePanels(): void {
+    const line = script.cursorLine;
+    const label = cursorLabel ?? null;
+    position.replaceChildren(
+      ...(docs.size > 1 ? [`${active} › `] : []),
+      ...(label ? [Object.assign(document.createElement('b'), { textContent: label }), ' · '] : []),
+      `line ${line}`,
+    );
+    if (workspace === 'write') return;
+    inspector.show(line, script.lineText(line), label ?? '');
+    if (workspace === 'stage') {
+      if (timeline.scene !== label || timelineStale) {
+        timelineStale = false;
+        const def = label ? labelNamed(label) : null;
+        timeline.setScene(def, def?.loc.file);
+      }
+      timeline.setCursor(line);
+    }
+  }
+  /** The story was recompiled: the timeline redraws when next shown. */
+  let timelineStale = true;
+
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(WORKSPACE_KEY); } catch { /* storage unavailable */ }
   recompile();
   updateFileList();
   script.revealLine(1, true, false);
+  setWorkspace(WORKSPACES.includes(saved as Workspace) ? saved as Workspace : 'write');
   void assets.refresh();
   setupTabs();
 
@@ -364,12 +466,19 @@ async function main(): Promise<void> {
     const elsewhere = r.diagnostics.filter((d) => d.severity === 'error' && (d.file ?? MAIN) !== active);
     problemsBtn.title = elsewhere.length ? `Also in ${[...new Set(elsewhere.map((d) => d.file ?? MAIN))].join(', ')} (marked ✕ in the file list)` : 'List problems (Ctrl+Shift+M)';
 
+    // The timeline reads the parsed scenes, which are there even while another part of the script has an error.
+    lastProgram = r.program;
+    labelsByName = null;
+    timelineStale = true;
     if (!r.story) {
+      if (workspace === 'stage') cursorMoved(script.cursorLine, true);
       gameNote.textContent = story ? 'The script has errors: the game is running the last version that worked.' : 'Fix the errors in the script to start the game.';
       return;
     }
     gameNote.textContent = '';
     story = r.story;
+    inspector.setCatalog({ images: story.images, characters: story.characters });
+    if (workspace === 'stage') cursorMoved(script.cursorLine, true);
     // A voiced game's lines play their files here too (the files the assets folder has).
     const voices = voiceMap(story, (path) => assetPaths.has(path));
     if (Object.keys(voices).length) story.voices = voices;
@@ -449,7 +558,13 @@ async function main(): Promise<void> {
   });
 
   window.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || !(e.ctrlKey || e.metaKey)) return;
+    if (e.defaultPrevented) return;
+    if (e.altKey && !e.ctrlKey && !e.metaKey && ['1', '2', '3'].includes(e.key)) {
+      e.preventDefault();
+      setWorkspace(WORKSPACES[Number(e.key) - 1]!);
+      return;
+    }
+    if (!(e.ctrlKey || e.metaKey)) return;
     if (e.key === 'Enter') { e.preventDefault(); runFrom(script.cursorLine); }
     if (e.key === 's') { e.preventDefault(); syncText(); for (const d of docs.values()) void d.sync.saveNow(); }
     // Undo/redo the script from anywhere that isn't a text field (e.g. right after a flowchart edit).
@@ -495,7 +610,6 @@ async function main(): Promise<void> {
     noteTimer = window.setTimeout(() => { if (gameNote.textContent === text) gameNote.textContent = ''; }, 6000);
   }
 
-  setupSplitter();
 }
 
 /** Copy files into the game's assets folder. Files that aren't images or audio are reported, the rest still added. */
@@ -551,19 +665,23 @@ async function loadFiles(): Promise<Map<string, StoryText> | null> {
   }
 }
 
-/** Drag (or arrow-key) the bar between the script and the game to resize them. */
-function setupSplitter(): void {
+/** Drag (or arrow-key) the bar beside the script to resize it; each workspace keeps its own width. */
+function setupSplitter(current: () => Workspace): { restore(): void } {
   const workspace = $('.workspace');
   const bar = $('.splitter');
-  const apply = (pct: number) => {
-    const v = Math.min(75, Math.max(25, pct));
-    workspace.style.setProperty('--split', `${v}%`);
+  const apply = (pct: number, save = true) => {
+    const v = Math.min(75, Math.max(20, pct));
+    const ws = current();
+    workspace.style.setProperty(`--split-${ws}`, `${v}%`);
     bar.setAttribute('aria-valuenow', String(Math.round(v)));
-    try { localStorage.setItem(SPLIT_KEY, String(v)); } catch { /* storage unavailable */ }
+    if (save) try { localStorage.setItem(`${SPLIT_KEY}:${ws}`, String(v)); } catch { /* storage unavailable */ }
   };
-  let stored = NaN;
-  try { stored = Number(localStorage.getItem(SPLIT_KEY)); } catch { /* storage unavailable */ }
-  if (Number.isFinite(stored) && stored > 0) apply(stored);
+  const restore = () => {
+    let stored = NaN;
+    try { stored = Number(localStorage.getItem(`${SPLIT_KEY}:${current()}`) ?? (current() === 'write' ? localStorage.getItem(SPLIT_KEY) : null)); } catch { /* storage unavailable */ }
+    if (Number.isFinite(stored) && stored > 0) apply(stored, false);
+    else bar.setAttribute('aria-valuenow', String(parseFloat(getComputedStyle(workspace).getPropertyValue(`--split-${current()}`)) || 50));
+  };
 
   bar.addEventListener('pointerdown', (e) => {
     bar.setPointerCapture(e.pointerId);
@@ -578,6 +696,7 @@ function setupSplitter(): void {
     if (e.key === 'ArrowLeft') apply(now - 5);
     if (e.key === 'ArrowRight') apply(now + 5);
   });
+  return { restore };
 }
 
 function plural(n: number, word: string): string {

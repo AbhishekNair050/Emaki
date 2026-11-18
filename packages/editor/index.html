@@ -10,6 +10,12 @@
     <header class="topbar">
       <span class="brand">Emaki</span>
       <span class="story-title"></span>
+      <div class="workspaces" role="group" aria-label="Workspace">
+        <button type="button" data-workspace="write" aria-pressed="true" title="The script and the game (Alt+1)">Write</button>
+        <button type="button" data-workspace="stage" aria-pressed="false" title="The game large, the inspector and the scene's lines (Alt+2)">Stage</button>
+        <button type="button" data-workspace="story" aria-pressed="false" title="The flowchart of the whole story (Alt+3)">Story</button>
+      </div>
+      <span class="position" role="status" aria-label="Where you are"></span>
       <nav class="actions" aria-label="Editor">
         <button type="button" id="run" title="Play the game from the line the cursor is on (Ctrl+Enter)">▶ Play from cursor <kbd>Ctrl+Enter</kbd></button>
         <button type="button" id="restart" title="Back to the title screen with a fresh game">Restart</button>
@@ -34,21 +40,21 @@
         </div>
         <div class="cm-host"></div>
       </section>
-      <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize script and game" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" tabindex="0"></div>
-      <div class="side">
-        <section class="pane game-pane" aria-label="Game">
-          <h2 class="pane-head">Game <span class="game-note" role="status"></span></h2>
-          <div class="player-host"></div>
-        </section>
-        <section class="pane flow-pane">
-          <div class="pane-head tabs" role="tablist" aria-label="Story tools">
-            <button type="button" role="tab" id="tab-flow" aria-controls="panel-flow" aria-selected="true">Flowchart</button>
-            <button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1">Assets</button>
-          </div>
-          <div class="flow-host" id="panel-flow" role="tabpanel" aria-labelledby="tab-flow"></div>
-          <div class="assets-host" id="panel-assets" role="tabpanel" aria-labelledby="tab-assets" hidden></div>
-        </section>
-      </div>
+      <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the script" aria-valuemin="20" aria-valuemax="75" aria-valuenow="50" tabindex="0"></div>
+      <section class="pane game-pane" aria-label="Game">
+        <h2 class="pane-head">Game <span class="game-note" role="status"></span></h2>
+        <div class="player-host"></div>
+      </section>
+      <section class="pane flow-pane">
+        <div class="pane-head tabs" role="tablist" aria-label="Story tools">
+          <button type="button" role="tab" id="tab-flow" aria-controls="panel-flow" aria-selected="true">Flowchart</button>
+          <button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1">Assets</button>
+        </div>
+        <div class="flow-host" id="panel-flow" role="tabpanel" aria-labelledby="tab-flow"></div>
+        <div class="assets-host" id="panel-assets" role="tabpanel" aria-labelledby="tab-assets" hidden></div>
+      </section>
+      <div class="pane inspector-host"></div>
+      <div class="pane timeline-host"></div>
     </main>
     <script type="module" src="./src/main.ts"></script>
   </body>
