@@ -11,6 +11,7 @@ import {
 } from '@emaki/format';
 
 export * from './edits.ts';
+export * from './inspect.ts';
 
 /** A span on one line. `line` is 0-based; `start`/`end` are 0-based columns, end exclusive. */
 export interface Range {
