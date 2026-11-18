@@ -7,7 +7,7 @@
  *  - assign stable line ids to dialogue and menus (for localization & saves)
  *  - static analysis: unreachable labels
  */
-import type { Diagnostic, Loc, Program, Stmt } from './ast.ts';
+import type { Diagnostic, LabelDef, Loc, Program, Stmt } from './ast.ts';
 import {
   FORMAT_ID, FORMAT_VERSION,
   type CompiledAnimation, type CompiledChoice, type CompiledLayer, type CompiledStory, type Instr, type SrcRef,
@@ -65,6 +65,8 @@ export interface SourceString {
  */
 export interface LabelCode {
   key: string;
+  /** The label's line when this was compiled (a moved copy is shifted to its new line). */
+  line: number;
   code: Instr[];
   diagnostics: Diagnostic[];
   strings: SourceString[];
@@ -76,16 +78,42 @@ export interface LabelCode {
 /**
  * Lets compiling the same game again redo only what changed: a file whose text
  * is the same isn't parsed again, and its labels aren't compiled again unless
- * the declarations (images, characters, variables...) changed. Make one per
- * game and pass it to every compile of that game.
+ * the declarations (images, characters, variables...) changed. A label whose
+ * text is unchanged but has moved (lines were added or removed above it in a
+ * long file) reuses its code with the line numbers shifted. Make one per game
+ * and pass it to every compile of that game.
  */
 export interface CompileCache {
-  files: Map<string, { source: string; result: ParseResult }>;
+  files: Map<string, { source: string; result: ParseResult; lineStarts?: number[] }>;
   labels: WeakMap<object, LabelCode>;
+  /** The last compile's labels by file, declarations and text (see compileProgram). */
+  byText: Map<string, LabelCode>;
 }
 
 export function createCompileCache(): CompileCache {
-  return { files: new Map(), labels: new WeakMap() };
+  return { files: new Map(), labels: new WeakMap(), byText: new Map() };
+}
+
+/** Where each line of a file starts (0-based offsets), worked out once per version of the file. */
+function lineStartsOf(entry: { source: string; lineStarts?: number[] }): number[] {
+  if (entry.lineStarts) return entry.lineStarts;
+  const starts = [0];
+  for (let i = entry.source.indexOf('\n'); i !== -1; i = entry.source.indexOf('\n', i + 1)) starts.push(i + 1);
+  return (entry.lineStarts = starts);
+}
+
+/** A label's code moved by `delta` lines, the same as compiling it there. */
+function shiftLabel(f: LabelCode, delta: number): LabelCode {
+  const code = f.code.map((ins) => ({ ...ins, src: { ...ins.src, line: ins.src.line + delta } }) as Instr);
+  return {
+    ...f,
+    line: f.line + delta,
+    code,
+    diagnostics: f.diagnostics.map((d) => ({ ...d, line: d.line + delta })),
+    strings: f.strings.map((x) => (x.line ? { ...x, line: x.line + delta } : x)),
+    jumps: f.jumps.map((j) => ({ ...j, loc: { ...j.loc, line: j.loc.line + delta } })),
+    hash: fnv1a(JSON.stringify(code)),
+  };
 }
 
 export interface CompileOptions {
@@ -334,7 +362,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   const labels: Record<string, number> = {};
   const pendingTargets: Array<{ instr: { target: number; label?: string }; name: string; loc: Loc }> = [];
   /** The label being compiled. Its targets count from its own first instruction. */
-  let frag: LabelCode = { key: '', code: [], diagnostics: [], strings: [], jumps: [], usedIds: new Map(), hash: '' };
+  let frag: LabelCode = { key: '', line: 0, code: [], diagnostics: [], strings: [], jumps: [], usedIds: new Map(), hash: '' };
 
   const lineId = (label: string, key: string): string => {
     const base = `${label}.${fnv1a(key)}`;
@@ -614,10 +642,39 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     layerCanvas, [...layerNames].sort(), Object.keys(animations).sort(), Object.keys(grades).sort(),
   ]));
   const labelHashes: string[] = [];
+  // Each label's text, to find labels that only moved: from its line to the next label of its file.
+  const texts = new Map<LabelDef, string>();
+  if (cache) {
+    const byFile = new Map<string, LabelDef[]>();
+    for (const l of program.labels) {
+      const f = l.loc.file ?? '';
+      if (!byFile.has(f)) byFile.set(f, []);
+      byFile.get(f)!.push(l);
+    }
+    for (const [file, ls] of byFile) {
+      const entry = cache.files.get(file);
+      if (!entry) continue;
+      const starts = lineStartsOf(entry);
+      const sorted = [...ls].sort((a, b) => a.loc.line - b.loc.line);
+      sorted.forEach((l, i) => {
+        const end = sorted[i + 1] ? starts[sorted[i + 1]!.loc.line - 1] : entry.source.length;
+        texts.set(l, `${file}\u0000${entry.source.slice(starts[l.loc.line - 1], end)}`);
+      });
+    }
+  }
+  const byText = new Map<string, LabelCode>();
   for (const l of program.labels) {
     let f = cache?.labels.get(l);
+    const text = texts.get(l);
+    if ((!f || f.key !== declKey) && text !== undefined) {
+      const moved = cache!.byText.get(text);
+      if (moved && moved.key === declKey) {
+        f = moved.line === l.loc.line ? moved : shiftLabel(moved, l.loc.line - moved.line);
+        cache!.labels.set(l, f);
+      }
+    }
     if (!f || f.key !== declKey) {
-      frag = { key: declKey, code: [], diagnostics: [], strings: [], jumps: [], usedIds: new Map(), hash: '' };
+      frag = { key: declKey, line: l.loc.line, code: [], diagnostics: [], strings: [], jumps: [], usedIds: new Map(), hash: '' };
       sink = frag.diagnostics;
       emitBlock(l.body, l.name);
       // Reaching the end of a label behaves like `return` (ends the story if nothing called it).
@@ -627,6 +684,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
       f = frag;
       cache?.labels.set(l, f);
     }
+    if (text !== undefined) byText.set(text, f);
     // Link: move its targets to where it lands; jumps to other labels are resolved below.
     const offset = code.length;
     labels[l.name] = offset;
@@ -651,6 +709,8 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     if (labels[p.name] === undefined) error(p.loc, 'unknown-label', didYouMean(p.name, Object.keys(labels)) ?? `No label named '${p.name}'`);
     else p.instr.target = labels[p.name];
   }
+  // Keep only this compile's labels, so the cache doesn't grow with every edit.
+  if (cache) cache.byText = byText;
 
   // --- Start label --------------------------------------------------------
   let start = 0;
