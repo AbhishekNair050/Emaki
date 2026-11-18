@@ -12,9 +12,9 @@
  */
 import {
   buildGraph, compileFiles, createCompileCache, voiceMap,
-  type CompiledStory, type Diagnostic, type LabelDef, type Program, type Stmt, type StoryGraph,
+  type CompiledStory, type Diagnostic, type LabelDef, type Program, type Stmt, type StoryGraph, type Value,
 } from '@emaki/format';
-import type { RouteSearch } from '@emaki/runtime';
+import { Runner, type Route, type RouteSearch } from '@emaki/runtime';
 import {
   addScene, connectScenes, declareAsset, deleteScene, dropAsset, editLine, inspectLine, renameScene, type EditResult, type SceneContext, type StorySymbol,
 } from '@emaki/language';
@@ -25,10 +25,11 @@ import '@emaki/player-web/fonts';
 import 'virtual:emaki-theme';
 import { manifests as pluginManifests, plugins } from 'virtual:emaki-plugins';
 import { AssetPanel, type AssetInfo } from './assets.ts';
-import { Flowchart, type Colouring } from './flowchart.ts';
-import { Inspector } from './inspector.ts';
-import { StageDrag } from './stage-drag.ts';
-import { StoryPanel, sceneStats, type SceneInfo, type SceneStats } from './story-panel.ts';
+import { Dock, type DockEnding, type DockScene } from './dock.ts';
+import { Flowchart, type Colouring, type Measure } from './flowchart.ts';
+import { Inspector, type SceneCard } from './inspector.ts';
+import { sceneStats, type SceneStats } from './scene-stats.ts';
+import { StageTools, type StageChange } from './stage-tools.ts';
 import { Timeline } from './timeline.ts';
 import { ScriptPane } from './script/script-pane.ts';
 import { StorySync, type SaveStatus, type StoryText } from './sync.ts';
@@ -45,8 +46,13 @@ interface Doc {
   text: string;
   sync: StorySync;
 }
-const SPLIT_KEY = 'emaki-editor:split';
+const SPLIT_KEY = 'emaki-editor:script-width';
 const WORKSPACE_KEY = 'emaki-editor:workspace';
+const ROUTE_KEY = 'emaki-editor:route';
+/** How long typing pauses before the panels (inspector, timeline) catch up with the cursor's line. */
+const PANELS_TYPING_DELAY_MS = 300;
+/** How long the cursor rests before the inspector is drawn again (a held arrow key moves it every 30 ms). */
+const INSPECTOR_REST_MS = 90;
 const WORKSPACES = ['write', 'stage', 'story'] as const;
 type Workspace = typeof WORKSPACES[number];
 /** How long the cursor rests on a line before the Stage workspace's game shows it. */
@@ -124,6 +130,14 @@ async function main(): Promise<void> {
     },
     connect: (from, to) => inFileOf(from, (text, ctx) => connectScenes(text, from, to, ctx)),
     measure: (by) => measureScenes(by),
+    variables: () => Object.keys(story?.vars ?? {}),
+  });
+
+  // The left dock: every scene, and the route the editor plays by (D-065). Its second tab holds the assets.
+  const dock = new Dock($('.dock-host'), {
+    reveal: (label) => revealLabel(label),
+    pickRoute: (id) => chooseRoute(id),
+    searchAgain: () => searchRoutes(true),
   });
 
   /** Rename a scene in the file that has it, and the jumps to it in every file. */
@@ -167,7 +181,7 @@ async function main(): Promise<void> {
     return out;
   }
 
-  const assets = new AssetPanel($('.assets-host'), {
+  const assets = new AssetPanel(dock.assetsHost, {
     listed: (list) => {
       const before = assetPaths;
       assetPaths = new Set(list.map((a) => a.path));
@@ -327,7 +341,7 @@ async function main(): Promise<void> {
     recompile();
   }
 
-  // ---------------------------------------------------------------- workspaces, inspector, timeline (D-065)
+  // ---------------------------------------------------------------- workspaces, inspector, timeline, routes (D-065)
 
   const inspector = new Inspector($('.inspector-host'), {
     change: (line, change) => {
@@ -338,6 +352,8 @@ async function main(): Promise<void> {
       if (workspace !== 'write') runFrom(line);
       return null;
     },
+    openOnStage: (label) => { setWorkspace('stage'); revealLabel(label); },
+    openInScript: (label) => { setWorkspace('write'); revealLabel(label); },
   });
   const timeline = new Timeline($('.timeline-host'), {
     go: (line, file) => {
@@ -345,16 +361,47 @@ async function main(): Promise<void> {
       script.revealLine(line);
     },
     colorOf: (who) => story?.characters[who]?.color ?? null,
+    nameOf: (tag) => story?.characters[tag]?.name ?? tag,
   });
-  // ---------------------------------------------------------------- the Story workspace
 
-  const storyPanel = new StoryPanel($('.story-host'), {
-    reveal: (label) => revealLabel(label),
-    play: (line, vars, file) => { flush(); player?.jumpToLine(line, vars, file); },
-    showRoute: (scenes) => flow.setRoute(scenes),
-    search: () => searchRoutes(true),
+  // In Stage, a character can be picked and moved, sized or turned: the `show` line that put them there changes.
+  const stageTools = new StageTools(playerHost, $('.stage-toolbar'), {
+    enabled: () => workspace === 'stage',
+    pose: (tag) => {
+      const pose = timeline.pose(tag);
+      const shown = showLineOf(tag);
+      const props = shown ? inspectLine(shown.text)?.stmt : null;
+      const p = props?.type === 'show' ? props.props : undefined;
+      return { text: pose ? [pose.look, pose.at].filter(Boolean).join(' · ') : '', zoom: p?.zoom?.[0] ?? 1, rotate: p?.rotate ?? 0 };
+    },
+    changed: (tag, change) => restage(tag, change),
   });
-  /** Words, lines and choices of each scene, worked out once per compiled story and only when asked. */
+  /** The `show` that put a character on stage: the nearest one above the game's line, in the same scene. */
+  function showLineOf(tag: string): { n: number; text: string } | null {
+    if (!playing || (playing.file ?? MAIN) !== active) return null;
+    for (let n = playing.line; n >= 1; n--) {
+      const text = script.lineText(n);
+      if (/^\S/.test(text) && !text.startsWith('#')) break;
+      const found = inspectLine(text);
+      if (found?.stmt.type === 'show' && (found.stmt.tag === tag || found.stmt.as === tag)) return { n, text };
+    }
+    return null;
+  }
+  function restage(tag: string, change: StageChange): string {
+    if (!playing) return 'Play the scene first.';
+    if ((playing.file ?? MAIN) !== active) openFile(playing.file ?? MAIN);
+    const shown = showLineOf(tag);
+    if (!shown) return `No “show ${tag}” in this scene above line ${playing.line} to change.`;
+    const r = editLine(shown.text, change);
+    if (!r.ok) return r.error;
+    script.replaceLine(shown.n, r.text);
+    flush();
+    player?.jumpToLine(playing.line, undefined, playing.file);
+    const what = 'at' in change ? `at ${change.at}` : 'zoom' in change ? `zoom ${change.zoom}` : `rotate ${change.rotate}°`;
+    return `${tag} ${what} · line ${shown.n}`;
+  }
+
+  /** Words, lines, choices and what each scene sets, worked out once per compiled story and only when asked. */
   let statsFor: CompiledStory | null = null;
   let stats = new Map<string, SceneStats>();
   const statsOf = (): Map<string, SceneStats> => {
@@ -362,35 +409,149 @@ async function main(): Promise<void> {
     return stats;
   };
   const readShare = (s: SceneStats): number => s.ids.length ? s.ids.filter((id) => player!.hasRead(id)).length / s.ids.length : 0;
-  function measureScenes(by: Colouring): Map<string, number> | null {
+  /** A variable's values entering a scene, as found by the route search: `0 to 2`, `true`, `true or false`. */
+  const rangeText = (values: Value[] | undefined): string => {
+    if (!values?.length) return 'not reached';
+    if (values.every((v) => typeof v === 'number')) {
+      const nums = values as number[];
+      const lo = Math.min(...nums), hi = Math.max(...nums);
+      return lo === hi ? String(lo) : `${lo} to ${hi}`;
+    }
+    return values.map((v) => JSON.stringify(v).replace(/^"|"$/g, '')).join(' or ');
+  };
+  function measureScenes(by: Colouring): Map<string, Measure> | null {
     if (!story) return null;
     const all = statsOf();
-    const out = new Map<string, number>();
+    const out = new Map<string, Measure>();
     if (by === 'read') {
       if (!player) return null;
-      for (const [label, s] of all) out.set(label, readShare(s));
+      for (const [label, s] of all) {
+        const share = readShare(s);
+        out.set(label, { level: share >= 1 ? 4 : share > 0 ? Math.max(1, Math.ceil(share * 3)) : 0, text: `${Math.round(share * 100)}% of lines seen` });
+      }
       return out;
     }
-    // By rank, so one very long scene doesn't make every other one look empty.
-    const sorted = [...all].sort((a, b) => a[1].words - b[1].words);
-    sorted.forEach(([label], i) => out.set(label, sorted.length > 1 ? i / (sorted.length - 1) : 1));
+    if (by === 'words') {
+      // By rank, so one very long scene doesn't make every other one look empty.
+      const sorted = [...all].sort((a, b) => a[1].words - b[1].words);
+      sorted.forEach(([label, s], i) => out.set(label, { level: Math.round((sorted.length > 1 ? i / (sorted.length - 1) : 1) * 4), text: `${s.words} words` }));
+      return out;
+    }
+    // A variable's value as each scene begins, from the route search.
+    const name = by.slice(4);
+    const entries = routeResult?.entries ?? {};
+    let max = 0;
+    for (const vars of Object.values(entries)) for (const v of vars[name] ?? []) if (typeof v === 'number') max = Math.max(max, Math.abs(v));
+    for (const label of Object.keys(story.labels)) {
+      const values = entries[label]?.[name];
+      if (!values?.length) { out.set(label, { level: 0, text: `${name} not reached` }); continue; }
+      const level = values.every((v) => typeof v === 'number')
+        ? Math.round((Math.max(...(values as number[]).map(Math.abs)) / (max || 1)) * 4)
+        : values.every((v) => v === true) ? 4 : values.some((v) => v === true) ? 2 : 0;
+      out.set(label, { level, text: `${name} ${rangeText(values)}` });
+    }
     return out;
   }
-  let lastGraph: StoryGraph | null = null;
-  function sceneInfo(label: string): SceneInfo {
-    const edges = lastGraph?.edges ?? [];
-    const s = statsOf().get(label);
-    return {
-      label,
-      stats: s,
-      read: player && s ? readShare(s) : null,
-      choices: s?.choices ?? 0,
-      from: [...new Set(edges.filter((e) => e.to === label && e.from !== label).map((e) => e.from))],
-      to: [...new Set(edges.filter((e) => e.from === label && e.to !== label).map((e) => e.to))],
-    };
-  }
 
-  /** Routes are searched in a worker, for the story as last compiled, while the Story workspace is open. */
+  // ---- routes: searched in a worker after each edit; the chosen one sets the variables everywhere
+
+  let lastGraph: StoryGraph | null = null;
+  let routeResult: RouteSearch | null = null;
+  let chosenRoute: string | null = null;
+  try { chosenRoute = localStorage.getItem(ROUTE_KEY); } catch { /* storage unavailable */ }
+  const chosen = (): Route | null => routeResult?.routes.find((r) => r.ending === chosenRoute) ?? null;
+  /** An ending's name: as declared (`ending id "Name"`), or the achievement its scene unlocks, or its scene. */
+  let achievedIn: { for: CompiledStory; names: Map<string, string> } | null = null;
+  const endingName = (id: string): string => {
+    if (story?.endings?.[id]) return story.endings[id]!.name;
+    if (story && achievedIn?.for !== story) {
+      const names = new Map<string, string>();
+      for (const ins of story.code) if (ins.op === 'achieve' && !names.has(ins.src.label)) names.set(ins.src.label, story.achievements?.[ins.id]?.name ?? ins.id);
+      achievedIn = { for: story, names };
+    }
+    return achievedIn?.names.get(id) ?? id;
+  };
+  function chooseRoute(id: string | null): void {
+    chosenRoute = id;
+    try { if (id) localStorage.setItem(ROUTE_KEY, id); else localStorage.removeItem(ROUTE_KEY); } catch { /* storage unavailable */ }
+    showRoute();
+    panelsStale = true;
+    cursorMoved(script.cursorLine, false, true);
+  }
+  function showRoute(): void {
+    const r = chosen();
+    const scenes = r ? r.scenes.map((s) => s.label) : null;
+    flow.setRoute(scenes);
+    dock.setRoute(scenes);
+    renderEndings();
+  }
+  function renderEndings(): void {
+    if (!story || !lastGraph) return;
+    const r = routeResult;
+    const declared = Object.keys(story.endings ?? {});
+    const graphEndings = lastGraph.nodes.filter((n) => n.ending).map((n) => n.label);
+    const found = new Map((r?.routes ?? []).map((x) => [x.ending, x]));
+    const ids = [...new Set([...(declared.length ? declared : graphEndings), ...found.keys()])];
+    const list: DockEnding[] = ids.map((id) => {
+      const route = found.get(id);
+      const last = route?.scenes.at(-1)?.label ?? id;
+      const ways = [...new Set(lastGraph!.edges.filter((e) => e.to === last && e.via).map((e) => e.via!))];
+      const choices = route ? `${route.choices.length} ${route.choices.length === 1 ? 'choice' : 'choices'}` : '';
+      return {
+        id,
+        title: endingName(id),
+        detail: ways.length ? ways.join(' / ') : choices || 'reached',
+        found: !!route,
+        missing: !r ? 'searching…' : r.complete ? 'never reached' : 'not found yet',
+      };
+    });
+    const reached = list.filter((e) => e.found).length;
+    const status = !r ? 'Searching for routes…'
+      : `${reached} of ${list.length} reached${r.complete ? '' : ' so far (the search stopped after its time)'} · ${r.states} choice ${r.states === 1 ? 'point' : 'points'} in ${r.ms < 1000 ? `${r.ms} ms` : `${(r.ms / 1000).toFixed(1)} s`}`;
+    dock.setEndings(list, chosen() ? chosenRoute : null, status);
+  }
+  /**
+   * The variables at each line of a scene on the chosen route: the scene is played with the real runner from the
+   * route's values, making the route's choices, so a line after a choice sees what that choice set. Worked out
+   * once per scene, route and compiled story.
+   */
+  let lineVars: { key: string; lines: { line: number; file?: string; vars: Record<string, Value> }[] } | null = null;
+  function routeVarsAtLine(line: number, label: string | null, file?: string): Record<string, Value> | undefined {
+    const route = chosen();
+    const i = route && label ? route.scenes.findIndex((s) => s.label === label) : -1;
+    if (!route || !story || !label || i < 0) return undefined;
+    const key = `${route.ending}|${label}`;
+    if (lineVars?.key !== key || linesFor !== story) {
+      linesFor = story;
+      const scene = route.scenes[i]!;
+      const choices = route.choices.slice(scene.choicesBefore, route.scenes[i + 1]?.choicesBefore ?? route.choices.length);
+      const lines: { line: number; file?: string; vars: Record<string, Value> }[] = [];
+      try {
+        const runner = new Runner(story);
+        let step = runner.startAt(label, { vars: scene.vars });
+        let next = 0;
+        for (let n = 0; n < 20_000; n++) {
+          const b = step.block;
+          if (b.type === 'end' || !('label' in b) || b.label !== label) break;
+          lines.push({ line: b.line, ...(b.file ? { file: b.file } : {}), vars: { ...runner.vars } });
+          if (b.type === 'menu') {
+            const want = choices[next++];
+            const option = want && b.choices.find((c) => c.text === want.text);
+            if (!option) break;
+            step = runner.choose(option.index);
+          } else if (b.type === 'say' || b.type === 'wait') step = runner.advance();
+          else break;
+        }
+      } catch { /* a line the runner can't play here (a plugin's question): stop there */ }
+      lineVars = { key, lines };
+    }
+    // The values at the last line shown at or before this one (a line's own `set`s come after it shows).
+    let best: Record<string, Value> = route.scenes[i]!.vars;
+    for (const l of lineVars.lines) if ((l.file ?? undefined) === (file ?? undefined) && l.line <= line) best = l.vars;
+    return best;
+  }
+  let linesFor: CompiledStory | null = null;
+
   let routeWorker: Worker | null = null;
   let routeRequest = 0;
   let routeBusy = false;
@@ -407,41 +568,43 @@ async function main(): Promise<void> {
       routeWorker.onmessage = (e: MessageEvent<{ id: number; result: RouteSearch }>) => {
         if (e.data.id !== routeRequest) return;
         routeBusy = false;
-        storyPanel.setRoutes(e.data.result);
+        routeResult = e.data.result;
+        showRoute();
+        flow.recolourIfVariable();
+        panelsStale = true;
+        cursorMoved(script.cursorLine, false, true);
       };
       routeWorker.onerror = (e) => { routeBusy = false; console.error(e); flashNote('The route search stopped with an error.'); };
     }
     routeBusy = true;
-    storyPanel.setSearching();
+    dock.setSearching();
     // The worker compiles the text itself: copying text to it is cheap, a long game's compiled code isn't.
     syncText();
     const parts = [...docs.values()].filter((d) => d.path !== MAIN).map((d) => ({ path: d.path, source: d.text }));
     routeWorker.postMessage({ id: ++routeRequest, main: doc(MAIN).text, parts, plugins: pluginManifests, budgetMs: ROUTE_BUDGET_MS });
   }
 
-  // In Stage, dragging a character in the game rewrites the `show` line that placed it.
-  new StageDrag(playerHost, {
-    enabled: () => workspace === 'stage',
-    placed: (tag, at) => placeCharacter(tag, at),
-  });
-  function placeCharacter(tag: string, at: string): string {
-    if (!playing) return 'Play the scene first.';
-    const file = playing.file ?? MAIN;
-    if (file !== active) openFile(file);
-    // The `show` that put the character there: the nearest one above the game's line, in the same scene.
-    for (let n = playing.line; n >= 1; n--) {
-      const text = script.lineText(n);
-      if (/^\S/.test(text) && !text.startsWith('#')) break;
-      const found = inspectLine(text);
-      if (found?.stmt.type !== 'show' || (found.stmt.tag !== tag && found.stmt.as !== tag)) continue;
-      const r = editLine(text, { at });
-      if (!r.ok) return r.error;
-      script.replaceLine(n, r.text);
-      flush();
-      player?.jumpToLine(playing.line, undefined, playing.file);
-      return `${tag} at ${at} · line ${n}`;
+  /** The scene card (Story workspace): what the scene holds, what it can expect, and what the route does there. */
+  function sceneCard(label: string): SceneCard {
+    const s = statsOf().get(label);
+    const def = labelNamed(label);
+    const entry = routeResult?.entries[label] ?? {};
+    // The variables worth showing: the one the chart is coloured by first, then the rest, three at most.
+    const names = Object.keys(story?.vars ?? {});
+    const facts: [string, string][] = [['Words', String(s?.words ?? 0)], ['Lines', String(s?.lines ?? 0)]];
+    for (const name of names.slice(0, 3)) facts.push([`${name} on entry`, routeResult ? rangeText(entry[name]) : '…']);
+    facts.push(['Seen in playtests', player && s ? `${Math.round(readShare(s) * 100)}%` : '—']);
+    facts.push(['Sets', s?.sets.length ? s.sets.join(', ') : 'nothing']);
+    const route = chosen();
+    let routeChoice: string | null = null;
+    if (route) {
+      const i = route.scenes.findIndex((x) => x.label === label);
+      if (i >= 0) {
+        const end = route.scenes[i + 1]?.choicesBefore ?? route.choices.length;
+        routeChoice = route.choices.slice(route.scenes[i]!.choicesBefore, end).map((c) => c.text).join('” then “') || null;
+      }
     }
-    return `No “show ${tag}” in this scene above line ${playing.line} to change.`;
+    return { label, file: def?.loc.file ?? MAIN, line: def?.loc.line ?? 0, picture: s?.picture ?? null, facts, routeChoice, routeName: route ? endingName(route.ending) : null };
   }
 
   /** The program of the last compile, and its scenes by name (made when first needed). */
@@ -454,20 +617,24 @@ async function main(): Promise<void> {
   };
 
   let workspace: Workspace = 'write';
-  const splitter = setupSplitter(() => workspace);
+  setupSplitter();
   function setWorkspace(ws: Workspace): void {
     workspace = ws;
     document.body.dataset.workspace = ws;
     for (const b of document.querySelectorAll<HTMLButtonElement>('.workspaces [data-workspace]')) b.setAttribute('aria-pressed', String(b.dataset.workspace === ws));
     try { localStorage.setItem(WORKSPACE_KEY, ws); } catch { /* storage unavailable */ }
-    splitter.restore();
-    // The panes that were hidden catch up with where the cursor is.
-    cursorLabel = undefined;
-    storyPanelLabel = undefined;
+    // The panels catch up with where the cursor is.
+    panelsStale = true;
     cursorMoved(script.cursorLine, false, true);
-    if (ws === 'story') searchRoutes();
+    if (ws === 'story') {
+      searchRoutes();
+      requestAnimationFrame(() => flow.showCursor());
+    }
     // Stage shows the moment the cursor is on.
-    if (ws === 'stage' && player && script.lineText(script.cursorLine).trim() && playing?.line !== script.cursorLine) runFrom(script.cursorLine);
+    if (ws === 'stage') {
+      if (player && script.lineText(script.cursorLine).trim() && playing?.line !== script.cursorLine) runFrom(script.cursorLine);
+      stageTools.follow();
+    }
   }
   for (const b of document.querySelectorAll<HTMLButtonElement>('.workspaces [data-workspace]')) {
     b.addEventListener('click', () => setWorkspace(b.dataset.workspace as Workspace));
@@ -478,19 +645,27 @@ async function main(): Promise<void> {
   let cursorLineNo = 0;
   let followTimer = 0;
   let panelFrame = 0;
+  let panelTimer = 0;
+  /** The story or the route changed: every panel draws again. */
+  let panelsStale = true;
   const position = $('.position');
   function cursorMoved(line: number, typing: boolean, now = false): void {
     const label = labelAt(line);
     const lineChanged = line !== cursorLineNo;
     cursorLineNo = line;
-    if (label !== cursorLabel) {
-      cursorLabel = label;
-      flow.setCursor(label);
-    }
+    // The scene's panels (flowchart, dock) follow in the panel pass below: changing them here, inside the
+    // editor's own update, would make the browser lay the page out again before the cursor is even drawn.
+    cursorLabel = label;
     previewAt(line);
-    // The rest is drawn once per frame at most, and only for panels on screen.
-    if (!panelFrame) panelFrame = requestAnimationFrame(() => { panelFrame = 0; updatePanels(); });
-    if (now) { cancelAnimationFrame(panelFrame); panelFrame = 0; updatePanels(); }
+    // The panels are drawn once per frame at most; while typing, when it pauses.
+    window.clearTimeout(panelTimer);
+    if (now) {
+      cancelAnimationFrame(panelFrame);
+      panelFrame = 0;
+      updatePanels();
+    } else if (typing && !lineChanged) {
+      panelTimer = window.setTimeout(updatePanels, PANELS_TYPING_DELAY_MS);
+    } else if (!panelFrame) panelFrame = requestAnimationFrame(() => { panelFrame = 0; updatePanels(); });
     // In Stage, the game shows the line the cursor rests on (not while typing: that would restart the line).
     if (workspace === 'stage' && lineChanged && !typing) {
       window.clearTimeout(followTimer);
@@ -499,36 +674,87 @@ async function main(): Promise<void> {
       }, FOLLOW_DELAY_MS);
     }
   }
+  function updatePosition(line: number, label: string | null): void {
+    const b = (text: string, cls = '') => Object.assign(document.createElement('b'), { textContent: text, className: cls });
+    const route = chosen();
+    position.replaceChildren(
+      'Everything is showing',
+      ...(docs.size > 1 && active !== MAIN ? [b(active)] : []),
+      ...(label ? [b(label)] : []),
+      `line ${line}`,
+      ...(route ? ['· route', b(endingName(route.ending), 'route')] : []),
+    );
+  }
+  let storyCardLabel: string | null | undefined;
+  /** The scene the flowchart and the dock last marked. */
+  let panelLabel: string | null | undefined;
   function updatePanels(): void {
     const line = script.cursorLine;
     const label = cursorLabel ?? null;
-    position.replaceChildren(
-      ...(docs.size > 1 ? [`${active} › `] : []),
-      ...(label ? [Object.assign(document.createElement('b'), { textContent: label }), ' · '] : []),
-      `line ${line}`,
-    );
+    const stale = panelsStale;
+    panelsStale = false;
+    if (label !== panelLabel) {
+      panelLabel = label;
+      flow.setCursor(label, workspace === 'story');
+      dock.setCursor(label);
+    }
+    updatePosition(line, label);
+    if (timeline.scene !== label || stale || timelineStale) {
+      timelineStale = false;
+      const def = label ? labelNamed(label) : null;
+      timeline.setScene(def, def?.loc.file);
+    }
+    timeline.setCursor(line);
     if (workspace === 'story') {
-      if (storyPanelLabel !== label) {
-        storyPanelLabel = label;
-        storyPanel.setScene(label ? sceneInfo(label) : null);
+      if (storyCardLabel !== label || stale) {
+        storyCardLabel = label;
+        inspector.showScene(label ? sceneCard(label) : null);
       }
       return;
     }
-    if (workspace === 'write') return;
-    inspector.show(line, script.lineText(line), label ?? '');
+    storyCardLabel = undefined;
+    // The inspector is the heaviest panel: while the cursor keeps moving, it waits for it to rest.
+    window.clearTimeout(inspectorTimer);
+    if (stale || line === inspectedLine) drawInspector(line, label);
+    else inspectorTimer = window.setTimeout(() => drawInspector(script.cursorLine, cursorLabel ?? null), INSPECTOR_REST_MS);
+  }
+  let inspectorTimer = 0;
+  let inspectedLine = 0;
+  function drawInspector(line: number, label: string | null): void {
+    inspectedLine = line;
+    const text = script.lineText(line);
+    inspector.showLine(line, text, `${active}${label ? ` · ${label}` : ''}`);
+    showVars(label);
     if (workspace === 'stage') {
-      if (timeline.scene !== label || timelineStale) {
-        timelineStale = false;
-        const def = label ? labelNamed(label) : null;
-        timeline.setScene(def, def?.loc.file);
-      }
-      timeline.setCursor(line);
+      // The character the line is about is the one picked on the stage.
+      const found = inspectLine(text)?.stmt;
+      const tag = found?.type === 'show' || found?.type === 'hide' ? found.tag : found?.type === 'say' ? found.who : null;
+      if (tag) stageTools.select(tag);
     }
+  }
+  /** The inspector's variables: the game's own in Stage (it is at this line), else the route's as the scene begins. */
+  function showVars(label: string | null): void {
+    const route = chosen();
+    const names = Object.keys(story?.vars ?? {});
+    const show = (vars: Readonly<Record<string, Value>>) => names.map((k): [string, string] => [k, JSON.stringify(vars[k] ?? null)]);
+    if (workspace === 'stage' && player) {
+      inspector.setVars(route ? `Variables here on the route to ${endingName(route.ending)}` : 'Variables here, in the game', show(player.vars));
+      return;
+    }
+    const vars = routeVarsAtLine(script.cursorLine, label, active === MAIN ? undefined : active);
+    if (route && vars) { inspector.setVars(`Variables here on the route to ${endingName(route.ending)}`, show(vars)); return; }
+    // No route through here: what the scene can expect, over every way the search found to it.
+    const entry = label ? routeResult?.entries[label] : undefined;
+    inspector.setVars(route ? 'Variables entering this scene (it isn’t on the chosen route)' : 'Variables entering this scene, every way', entry ? names.map((k): [string, string] => [k, rangeText(entry[k])]) : null);
   }
   /** The story was recompiled: the timeline redraws when next shown. */
   let timelineStale = true;
-  /** The scene the Story panel shows (undefined: draw it again). */
-  let storyPanelLabel: string | null | undefined;
+
+  /** The dock's list: every scene, the start and the endings marked. */
+  function sceneList(): DockScene[] {
+    const startLabel = story ? Object.entries(story.labels).find(([, pc]) => pc === story!.start)?.[0] : undefined;
+    return (lastGraph?.nodes ?? []).map((n) => ({ label: n.label, kind: n.label === startLabel ? 'start' : n.ending ? 'ending' : 'scene' }));
+  }
 
   let saved: string | null = null;
   try { saved = localStorage.getItem(WORKSPACE_KEY); } catch { /* storage unavailable */ }
@@ -537,7 +763,6 @@ async function main(): Promise<void> {
   script.revealLine(1, true, false);
   setWorkspace(WORKSPACES.includes(saved as Workspace) ? saved as Workspace : 'write');
   void assets.refresh();
-  setupTabs();
 
   /** An asset (or files from the computer) dropped onto line `line` of the script. */
   async function dropOnScript(drop: { asset?: { path: string; kind: 'image' | 'audio' }; files?: File[] }, line: number): Promise<void> {
@@ -594,14 +819,13 @@ async function main(): Promise<void> {
     labelsByName = null;
     timelineStale = true;
     if (!r.story) {
-      if (workspace === 'stage') cursorMoved(script.cursorLine, true);
+      cursorMoved(script.cursorLine, true);
       gameNote.textContent = story ? 'The script has errors: the game is running the last version that worked.' : 'Fix the errors in the script to start the game.';
       return;
     }
     gameNote.textContent = '';
     story = r.story;
     inspector.setCatalog({ images: story.images, characters: story.characters });
-    if (workspace === 'stage') cursorMoved(script.cursorLine, true);
     // A voiced game's lines play their files here too (the files the assets folder has).
     const voices = voiceMap(story, (path) => assetPaths.has(path));
     if (Object.keys(voices).length) story.voices = voices;
@@ -609,14 +833,16 @@ async function main(): Promise<void> {
     $('.story-title').textContent = story.meta.title ?? 'Untitled';
     lastGraph = buildGraph(r.program);
     flow.update(story, lastGraph);
+    flow.refreshVariables();
     flow.recolour();
-    storyPanel.setStory(story, lastGraph);
-    if (workspace === 'story') {
-      storyPanelLabel = undefined;
-      cursorMoved(script.cursorLine, true);
-      window.clearTimeout(routeTimer);
-      routeTimer = window.setTimeout(() => searchRoutes(), ROUTE_DELAY_MS);
-    }
+    dock.setScenes(sceneList());
+    renderEndings();
+    panelsStale = true;
+    cursorMoved(script.cursorLine, true);
+    // In Story, the routes are searched again once the edits settle (in a worker); elsewhere the last search
+    // stands until Story is opened or "Search again" is pressed, so writing never shares the computer with it.
+    window.clearTimeout(routeTimer);
+    if (workspace === 'story' || !searchedStory) routeTimer = window.setTimeout(() => searchRoutes(), searchedStory ? ROUTE_DELAY_MS : 0);
     assets.scriptChanged();
     if (!player) startPlayer(story);
     else if (!player.reload(story)) flashNote('Couldn’t find the line the game was on after that edit, so it went back to the title screen.');
@@ -642,6 +868,10 @@ async function main(): Promise<void> {
         flow.setCurrent(block && 'label' in block ? block.label : null);
         // Colouring by what's been read follows the playtest, a few times a second at most.
         if (!recolourTimer) recolourTimer = window.setTimeout(() => { recolourTimer = 0; flow.recolourIfRead(); }, 1500);
+        if (workspace === 'stage') {
+          stageTools.follow();
+          showVars(cursorLabel ?? null);
+        }
       },
     });
     player.boot();
@@ -650,7 +880,8 @@ async function main(): Promise<void> {
   function runFrom(line: number): void {
     flush();
     if (!player) return;
-    player.jumpToLine(line, undefined, active === MAIN ? undefined : active);
+    // The chosen route's variables, when it passes through the line's scene.
+    player.jumpToLine(line, routeVarsAtLine(line, labelAt(line), active === MAIN ? undefined : active), active === MAIN ? undefined : active);
     // Leave the keyboard with the script, so writing can carry on straight away.
   }
 
@@ -685,6 +916,12 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------- top bar
 
   $('#run').addEventListener('click', () => runFrom(script.cursorLine));
+  const stepLine = (d: -1 | 1) => {
+    const line = timeline.neighbour(d);
+    if (line !== null) script.revealLine(line, true, false);
+  };
+  $('#prev-line').addEventListener('click', () => stepLine(-1));
+  $('#next-line').addEventListener('click', () => stepLine(1));
   $('#restart').addEventListener('click', () => { flush(); if (story) startPlayer(story); });
   problemsBtn.addEventListener('click', () => script.showProblems());
   $('#format').addEventListener('click', () => {
@@ -764,26 +1001,6 @@ async function upload(files: File[]): Promise<AssetInfo[]> {
   return added;
 }
 
-/** Flowchart / Assets tabs under the game. */
-function setupTabs(): void {
-  const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tabs [role=tab]')];
-  const select = (tab: HTMLButtonElement, focus = false) => {
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute('aria-selected', String(on));
-      t.tabIndex = on ? 0 : -1;
-      document.getElementById(t.getAttribute('aria-controls')!)!.hidden = !on;
-    }
-    if (focus) tab.focus();
-  };
-  tabs.forEach((t, i) => {
-    t.addEventListener('click', () => select(t));
-    t.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') select(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]!, true);
-    });
-  });
-}
-
 /** Every file of the story, story.vn first. */
 async function loadFiles(): Promise<Map<string, StoryText> | null> {
   try {
@@ -799,38 +1016,37 @@ async function loadFiles(): Promise<Map<string, StoryText> | null> {
   }
 }
 
-/** Drag (or arrow-key) the bar beside the script to resize it; each workspace keeps its own width. */
-function setupSplitter(current: () => Workspace): { restore(): void } {
+/** Drag (or arrow-key) the bar between the script and the game (Write) to share the space between them. */
+function setupSplitter(): void {
   const workspace = $('.workspace');
   const bar = $('.splitter');
-  const apply = (pct: number, save = true) => {
-    const v = Math.min(75, Math.max(20, pct));
-    const ws = current();
-    workspace.style.setProperty(`--split-${ws}`, `${v}%`);
-    bar.setAttribute('aria-valuenow', String(Math.round(v)));
-    if (save) try { localStorage.setItem(`${SPLIT_KEY}:${ws}`, String(v)); } catch { /* storage unavailable */ }
+  const script = $('.script-pane');
+  const apply = (px: number, save = true) => {
+    const room = script.getBoundingClientRect().width + $('.game-pane').getBoundingClientRect().width;
+    const v = Math.round(Math.min(room * 0.8, Math.max(room * 0.2, px)));
+    workspace.style.setProperty('--script-w', `${v}px`);
+    bar.setAttribute('aria-valuenow', String(Math.round((v / room) * 100)));
+    if (save) try { localStorage.setItem(SPLIT_KEY, String(v)); } catch { /* storage unavailable */ }
   };
-  const restore = () => {
-    let stored = NaN;
-    try { stored = Number(localStorage.getItem(`${SPLIT_KEY}:${current()}`) ?? (current() === 'write' ? localStorage.getItem(SPLIT_KEY) : null)); } catch { /* storage unavailable */ }
-    if (Number.isFinite(stored) && stored > 0) apply(stored, false);
-    else bar.setAttribute('aria-valuenow', String(parseFloat(getComputedStyle(workspace).getPropertyValue(`--split-${current()}`)) || 50));
-  };
+  let stored = NaN;
+  try { stored = Number(localStorage.getItem(SPLIT_KEY)); } catch { /* storage unavailable */ }
+  if (Number.isFinite(stored) && stored > 0) workspace.style.setProperty('--script-w', `${stored}px`);
+  bar.setAttribute('aria-valuemin', '20');
+  bar.setAttribute('aria-valuemax', '80');
 
   bar.addEventListener('pointerdown', (e) => {
     bar.setPointerCapture(e.pointerId);
-    const rect = workspace.getBoundingClientRect();
-    const move = (ev: PointerEvent) => apply(((ev.clientX - rect.left) / rect.width) * 100);
+    const left = script.getBoundingClientRect().left;
+    const move = (ev: PointerEvent) => apply(ev.clientX - left);
     const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); };
     bar.addEventListener('pointermove', move);
     bar.addEventListener('pointerup', up);
   });
   bar.addEventListener('keydown', (e) => {
-    const now = Number(bar.getAttribute('aria-valuenow') ?? 50);
-    if (e.key === 'ArrowLeft') apply(now - 5);
-    if (e.key === 'ArrowRight') apply(now + 5);
+    const now = script.getBoundingClientRect().width;
+    if (e.key === 'ArrowLeft') apply(now - 40);
+    if (e.key === 'ArrowRight') apply(now + 40);
   });
-  return { restore };
 }
 
 function plural(n: number, word: string): string {

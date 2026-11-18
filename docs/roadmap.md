@@ -123,6 +123,16 @@ The editor grows from a script with a game beside it into a workspace for stagin
 - [x] The game's own buttons keep their look in the editor; a clearer timeline (changes as chips), quieter splitter, the game on the editor's background
 - [x] Stage: drag a character in the game to place them (snapping to left, center and right); the `show` line is rewritten, and a plain click still plays on
 
+### Milestone 12, second pass: the editor as designed (2026-11-18)
+The first pass kept the old editor's layout; this one follows the design (the "A + B + C" board) closely.
+- [x] One layout for every workspace: scenes on the left, the inspector on the right, the scene's lines along the bottom; the middle is the script and game (Write), the stage (Stage) or the flowchart, left to right (Story)
+- [x] The route chosen once for the whole editor (left dock), with each ending's conditions: its variables are used by every play-from-here, worked out at the line by playing the scene with the route's choices; the bar at the top names it
+- [x] Stage tools: pick a character, Move / Scale / Rotate by dragging (writes `at`, `zoom`, `rotate`), a frame with handles and a label, thirds and safe-area guides
+- [x] Timeline tracks: dialogue, one per character (look and place), background, music, branches; previous and next line from the top bar
+- [x] Story: colour by a variable's value as each scene begins (the route search records them), the scene card (picture, values on entry, what it sets, the route's choice there, Open on stage / in script)
+- [x] The route search runs in Story (and on opening), not after every edit while writing
+- [ ] Measure the second pass on the 65,000-line file and bring cursor moves back to the first pass's numbers
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 

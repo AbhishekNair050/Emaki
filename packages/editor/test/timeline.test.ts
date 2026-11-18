@@ -6,7 +6,7 @@ import { beatsOf } from '../src/timeline.ts';
 const demo = readFileSync(new URL('../../../games/gullwing/story.vn', import.meta.url), 'utf8');
 
 describe('beatsOf', () => {
-  it('makes a column for each line of dialogue and each choice, with what leads up to it', () => {
+  it('makes a column for each line of dialogue and each choice, with the stage as it is there', () => {
     const { program } = parse(`label a:
   scene kitchen with dissolve
   play music theme
@@ -20,6 +20,7 @@ describe('beatsOf', () => {
     "Go.":
       jump b
   hide mira
+  stop music
   jump b
 `);
     const beats = beatsOf(program.labels[0]!);
@@ -28,12 +29,16 @@ describe('beatsOf', () => {
       [6, 'say', 'mira', 0],
       [7, 'menu', null, 0],
       [10, 'say', 'mira', 1],
-      [14, 'end', null, 0],
+      [15, 'end', null, 0],
     ]);
-    expect(beats[0]).toMatchObject({ picture: ['scene kitchen with dissolve', 'show mira neutral at right'], sound: ['play music theme'], flow: [] });
-    expect(beats[2]!.text).toBe('Stay. / Go.');
-    expect(beats[3]!.flow).toEqual(['choice: Stay.', 'set trust += 1']);
-    expect(beats[4]).toMatchObject({ picture: ['hide mira'], flow: ['choice: Go.', 'jump b', 'jump b'] });
+    // The first line: the background and the music start, Mira is on stage at the right.
+    expect(beats[0]).toMatchObject({ bg: 'kitchen', bgChanged: true, music: 'theme', musicChanged: true, cast: { mira: { look: 'neutral', at: 'right' } } });
+    // Speaking with a look changes it; the stage carries on.
+    expect(beats[1]).toMatchObject({ bgChanged: false, musicChanged: false, cast: { mira: { look: 'smile', at: 'right' } } });
+    expect(beats[2]).toMatchObject({ text: 'Stay. / Go.', branch: ['2 choices'] });
+    expect(beats[3]!.branch).toEqual(['“Stay.”']);
+    // After the menu: Mira leaves, the music stops, and the scene jumps on.
+    expect(beats[4]).toMatchObject({ cast: {}, music: null, musicChanged: true, branch: ['“Go.”', 'jump b', 'jump b'] });
   });
 
   it('keeps every beat of the demo in line order', () => {

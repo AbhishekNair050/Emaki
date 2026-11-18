@@ -13,5 +13,5 @@ const scope = self as unknown as { onmessage: ((e: MessageEvent<Request>) => voi
 scope.onmessage = (e) => {
   const { id, main, parts, plugins, budgetMs } = e.data;
   const r = compileFiles(main, parts, { plugins, cache });
-  scope.postMessage({ id, result: r.story ? findRoutes(r.story, { budgetMs }) : { routes: [], complete: false, states: 0, ms: 0 } });
+  scope.postMessage({ id, result: r.story ? findRoutes(r.story, { budgetMs }) : { routes: [], complete: false, states: 0, ms: 0, entries: {} } });
 };
