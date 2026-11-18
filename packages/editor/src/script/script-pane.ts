@@ -18,7 +18,8 @@ import { emakiLanguage } from './mode.ts';
 
 export interface ScriptPaneHooks {
   /** The text changed (typing, undo, formatting...). */
-  onChange(text: string): void;
+  /** The text changed (read it with `text` when needed: copying a long file on every keystroke is slow). */
+  onChange(): void;
   /** Ctrl+Enter: play from this 1-based line. */
   onRun(line: number): void;
   /** The cursor moved to another line (1-based). */
@@ -126,7 +127,7 @@ export class ScriptPane {
         },
       }),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged && !this.applyingExternal) this.hooks.onChange(u.state.doc.toString());
+        if (u.docChanged && !this.applyingExternal) this.hooks.onChange();
         if (u.selectionSet || u.docChanged) this.hooks.onCursor?.(lineAt(u.view));
       }),
     ];

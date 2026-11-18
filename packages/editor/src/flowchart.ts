@@ -122,22 +122,36 @@ export class Flowchart {
   setCurrent(label: string | null): void {
     if (label) this.visited.add(label);
     if (label === this.current) return;
+    const before = this.current;
     this.current = label;
-    this.refresh();
+    this.refreshNodes(before, label);
     this.scrollTo(label);
   }
 
   /** The scene the script cursor is in: it is also the one the toolbar acts on. */
   setCursor(label: string | null): void {
     if (label === this.selected) return;
+    const before = this.selected;
     this.selected = label;
-    this.refresh();
+    this.refreshNodes(before, label);
     this.updateButtons();
     this.scrollTo(label);
   }
 
   private scrollTo(label: string | null): void {
     if (label) this.nodes.get(label)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /** Restyle only the scenes that changed (a long story has thousands). */
+  private refreshNodes(...ids: (string | null)[]): void {
+    for (const id of ids) {
+      const g = id === null ? undefined : this.nodes.get(id);
+      if (!g || id === null) continue;
+      g.classList.toggle('current', id === this.current);
+      g.classList.toggle('cursor', id === this.selected);
+      g.classList.toggle('visited', this.visited.has(id));
+      g.classList.toggle('connect-source', id === this.connectFrom);
+    }
   }
 
   private refresh(): void {

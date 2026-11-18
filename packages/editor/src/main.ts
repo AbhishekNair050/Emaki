@@ -27,6 +27,8 @@ import { StorySync, type SaveStatus, type StoryText } from './sync.ts';
 import './editor.css';
 
 const COMPILE_DELAY_MS = 250;
+/** How long typing pauses before the text is handed to saving (see edited()). */
+const TEXT_DELAY_MS = 150;
 const MAIN = 'story.vn';
 
 /** One file of the story, as the editor holds it. */
@@ -181,7 +183,13 @@ async function main(): Promise<void> {
       path,
       text: text.text,
       sync: new StorySync(text, {
-        status: (s, detail) => { statuses.set(path, s); if (path === active) showStatus(s, detail); updateFileList(); },
+        status: (s, detail) => {
+          if (path === active) showStatus(s, detail);
+          // Every keystroke reports 'unsaved': redraw the file list (hundreds of files in a long game) only on a change.
+          if (statuses.get(path) === s) return;
+          statuses.set(path, s);
+          updateFileList();
+        },
         reload: (t) => {
           d.text = t;
           if (path === active) script.setText(t);
@@ -202,10 +210,10 @@ async function main(): Promise<void> {
   // Compiles (the game's and the script pane's) redo only the files and labels that changed.
   const compileCache = createCompileCache();
   const script = new ScriptPane($('.cm-host'), initial.text, {
-    onChange: (text) => { doc().text = text; doc().sync.changed(text); scheduleCompile(); },
+    onChange: () => { edited(); scheduleCompile(); },
     onRun: (line) => runFrom(line),
     onCursor: (line) => { flow.setCursor(labelAt(line)); previewAt(line); },
-    onSave: () => void doc().sync.saveNow(),
+    onSave: () => { syncText(); void doc().sync.saveNow(); },
     onDrop: (drop, line) => void dropOnScript(drop, line),
     context: () => ({
       file: active,
@@ -216,9 +224,29 @@ async function main(): Promise<void> {
     openDefinition: (sym) => openSymbol(sym),
   }, MAIN);
 
+  /**
+   * Typing marks the file unsaved at once, but copies the text out of the editor (the whole file, megabytes in a
+   * long game) only when typing pauses, or before anything needs it: saving, compiling, switching files.
+   */
+  let textTimer = 0;
+  function edited(): void {
+    if (!textTimer && statuses.get(active) !== 'unsaved') showStatus('unsaved');
+    window.clearTimeout(textTimer);
+    textTimer = window.setTimeout(syncText, TEXT_DELAY_MS);
+  }
+  function syncText(): void {
+    if (!textTimer) return;
+    window.clearTimeout(textTimer);
+    textTimer = 0;
+    const text = script.text;
+    doc().text = text;
+    doc().sync.changed(text);
+  }
+
   /** Show another file of the story in the script pane. */
   function openFile(path: string): void {
     if (!docs.has(path) || path === active) return;
+    syncText();
     active = path;
     script.open(path, doc().text);
     fileSelect.value = path;
@@ -261,6 +289,7 @@ async function main(): Promise<void> {
 
   /** Files were added or removed on disk (or by us). */
   async function refreshFiles(): Promise<void> {
+    syncText();
     const res = await fetch('/__emaki/files');
     const { files } = (await res.json()) as { files: string[] };
     for (const path of files) {
@@ -319,6 +348,7 @@ async function main(): Promise<void> {
   /** Compile every file of the story (the open one as it is in the editor). */
   function recompile(): void {
     compileTimer = 0;
+    syncText();
     doc().text = script.text;
     const parts = [...docs.values()].filter((d) => d.path !== MAIN).map((d) => ({ path: d.path, source: d.text }));
     const r = compileFiles(doc(MAIN).text, parts, { plugins: pluginManifests, cache: compileCache });
@@ -354,14 +384,8 @@ async function main(): Promise<void> {
 
   /** While the cursor is in a `screen name:` block, the game shows that screen, redrawn as it's edited. */
   function previewAt(line: number): void {
-    const lines = doc().text.split('\n');
-    let name: string | null = null;
-    for (let i = line - 1; i >= 0; i--) {
-      const l = lines[i] ?? '';
-      if (!l.trim() || /^\s/.test(l)) continue;
-      name = /^screen\s+([A-Za-z_]\w*)/.exec(l)?.[1] ?? null;
-      break;
-    }
+    const top = topLevelAbove(line);
+    const name = top === null ? null : /^screen\s+([A-Za-z_]\w*)/.exec(top)?.[1] ?? null;
     if (name === previewing) return;
     previewing = name;
     player?.previewScreen(name);
@@ -389,15 +413,25 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------------------- script ↔ flowchart
 
-  /** The label the cursor is in: the nearest `label` line above it (runs on every keystroke, so no compiling). */
-  function labelAt(line: number): string | null {
-    const lines = doc().text.split('\n');
-    for (let i = line - 1; i >= 0; i--) {
-      const l = lines[i] ?? '';
-      if (!l.trim() || /^\s/.test(l) || l.trimStart().startsWith('#')) continue;
-      return /^label\s+([A-Za-z_]\w*)\s*:/.exec(l)?.[1] ?? null;
+  /**
+   * The nearest line above `line` (1-based, itself included) that starts at the margin, skipping blank lines and
+   * comments. Runs on every cursor move, so it walks the editor's own lines up from the cursor: it never copies
+   * or splits the file, which in a long script costs more than the move itself.
+   */
+  function topLevelAbove(line: number): string | null {
+    const lines = script.view.state.doc;
+    for (let i = Math.min(line, lines.lines); i >= 1; i--) {
+      const l = lines.line(i).text;
+      if (!l.trim() || /^\s/.test(l) || l.startsWith('#')) continue;
+      return l;
     }
     return null;
+  }
+
+  /** The label the cursor is in: the nearest `label` line above it. */
+  function labelAt(line: number): string | null {
+    const top = topLevelAbove(line);
+    return top === null ? null : /^label\s+([A-Za-z_]\w*)\s*:/.exec(top)?.[1] ?? null;
   }
 
   function revealLabel(label: string): void {
@@ -417,7 +451,7 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || !(e.ctrlKey || e.metaKey)) return;
     if (e.key === 'Enter') { e.preventDefault(); runFrom(script.cursorLine); }
-    if (e.key === 's') { e.preventDefault(); for (const d of docs.values()) void d.sync.saveNow(); }
+    if (e.key === 's') { e.preventDefault(); syncText(); for (const d of docs.values()) void d.sync.saveNow(); }
     // Undo/redo the script from anywhere that isn't a text field (e.g. right after a flowchart edit).
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     if (!typing && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) script.redo(); else script.undo(); }
@@ -425,10 +459,12 @@ async function main(): Promise<void> {
   });
 
   window.addEventListener('beforeunload', (e) => {
+    syncText();
     if ([...docs.values()].some((d) => d.sync.dirty)) e.preventDefault();
   });
 
-  import.meta.hot?.on('emaki:story-changed', (data: { file?: string; version: string }) => void docs.get(data.file ?? MAIN)?.sync.external(data.version));
+  // Hand over the latest typing first, so a change on disk is never mistaken for one we can load silently.
+  import.meta.hot?.on('emaki:story-changed', (data: { file?: string; version: string }) => { syncText(); void docs.get(data.file ?? MAIN)?.sync.external(data.version); });
   import.meta.hot?.on('emaki:files-changed', () => void refreshFiles());
   import.meta.hot?.on('emaki:assets-changed', () => void assets.refresh());
 
