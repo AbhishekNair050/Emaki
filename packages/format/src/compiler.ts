@@ -88,6 +88,11 @@ export interface CompileCache {
   labels: WeakMap<object, LabelCode>;
   /** The last compile's labels by file, declarations and text (see compileProgram). */
   byText: Map<string, LabelCode>;
+  /**
+   * The last whole result, handed back when the same texts are compiled again: an editor compiles for its game
+   * and for its error underlines, often the same version of the story. Treat it as read-only.
+   */
+  last?: { main: string; parts: StoryFile[]; plugins: CompileOptions['plugins']; result: CompileResult };
 }
 
 export function createCompileCache(): CompileCache {
@@ -145,6 +150,23 @@ export interface StoryFile {
  * their `file`; locations in story.vn have none.
  */
 export function compileFiles(main: string, parts: StoryFile[] = [], opts: CompileOptions = {}): CompileResult {
+  const last = opts.cache?.last;
+  if (last && sameInput(last, main, parts, opts.plugins)) return last.result;
+  const result = compileFresh(main, parts, opts);
+  if (opts.cache) opts.cache.last = { main, parts: parts.map((p) => ({ ...p })), plugins: opts.plugins, result };
+  return result;
+}
+
+/** The same texts, in the same files and order, with the same plugins (copied objects of the same manifests count). */
+function sameInput(last: NonNullable<CompileCache['last']>, main: string, parts: StoryFile[], plugins: CompileOptions['plugins']): boolean {
+  if (last.main !== main || last.parts.length !== parts.length) return false;
+  for (let i = 0; i < parts.length; i++) if (last.parts[i]!.path !== parts[i]!.path || last.parts[i]!.source !== parts[i]!.source) return false;
+  const a = last.plugins ?? {}, b = plugins ?? {};
+  const keys = Object.keys(a);
+  return (!last.plugins) === (!plugins) && keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+
+function compileFresh(main: string, parts: StoryFile[], opts: CompileOptions): CompileResult {
   const { program, diagnostics: all } = combineFiles(main, parts, opts);
   const res = compileProgram(program, opts);
   all.push(...res.diagnostics);

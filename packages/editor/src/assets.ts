@@ -8,6 +8,9 @@
  */
 import { ASSET_MIME, type DraggedAsset } from './script/script-pane.ts';
 
+/** Drawn per section until the filter narrows it: a long game has tens of thousands of files. */
+const SHOWN_MAX = 300;
+
 export interface AssetInfo {
   path: string;
   kind: 'image' | 'audio';
@@ -35,6 +38,9 @@ export class AssetPanel {
   private readonly filter: HTMLInputElement;
   private assets: AssetInfo[] = [];
   private playing: HTMLAudioElement | null = null;
+  /** The list needs drawing again; it's drawn when the panel is showing. */
+  private stale = true;
+  private showing = false;
 
   constructor(parent: HTMLElement, hooks: AssetPanelHooks) {
     this.hooks = hooks;
@@ -59,7 +65,7 @@ export class AssetPanel {
     this.filter.type = 'search';
     this.filter.placeholder = 'Filter';
     this.filter.setAttribute('aria-label', 'Filter assets');
-    this.filter.addEventListener('input', () => this.render());
+    this.filter.addEventListener('input', () => this.redraw());
     this.message = el('span', 'flow-message');
     this.message.setAttribute('role', 'status');
     bar.append(addBtn, picker, this.filter, this.message);
@@ -67,6 +73,11 @@ export class AssetPanel {
     this.list = el('div', 'asset-list');
     this.el.append(bar, this.list);
     parent.append(this.el);
+    // Hidden behind its tab, the panel draws nothing; it catches up when shown (a hidden pane has no size).
+    new ResizeObserver((e) => {
+      this.showing = (e[0]?.contentRect.height ?? 0) > 0;
+      if (this.showing && this.stale) this.render();
+    }).observe(this.el);
 
     // Files dragged in from the computer.
     this.el.addEventListener('dragover', (e) => {
@@ -97,13 +108,18 @@ export class AssetPanel {
       this.say('Couldn’t list the assets folder.', true);
       return;
     }
-    this.render();
+    this.redraw();
     this.hooks.listed?.(this.assets);
   }
 
   /** The script changed: declared names may have too. */
   scriptChanged(): void {
-    this.render();
+    this.redraw();
+  }
+
+  private redraw(): void {
+    this.stale = true;
+    if (this.showing) this.render();
   }
 
   say(text: string, isError = false): void {
@@ -121,6 +137,7 @@ export class AssetPanel {
   }
 
   private render(): void {
+    this.stale = false;
     const q = this.filter.value.trim().toLowerCase();
     const shown = this.assets.filter((a) => !q || a.path.toLowerCase().includes(q) || (this.hooks.declaredName(a) ?? '').includes(q));
     if (!this.assets.length) {
@@ -132,13 +149,13 @@ export class AssetPanel {
     const sections: HTMLElement[] = [];
     if (images.length) {
       const grid = el('ul', 'asset-grid');
-      grid.append(...images.map((a) => this.item(a)));
-      sections.push(el('h3', '', `Images (${images.length})`), grid);
+      grid.append(...images.slice(0, SHOWN_MAX).map((a) => this.item(a)));
+      sections.push(el('h3', '', `Images (${images.length})`), grid, ...more(images.length));
     }
     if (audio.length) {
       const rows = el('ul', 'asset-rows');
-      rows.append(...audio.map((a) => this.item(a)));
-      sections.push(el('h3', '', `Audio (${audio.length})`), rows);
+      rows.append(...audio.slice(0, SHOWN_MAX).map((a) => this.item(a)));
+      sections.push(el('h3', '', `Audio (${audio.length})`), rows, ...more(audio.length));
     }
     if (!sections.length) sections.push(el('p', 'flow-empty', 'Nothing matches the filter.'));
     this.list.replaceChildren(...sections);
@@ -208,6 +225,11 @@ export class AssetPanel {
 
 function formatSize(n: number): string {
   return n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** A note under a section that shows only its first files. */
+function more(total: number): HTMLElement[] {
+  return total > SHOWN_MAX ? [el('p', 'asset-more', `Showing ${SHOWN_MAX} of ${total.toLocaleString('en')}. Type in Filter to find the rest.`)] : [];
 }
 
 function el(tag: string, cls = '', content?: string): HTMLElement {

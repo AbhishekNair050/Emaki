@@ -99,8 +99,10 @@ export class Analysis {
     } else {
       const others = context.files.filter((f) => f.path !== context.file);
       const main = file ? others.find((f) => f.path === 'story.vn')?.source ?? '' : source;
-      const parts = others.filter((f) => f.path !== 'story.vn');
-      if (file) parts.push({ path: file, source });
+      // The files in the game's order, this one in its place with its current text: the same input as the game's
+      // own compile, so a compile cache can share one result between them.
+      const parts = context.files.filter((f) => f.path !== 'story.vn').map((f) => (f.path === file ? { path: file, source } : f));
+      if (file && !parts.some((f) => f.path === file)) parts.push({ path: file, source });
       const opts = { ...(context.plugins ? { plugins: { ...context.plugins } } : {}), cache: context.cache };
       this.program = combineFiles(main, parts, opts).program;
       this.compileNow = () => compileFiles(main, parts, opts).diagnostics;
@@ -452,6 +454,20 @@ function argList(args: Record<string, PluginArgType> | undefined): string {
 
 const TOP_LEVEL = ['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'replay', 'label'];
 const STATEMENTS = ['scene', 'show', 'hide', 'play', 'stop', 'set', 'jump', 'call', 'return', 'end', 'wait', 'menu', 'if', 'elif', 'else', 'achieve', 'nvl', 'shake', 'flash', 'camera', 'hop', 'nod', 'bow', 'movie', 'float', 'still', 'tone'];
+
+/**
+ * Whether the text before the cursor ends inside the words of a line (narration, dialogue or a choice), where
+ * nothing is ever completed except a `{variable}`. Editors ask this first, so typing prose never analyses the
+ * story: that is most of what a writer types.
+ */
+export function inProse(before: string): boolean {
+  if (/\{\w*$/.test(before)) return false;
+  // Inside a quote: narration and choices.
+  if ((before.match(/(?<!\\)"/g)?.length ?? 0) % 2 === 1) return true;
+  // After `speaker:` or `speaker look:` on a line of a scene: dialogue.
+  const say = /^\s+([A-Za-z_]\w*)(?:\s+[\w-]+)*\s*:\s/.exec(before);
+  return !!say && !KEYWORDS.has(say[1]!);
+}
 
 /**
  * The dev-server address that opens the game at a line (0-based `line` in,

@@ -209,9 +209,23 @@ async function main(): Promise<void> {
   });
 
   /** The name the script gives an asset file, from the cached analysis of the current text. */
+  /** Each declared file's name, by kind and path: made once per parse (thousands of files ask for theirs). */
+  let declaredFor: Program | null = null;
+  let declared = new Map<string, string>();
   function declaredIn(a: AssetInfo): string | undefined {
     const p = script.analysis.program;
-    return (a.kind === 'image' ? p.images : p.audio).find((d) => d.path.replace(/^\.?\//, '') === a.path)?.name;
+    if (declaredFor !== p) {
+      declaredFor = p;
+      declared = new Map();
+      const add = (kind: string, path: string, name: string) => {
+        const key = `${kind}:${path.replace(/^\.?\//, '')}`;
+        // The first declaration of a file is the one a search would have found.
+        if (!declared.has(key)) declared.set(key, name);
+      };
+      for (const d of p.images) add('image', d.path, d.name);
+      for (const d of p.audio) add('audio', d.path, d.name);
+    }
+    return declared.get(`${a.kind}:${a.path}`);
   }
 
   const addDoc = (path: string, text: StoryText): Doc => {

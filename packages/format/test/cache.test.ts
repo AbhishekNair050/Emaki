@@ -45,6 +45,19 @@ describe('compile cache', () => {
     expect(out(compileFiles(MAIN, parts, { cache }))).toEqual(out(fresh(MAIN, parts)));
   });
 
+  it('hands back the last result for the same texts (an editor compiles for its game and its underlines)', () => {
+    const cache = createCompileCache();
+    const parts = [{ path: 'chapter.vn', source: CHAPTER }];
+    const first = compileFiles(MAIN, parts, { cache, plugins: {} });
+    // Copies of the same texts and of the plugins object count as the same.
+    expect(compileFiles(`${MAIN}`, [{ ...parts[0]! }], { cache, plugins: {} })).toBe(first);
+    // Anything different compiles again: a text, a file's name, or the plugins being known.
+    expect(compileFiles(MAIN, [{ path: 'chapter.vn', source: CHAPTER + '\n' }], { cache, plugins: {} })).not.toBe(first);
+    const again = compileFiles(MAIN, parts, { cache, plugins: {} });
+    expect(compileFiles(MAIN, [{ path: 'other.vn', source: CHAPTER }], { cache, plugins: {} })).not.toBe(again);
+    expect(compileFiles(MAIN, parts, { cache })).not.toBe(compileFiles(MAIN, parts, { cache, plugins: {} }));
+  });
+
   it('picks up an edit to one file, and keeps the others', () => {
     const cache = createCompileCache();
     compileFiles(MAIN, [{ path: 'chapter.vn', source: CHAPTER }], { cache });

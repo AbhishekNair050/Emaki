@@ -131,7 +131,11 @@ The first pass kept the old editor's layout; this one follows the design (the "A
 - [x] Timeline tracks: dialogue, one per character (look and place), background, music, branches; previous and next line from the top bar
 - [x] Story: colour by a variable's value as each scene begins (the route search records them), the scene card (picture, values on entry, what it sets, the route's choice there, Open on stage / in script)
 - [x] The route search runs in Story (and on opening), not after every edit while writing
-- [ ] Measure the second pass on the 65,000-line file and bring cursor moves back to the first pass's numbers
+- [x] Measured the second pass on a full-length ported game (530 files, 305,000 lines, 25,000 assets). Cursor moves cost about 12 ms each (3 ms of it script, the rest CodeMirror and drawing), with nothing left worth chasing; the earlier "slower cursor moves" on the 65,000-line file was mostly the profiler's own cost. What was slow, and is fixed:
+  - the asset browser redrew every file after each compile, hidden or not, and found each file's name by scanning every declaration: up to 4 s frozen after an edit. It now draws only when shown, at most 300 per section until filtered, with names from a map built once per parse
+  - completion analysed the whole story on keystrokes in narration and dialogue, where only `{variables}` complete; it now decides from the line first
+  - the story compiled twice per pause, for the game and for the underlines; a compile cache hands back its last result for the same texts
+  - The longest freeze while typing and just after: 1.3-4 s → 0.25-0.5 s (the one compile left). Left alone: hashing every scene's code on the first compile (0.4 s of a 3 s load; the hash is what saves rely on), and the one compile per pause (~0.2-0.5 s here; a worker would hide it, if a longer game needs it)
 
 ## ⏸ On hold
 - Ren'Py importer (common subset)

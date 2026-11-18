@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseManifest } from '@emaki/format';
-import { Analysis, format } from '../src/index.ts';
+import { Analysis, format, inProse } from '../src/index.ts';
 
 const demoSrc = readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8');
 
@@ -164,6 +164,17 @@ describe('completion', () => {
     expect(start).toContain('menu');
     expect(labels(edit('lab'), 27)).toEqual(['define', 'image', 'audio', 'layered', 'screen', 'var', 'global var', 'achievement', 'ending', 'replay', 'label']);
     expect(labels(src, 1, 0)).toEqual([]); // inside the header
+  });
+
+  it('knows prose (where nothing but a {variable} is completed) from the line alone', () => {
+    for (const before of ['  "The lamp turns', '  mira: Hello th', '  mira smile: Hel', '    "Go on', '  "Say \\"hi', '  ren: I said "no']) {
+      expect(inProse(before), before).toBe(true);
+    }
+    for (const before of ['  jump ', '  show mira ', '  "You have {tr', '  mira: {', '    "Go on." if ', '  if trust > 1: ', '  else: ', '  mira ', 'label a: ', 'title: My game']) {
+      expect(inProse(before), before).toBe(false);
+    }
+    // Wherever prose is claimed, completion has nothing to offer anyway.
+    for (const line of ['  "The lamp turns', '  mira: Hello th', '  mira smile: Hel']) expect(labels(edit(line), 27)).toEqual([]);
   });
 });
 

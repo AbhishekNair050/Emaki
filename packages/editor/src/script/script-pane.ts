@@ -13,7 +13,7 @@ import { EditorState, Prec, StateEffect, StateField, type Extension, type Text }
 import { Decoration, EditorView, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { tags as t } from '@lezer/highlight';
-import { Analysis, format, type CompletionKind, type StoryContext, type StorySymbol } from '@emaki/language';
+import { Analysis, format, inProse, type CompletionKind, type StoryContext, type StorySymbol } from '@emaki/language';
 import { emakiLanguage } from './mode.ts';
 
 export interface ScriptPaneHooks {
@@ -265,8 +265,12 @@ const COMPLETION_TYPE: Record<CompletionKind, string> = {
 function complete(ctx: CompletionContext): CompletionResult | null {
   const word = ctx.matchBefore(/[A-Za-z_]\w*/);
   const line = ctx.state.doc.lineAt(ctx.pos);
+  const before = line.text.slice(0, ctx.pos - line.from);
+  // Decided from the line alone, before the story is analysed (which takes a while in a long game).
+  if (!word && !ctx.explicit && !/\s$|[{@.=]$/.test(before)) return null;
+  if (!ctx.explicit && inProse(before)) return null;
   const items = analysisOf(ctx.state.doc).completionsAt(line.number - 1, ctx.pos - line.from);
-  if (!items.length || (!word && !ctx.explicit && !/\s$|[{@.=]$/.test(line.text.slice(0, ctx.pos - line.from)))) return null;
+  if (!items.length) return null;
   return {
     from: word ? word.from : ctx.pos,
     options: items.map((c) => ({ label: c.label, type: COMPLETION_TYPE[c.kind], detail: c.detail })),
