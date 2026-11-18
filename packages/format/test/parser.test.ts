@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { compile, parse, print } from '../src/index.ts';
+import { compile, parse, print, printStatement } from '../src/index.ts';
 
 const demo = readFileSync(fileURLToPath(new URL('../../../games/gullwing/story.vn', import.meta.url)), 'utf8');
 
@@ -278,5 +278,15 @@ label start:  # the opening
   it('move to the end of the line when formatted', () => {
     const messy = 'label start:   # opening\n  "Hi."    #  note  \n';
     expect(print(parse(messy).program)).toBe('label start:  # opening\n  "Hi."  #  note\n');
+  });
+});
+
+describe('printStatement', () => {
+  it('prints one statement as the printer would, without what is above it', () => {
+    const { program } = parse('label a:\n  # above\n  show mira smile at left with dissolve 0.5  # why\n  menu:\n    "Go.":\n      jump a\n');
+    const [show, menu] = program.labels[0]!.body;
+    expect(printStatement(show!)).toEqual(['show mira smile at left with dissolve 0.5  # why']);
+    expect(printStatement(show!, 2)).toEqual(['    show mira smile at left with dissolve 0.5  # why']);
+    expect(printStatement(menu!)).toEqual(['menu:', '  "Go.":', '    jump a']);
   });
 });

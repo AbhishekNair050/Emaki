@@ -122,6 +122,17 @@ export function print(program: Program): string {
   return out.join('\n') + '\n';
 }
 
+/**
+ * One statement as text, indented `depth` levels, without the comments and
+ * blank lines above it (its end-of-line comment is kept). For tools that
+ * change a single line and leave the rest of the file as the writer wrote it.
+ */
+export function printStatement(stmt: Stmt, depth = 0): string[] {
+  const out: string[] = [];
+  printBlock([{ ...stmt, leading: undefined }], depth, out);
+  return out;
+}
+
 /** A node's end-of-line comment, as written after its line. */
 function tail(n: Trivia | undefined): string {
   return n?.comment ? `  ${n.comment}` : '';
