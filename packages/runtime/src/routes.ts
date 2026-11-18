@@ -46,6 +46,11 @@ export interface RouteSearch {
   complete: boolean;
   /** Choice points explored. */
   states: number;
+  /**
+   * For each scene the search reached, the values each variable had as it began, over every way there
+   * (at most MAX_VALUES of them, sorted): what a scene can expect, like trust being 0 to 2.
+   */
+  entries: Record<string, Record<string, Value[]>>;
   ms: number;
 }
 
@@ -59,6 +64,8 @@ export interface RouteOptions {
 
 /** Lines one path may show without reaching a choice or an ending before it counts as stuck in a loop. */
 const MAX_BLOCKS = 200_000;
+/** Distinct values kept per variable and scene. */
+const MAX_VALUES = 12;
 
 export function findRoutes(story: CompiledStory, opts: RouteOptions = {}): RouteSearch {
   const now = opts.now ?? (() => Date.now());
@@ -71,10 +78,18 @@ export function findRoutes(story: CompiledStory, opts: RouteOptions = {}): Route
   const choices: RouteChoice[] = [];
   const scenes: RouteScene[] = [];
   let outOfTime = false;
+  const entries = new Map<string, Map<string, Set<Value>>>();
 
   const enter = (b: Block) => {
     if (b.type === 'end' || !('label' in b)) return;
     if (scenes.at(-1)?.label === b.label) return;
+    let seenHere = entries.get(b.label);
+    if (!seenHere) entries.set(b.label, seenHere = new Map());
+    for (const [k, v] of Object.entries(runner.vars)) {
+      let values = seenHere.get(k);
+      if (!values) seenHere.set(k, values = new Set());
+      if (values.size < MAX_VALUES) values.add(v);
+    }
     scenes.push({ label: b.label, line: b.line, ...(b.file ? { file: b.file } : {}), vars: { ...runner.vars }, choicesBefore: choices.length });
   };
 
@@ -128,5 +143,12 @@ export function findRoutes(story: CompiledStory, opts: RouteOptions = {}): Route
   } catch {
     // The story can't start (or fails before its first choice): no routes.
   }
-  return { routes: [...routes.values()], complete: !outOfTime, states: seen.size, ms: Math.round(now() - t0) };
+  const sort = (vs: Set<Value>) => [...vs].sort((a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b))));
+  return {
+    routes: [...routes.values()],
+    complete: !outOfTime,
+    states: seen.size,
+    ms: Math.round(now() - t0),
+    entries: Object.fromEntries([...entries].map(([label, vars]) => [label, Object.fromEntries([...vars].map(([k, vs]) => [k, sort(vs)]))])),
+  };
 }

@@ -41,7 +41,11 @@ export type LineChange =
   /** `with dissolve 0.5`; null for none. */
   | { transition: string | null; duration?: number }
   /** A scene's background. */
-  | { image: string };
+  | { image: string }
+  /** A character's size (1 = as drawn); null for the default. */
+  | { zoom: number | null }
+  /** A character turned by degrees, clockwise; null for none. */
+  | { rotate: number | null };
 
 export type LineEdit = { ok: true; text: string } | { ok: false; error: string };
 
@@ -65,6 +69,20 @@ export function editLine(lineText: string, change: LineChange): LineEdit {
     s.transition = change.transition === 'none' ? null : change.transition;
     if (s.transition === null || change.duration === undefined) delete s.duration;
     else s.duration = change.duration;
+  } else if ('zoom' in change || 'rotate' in change) {
+    if (s.type !== 'show') return { ok: false, error: 'Only a show line can size or turn a character.' };
+    const props = { ...s.props };
+    if ('zoom' in change) {
+      if (change.zoom === null || change.zoom === 1) delete props.zoom;
+      else if (!Number.isFinite(change.zoom) || change.zoom === 0) return { ok: false, error: 'Zoom must be a number other than 0, like 1.2.' };
+      else props.zoom = [round(change.zoom), round(change.zoom)];
+    } else {
+      if (change.rotate === null || change.rotate === 0) delete props.rotate;
+      else if (!Number.isFinite(change.rotate)) return { ok: false, error: 'Rotate must be a number of degrees, like -5.' };
+      else props.rotate = round(change.rotate);
+    }
+    if (Object.keys(props).length) s.props = props;
+    else delete s.props;
   } else {
     if (s.type !== 'scene') return { ok: false, error: 'Only a scene line has a background.' };
     if (!/^[A-Za-z_]\w*$/.test(change.image)) return { ok: false, error: `'${change.image}' isn't an image name.` };
@@ -87,3 +105,5 @@ export function looksOf(tag: string, imageNames: Iterable<string>): string[][] {
   }
   return out;
 }
+
+const round = (n: number) => Math.round(n * 100) / 100;

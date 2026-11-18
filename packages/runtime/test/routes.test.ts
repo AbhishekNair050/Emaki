@@ -29,6 +29,10 @@ describe('findRoutes', () => {
     const kitchen = best.scenes.findIndex((s) => s.label === 'kitchen_talk');
     expect(best.scenes[kitchen]!.choicesBefore).toBe(1);
     expect(best.scenes[kitchen + 1]!.choicesBefore).toBe(2);
+    // What each scene can expect: trust is 0 or 1 entering the kitchen, 2 or more only on the way to Two Keepers.
+    expect(r.entries.kitchen_talk!.trust).toEqual([0, 1]);
+    expect(r.entries.ending_two_keepers!.boat_safe).toEqual([true]);
+    expect(Math.min(...(r.entries.ending_two_keepers!.trust as number[]))).toBeGreaterThanOrEqual(2);
   });
 
   it('names declared endings and skips choices it has already explored in the same state', () => {

@@ -83,4 +83,21 @@ describe('story map layout', () => {
     const sameOrder = (n.get('a')!.x < n.get('b')!.x) === (n.get('x')!.x < n.get('y')!.x);
     expect(sameOrder).toBe(true);
   });
+
+  it('can run left to right: each scene to the right of the one that leads to it, nothing overlapping', () => {
+    const g = buildGraph(parse(demoSrc).program);
+    const l = layoutGraph(g.nodes.map((n) => n.label), g.edges, 'arrival', { direction: 'right', nodeWidth: 160, nodeHeight: 70 });
+    const n = byId(l.nodes);
+    expect(n.get('kitchen_talk')!.x).toBeGreaterThan(n.get('arrival')!.x + 160);
+    expect(n.get('kitchen_talk')!.y).toBe(n.get('arrival')!.y);
+    for (const a of l.nodes) {
+      expect(a.x + a.w).toBeLessThanOrEqual(l.width);
+      expect(a.y + a.h).toBeLessThanOrEqual(l.height);
+      for (const b of l.nodes) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+    }
+    // A forward edge leaves the right side of its scene and enters the left side of the next.
+    const e = l.edges.find((x) => x.from === 'arrival' && x.to === 'kitchen_talk')!;
+    expect(e.path.startsWith(`M${n.get('arrival')!.x + 160} `)).toBe(true);
+  });
 });
+

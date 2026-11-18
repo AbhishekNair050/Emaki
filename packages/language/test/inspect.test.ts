@@ -49,6 +49,19 @@ describe('editLine', () => {
     expect(ok(editLine('  scene kitchen with dissolve', { image: 'lamp_room' }))).toBe('  scene lamp_room with dissolve');
   });
 
+  it('sizes and turns a character, and takes the size or turn away again', () => {
+    const line = '  show mira neutral at right with dissolve';
+    const big = ok(editLine(line, { zoom: 1.234 }));
+    expect(big).toBe('  show mira neutral at right zoom 1.23 with dissolve');
+    const turned = ok(editLine(big, { rotate: -5 }));
+    expect(turned).toBe('  show mira neutral at right zoom 1.23 rotate -5 with dissolve');
+    expect(ok(editLine(turned, { zoom: 1 }))).toBe('  show mira neutral at right rotate -5 with dissolve');
+    expect(ok(editLine(ok(editLine(turned, { zoom: null })), { rotate: 0 }))).toBe(line);
+    expect(inspectLine(turned)?.stmt).toMatchObject({ props: { zoom: [1.23, 1.23], rotate: -5 } });
+    expect(editLine('  hide mira', { zoom: 2 }).ok).toBe(false);
+    expect(editLine(line, { zoom: 0 }).ok).toBe(false);
+  });
+
   it('keeps the end-of-line comment and the indentation', () => {
     expect(ok(editLine('      show mira sad  # she heard', { look: ['smile'] }))).toBe('      show mira smile  # she heard');
   });

@@ -6,7 +6,8 @@
  *  2. Layering: each label sits one row below its deepest predecessor.
  *  3. Ordering: barycenter sweeps reduce edge crossings within rows.
  *  4. Geometry: rows top-to-bottom, nodes centred, edges as cubic curves
- *     (back edges curve around the right-hand side).
+ *     (back edges curve around the right-hand side). With `direction: 'right'`
+ *     the rows become columns, left to right, and back edges curve below.
  *
  * Pure and DOM-free, so the editor can reuse it and tests run in Node.
  */
@@ -55,6 +56,8 @@ export interface LayoutOptions {
   rowGap?: number;
   colGap?: number;
   margin?: number;
+  /** Which way the story flows: rows going down (the default) or columns going right. */
+  direction?: 'down' | 'right';
 }
 
 export function layoutGraph(ids: string[], edgesIn: GraphEdgeIn[], start: string, opts: LayoutOptions = {}): MapLayout {
@@ -142,25 +145,34 @@ export function layoutGraph(ids: string[], edgesIn: GraphEdgeIn[], start: string
     }
   }
 
-  // 4. Geometry.
+  // 4. Geometry. Layers run along the main axis (down, or right); a layer's nodes spread across the other.
+  const right = opts.direction === 'right';
+  const MAIN = right ? W : H;
+  const CROSS = right ? H : W;
   const widest = Math.max(1, ...rows.map((r) => r.length));
   const hasBack = edges.some((e) => e.back);
   const backRoom = hasBack ? 56 : 0;
-  const width = M * 2 + widest * W + (widest - 1) * COL + backRoom;
-  const height = M * 2 + rowCount * H + (rowCount - 1) * ROW;
+  const crossSize = M * 2 + widest * CROSS + (widest - 1) * COL + backRoom;
+  const mainSize = M * 2 + rowCount * MAIN + (rowCount - 1) * ROW;
+  const width = right ? mainSize : crossSize;
+  const height = right ? crossSize : mainSize;
   const nodes = new Map<string, LaidOutNode>();
   rows.forEach((r, li) => {
-    const rowWidth = r.length * W + (r.length - 1) * COL;
-    const x0 = (width - backRoom - rowWidth) / 2;
-    r.forEach((id, i) => nodes.set(id, {
-      id,
-      layer: li,
-      x: x0 + i * (W + COL),
-      y: M + li * (H + ROW),
-      w: W,
-      h: H,
-      unreachable: known.has(start) && !reachable.has(id),
-    }));
+    const rowSize = r.length * CROSS + (r.length - 1) * COL;
+    const c0 = (crossSize - backRoom - rowSize) / 2;
+    r.forEach((id, i) => {
+      const c = c0 + i * (CROSS + COL);
+      const m = M + li * (MAIN + ROW);
+      nodes.set(id, {
+        id,
+        layer: li,
+        x: right ? m : c,
+        y: right ? c : m,
+        w: W,
+        h: H,
+        unreachable: known.has(start) && !reachable.has(id),
+      });
+    });
   });
 
   let backIndex = 0;
@@ -169,17 +181,38 @@ export function layoutGraph(ids: string[], edgesIn: GraphEdgeIn[], start: string
     const b = nodes.get(e.to)!;
     let p0, p1, p2, p3;
     if (e.from === e.to) {
-      p0 = { x: a.x + a.w, y: a.y + a.h * 0.3 };
-      p3 = { x: a.x + a.w, y: a.y + a.h * 0.7 };
-      p1 = { x: p0.x + 40, y: p0.y - 16 };
-      p2 = { x: p3.x + 40, y: p3.y + 16 };
+      if (right) {
+        p0 = { x: a.x + a.w * 0.3, y: a.y + a.h };
+        p3 = { x: a.x + a.w * 0.7, y: a.y + a.h };
+        p1 = { x: p0.x - 16, y: p0.y + 40 };
+        p2 = { x: p3.x + 16, y: p3.y + 40 };
+      } else {
+        p0 = { x: a.x + a.w, y: a.y + a.h * 0.3 };
+        p3 = { x: a.x + a.w, y: a.y + a.h * 0.7 };
+        p1 = { x: p0.x + 40, y: p0.y - 16 };
+        p2 = { x: p3.x + 40, y: p3.y + 16 };
+      }
     } else if (e.back || b.layer <= a.layer) {
       const bulge = 36 + 10 * backIndex++;
+      if (right) {
+        p0 = { x: a.x + a.w / 2, y: a.y + a.h };
+        p3 = { x: b.x + b.w / 2, y: b.y + b.h };
+        const below = Math.max(p0.y, p3.y) + bulge;
+        p1 = { x: p0.x, y: below };
+        p2 = { x: p3.x, y: below };
+      } else {
+        p0 = { x: a.x + a.w, y: a.y + a.h / 2 };
+        p3 = { x: b.x + b.w, y: b.y + b.h / 2 };
+        const side = Math.max(p0.x, p3.x) + bulge;
+        p1 = { x: side, y: p0.y };
+        p2 = { x: side, y: p3.y };
+      }
+    } else if (right) {
       p0 = { x: a.x + a.w, y: a.y + a.h / 2 };
-      p3 = { x: b.x + b.w, y: b.y + b.h / 2 };
-      const right = Math.max(p0.x, p3.x) + bulge;
-      p1 = { x: right, y: p0.y };
-      p2 = { x: right, y: p3.y };
+      p3 = { x: b.x, y: b.y + b.h / 2 };
+      const dx = (p3.x - p0.x) / 2;
+      p1 = { x: p0.x + dx, y: p0.y };
+      p2 = { x: p3.x - dx, y: p3.y };
     } else {
       p0 = { x: a.x + a.w / 2, y: a.y + a.h };
       p3 = { x: b.x + b.w / 2, y: b.y };
