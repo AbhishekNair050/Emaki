@@ -386,6 +386,11 @@ export class Player {
     this.guard(() => this.present(this.runner.startAt(label, { vars, scene, screens, plugins })));
   }
 
+  /** Whether a line (by its id) has been shown on this device, in any playthrough (what skip treats as read). */
+  hasRead(id: string): boolean {
+    return this.read.has(id);
+  }
+
   /**
    * Play from a line of the script (dev preview). Uses the given variables, or
    * keeps the current ones; the scene is rebuilt from the top of the label.

@@ -34,7 +34,7 @@ The first public version. Everything below is new.
 ### Tools
 - A local project launcher (`npm run launch`): recent projects, create/open games with a folder browser, editor/player sessions, and web/desktop exports with build output. Direct `emaki edit <game>` and `emaki play <game>` commands also accept a game folder without environment variables.
 - The web editor (`npm run edit`): script, live game and flowchart linked together, visual scene editing written back as clean text, an asset browser with drag and drop, autosave with conflict detection.
-- Editor workspaces (D-065): Write, Stage and Story (Alt+1/2/3). Stage adds an inspector for the line under the cursor (a character's look and place, a background, transitions; each change rewrites just that line) and the scene's lines as a timeline; the game follows the cursor.
+- Editor workspaces (D-065): Write, Stage and Story (Alt+1/2/3). Stage adds an inspector for the line under the cursor (a character's look and place, a background, transitions; each change rewrites just that line) and the scene's lines as a timeline; the game follows the cursor, and characters can be dragged into place. Story shows the scene under the cursor and a route to each ending, found by playing the story in the background, with the choices and variables along it; the flowchart can be coloured by words or by what's been read.
 - The VS Code extension: highlighting, errors as you type, completion, go to definition, references, hover, outline, formatting, and play from the cursor's line.
 - The dev server with live reload at the same line, a story map for jumping anywhere and testing routes, and previews from any line with chosen variables.
 - The CLI: `new`, `check`, `fmt`, `graph`, `build`, `strings`, `voices`, `export`.

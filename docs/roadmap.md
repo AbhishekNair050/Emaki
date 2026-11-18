@@ -111,16 +111,17 @@ Composed shots, drawn the way the original game draws them (D-062). Proof: a sec
 - [x] Wipes through rule pictures (`with wipe rule_13 0.8`) and `textbox hide` / `show`: the port's 943 wipes and 1,574 window fades
 - [x] Several ambience loops at once (`play ambience wind as wind`, `stop ambience wind`): the port's sound channels each keep their own loop
 
-## Milestone 12 — One editor, three workspaces
+## ✅ Milestone 12 — One editor, three workspaces (done, 2026-11-18)
 The editor grows from a script with a game beside it into a workspace for staging and planning, like a game engine's editor, without the script losing its place as the source of truth (D-065). Every panel follows one position: the file, scene and line the writer is on. Proof: it stays as fast as it is now on the 80,000-line port (cursor moves and keystrokes under one frame of editor work; nothing new runs on every keystroke).
 - [x] Workspaces: **Write** (script and game), **Stage** (game, inspector and the scene's lines) and **Story** (flowchart), switched from the top bar and remembered
 - [x] One position for every panel: a bar shows the file, scene and line; the flowchart, inspector and timeline follow the cursor
 - [x] Inspector for the line under the cursor: a character's look, place and transition, a background, a speaker's look; changes rewrite that one line (undoable, comments kept, the rest of the file untouched)
 - [x] The scene's lines as a timeline: one column per line of dialogue or choice, with tracks for characters, background, music and branches; clicking a column goes to the line, and in Stage the game shows it
 - [x] Faster on long scripts, measured on a 65,000-line file with the game and a 2,500-scene flowchart running: cursor moves and keystrokes no longer copy the file or repaint the flowchart (main thread busy over 60 cursor moves 2.8 s → 1.0 s, over 40 keystrokes 1.8 s → 0.6 s; slowest key handler 30 ms → 8 ms)
-- [ ] Compiling off the main thread: the one pause left, 0.2-0.4 s after typing stops in a 65,000-line file
-- [ ] Story workspace: colour scenes by words or by what a playtest saw; the route to an ending, with the choices it takes and the variables on the way (searched off the main thread)
-- [ ] Stage: drag a character in the game to place them; the `show` line is rewritten
+- [x] The pause when typing stops: recompiling reused only scenes in files that hadn't changed, so in one long file every scene below an edit compiled again; scenes that only moved now keep their code, shifted to their new lines (the same result as a fresh compile, tested on random edits). On the 65,000-line file the longest pause goes from 0.25-0.38 s to 0.10-0.14 s, so compiling in a worker isn't needed
+- [x] Story workspace: colour scenes by words or by what a playtest saw; the route to an ending, with the choices it takes and the variables on the way (searched in a worker that compiles the script itself, so the page only hands it text)
+- [x] The game's own buttons keep their look in the editor; a clearer timeline (changes as chips), quieter splitter, the game on the editor's background
+- [x] Stage: drag a character in the game to place them (snapping to left, center and right); the `show` line is rewritten, and a plain click still plays on
 
 ## ⏸ On hold
 - Ren'Py importer (common subset)

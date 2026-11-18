@@ -10,9 +10,13 @@
  *  - drag images and audio from the asset browser (or your computer) onto the script
  *  - a story can span several files: pick one above the script, or add one
  */
-import { buildGraph, compileFiles, createCompileCache, voiceMap, type CompiledStory, type Diagnostic, type LabelDef, type Program, type Stmt } from '@emaki/format';
 import {
-  addScene, connectScenes, declareAsset, deleteScene, dropAsset, editLine, renameScene, type EditResult, type SceneContext, type StorySymbol,
+  buildGraph, compileFiles, createCompileCache, voiceMap,
+  type CompiledStory, type Diagnostic, type LabelDef, type Program, type Stmt, type StoryGraph,
+} from '@emaki/format';
+import type { RouteSearch } from '@emaki/runtime';
+import {
+  addScene, connectScenes, declareAsset, deleteScene, dropAsset, editLine, inspectLine, renameScene, type EditResult, type SceneContext, type StorySymbol,
 } from '@emaki/language';
 import { Player } from '@emaki/player-web';
 import '@emaki/player-web/style.css';
@@ -21,8 +25,10 @@ import '@emaki/player-web/fonts';
 import 'virtual:emaki-theme';
 import { manifests as pluginManifests, plugins } from 'virtual:emaki-plugins';
 import { AssetPanel, type AssetInfo } from './assets.ts';
-import { Flowchart } from './flowchart.ts';
+import { Flowchart, type Colouring } from './flowchart.ts';
 import { Inspector } from './inspector.ts';
+import { StageDrag } from './stage-drag.ts';
+import { StoryPanel, sceneStats, type SceneInfo, type SceneStats } from './story-panel.ts';
 import { Timeline } from './timeline.ts';
 import { ScriptPane } from './script/script-pane.ts';
 import { StorySync, type SaveStatus, type StoryText } from './sync.ts';
@@ -45,6 +51,9 @@ const WORKSPACES = ['write', 'stage', 'story'] as const;
 type Workspace = typeof WORKSPACES[number];
 /** How long the cursor rests on a line before the Stage workspace's game shows it. */
 const FOLLOW_DELAY_MS = 220;
+/** How long the route search may play the story, and how long after an edit it starts again. */
+const ROUTE_BUDGET_MS = 4000;
+const ROUTE_DELAY_MS = 1200;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
@@ -70,6 +79,8 @@ async function main(): Promise<void> {
   /** Where the game is: the line it shows, and which file that's in. */
   let playing: { line: number; file?: string } | null = null;
   let compileTimer = 0;
+  /** Colouring the flowchart by what's been read waits for this, so playing doesn't recolour every line. */
+  let recolourTimer = 0;
 
   /** Apply a structural edit to the open file (undoable there), or return why it couldn't be done. */
   const apply = (r: EditResult): string | null => {
@@ -112,6 +123,7 @@ async function main(): Promise<void> {
       return inFileOf(name, (text, ctx) => deleteScene(text, name, ctx));
     },
     connect: (from, to) => inFileOf(from, (text, ctx) => connectScenes(text, from, to, ctx)),
+    measure: (by) => measureScenes(by),
   });
 
   /** Rename a scene in the file that has it, and the jumps to it in every file. */
@@ -334,6 +346,104 @@ async function main(): Promise<void> {
     },
     colorOf: (who) => story?.characters[who]?.color ?? null,
   });
+  // ---------------------------------------------------------------- the Story workspace
+
+  const storyPanel = new StoryPanel($('.story-host'), {
+    reveal: (label) => revealLabel(label),
+    play: (line, vars, file) => { flush(); player?.jumpToLine(line, vars, file); },
+    showRoute: (scenes) => flow.setRoute(scenes),
+    search: () => searchRoutes(true),
+  });
+  /** Words, lines and choices of each scene, worked out once per compiled story and only when asked. */
+  let statsFor: CompiledStory | null = null;
+  let stats = new Map<string, SceneStats>();
+  const statsOf = (): Map<string, SceneStats> => {
+    if (story && statsFor !== story) { stats = sceneStats(story); statsFor = story; }
+    return stats;
+  };
+  const readShare = (s: SceneStats): number => s.ids.length ? s.ids.filter((id) => player!.hasRead(id)).length / s.ids.length : 0;
+  function measureScenes(by: Colouring): Map<string, number> | null {
+    if (!story) return null;
+    const all = statsOf();
+    const out = new Map<string, number>();
+    if (by === 'read') {
+      if (!player) return null;
+      for (const [label, s] of all) out.set(label, readShare(s));
+      return out;
+    }
+    // By rank, so one very long scene doesn't make every other one look empty.
+    const sorted = [...all].sort((a, b) => a[1].words - b[1].words);
+    sorted.forEach(([label], i) => out.set(label, sorted.length > 1 ? i / (sorted.length - 1) : 1));
+    return out;
+  }
+  let lastGraph: StoryGraph | null = null;
+  function sceneInfo(label: string): SceneInfo {
+    const edges = lastGraph?.edges ?? [];
+    const s = statsOf().get(label);
+    return {
+      label,
+      stats: s,
+      read: player && s ? readShare(s) : null,
+      choices: s?.choices ?? 0,
+      from: [...new Set(edges.filter((e) => e.to === label && e.from !== label).map((e) => e.from))],
+      to: [...new Set(edges.filter((e) => e.from === label && e.to !== label).map((e) => e.to))],
+    };
+  }
+
+  /** Routes are searched in a worker, for the story as last compiled, while the Story workspace is open. */
+  let routeWorker: Worker | null = null;
+  let routeRequest = 0;
+  let routeBusy = false;
+  let searchedStory: CompiledStory | null = null;
+  let routeTimer = 0;
+  function searchRoutes(force = false): void {
+    window.clearTimeout(routeTimer);
+    if (!story || (!force && searchedStory === story)) return;
+    searchedStory = story;
+    // A search of an older version is no use any more.
+    if (routeWorker && routeBusy) { routeWorker.terminate(); routeWorker = null; }
+    if (!routeWorker) {
+      routeWorker = new Worker(new URL('./routes-worker.ts', import.meta.url), { type: 'module' });
+      routeWorker.onmessage = (e: MessageEvent<{ id: number; result: RouteSearch }>) => {
+        if (e.data.id !== routeRequest) return;
+        routeBusy = false;
+        storyPanel.setRoutes(e.data.result);
+      };
+      routeWorker.onerror = (e) => { routeBusy = false; console.error(e); flashNote('The route search stopped with an error.'); };
+    }
+    routeBusy = true;
+    storyPanel.setSearching();
+    // The worker compiles the text itself: copying text to it is cheap, a long game's compiled code isn't.
+    syncText();
+    const parts = [...docs.values()].filter((d) => d.path !== MAIN).map((d) => ({ path: d.path, source: d.text }));
+    routeWorker.postMessage({ id: ++routeRequest, main: doc(MAIN).text, parts, plugins: pluginManifests, budgetMs: ROUTE_BUDGET_MS });
+  }
+
+  // In Stage, dragging a character in the game rewrites the `show` line that placed it.
+  new StageDrag(playerHost, {
+    enabled: () => workspace === 'stage',
+    placed: (tag, at) => placeCharacter(tag, at),
+  });
+  function placeCharacter(tag: string, at: string): string {
+    if (!playing) return 'Play the scene first.';
+    const file = playing.file ?? MAIN;
+    if (file !== active) openFile(file);
+    // The `show` that put the character there: the nearest one above the game's line, in the same scene.
+    for (let n = playing.line; n >= 1; n--) {
+      const text = script.lineText(n);
+      if (/^\S/.test(text) && !text.startsWith('#')) break;
+      const found = inspectLine(text);
+      if (found?.stmt.type !== 'show' || (found.stmt.tag !== tag && found.stmt.as !== tag)) continue;
+      const r = editLine(text, { at });
+      if (!r.ok) return r.error;
+      script.replaceLine(n, r.text);
+      flush();
+      player?.jumpToLine(playing.line, undefined, playing.file);
+      return `${tag} at ${at} · line ${n}`;
+    }
+    return `No “show ${tag}” in this scene above line ${playing.line} to change.`;
+  }
+
   /** The program of the last compile, and its scenes by name (made when first needed). */
   let lastProgram: Program | null = null;
   let labelsByName: Map<string, LabelDef> | null = null;
@@ -353,7 +463,11 @@ async function main(): Promise<void> {
     splitter.restore();
     // The panes that were hidden catch up with where the cursor is.
     cursorLabel = undefined;
+    storyPanelLabel = undefined;
     cursorMoved(script.cursorLine, false, true);
+    if (ws === 'story') searchRoutes();
+    // Stage shows the moment the cursor is on.
+    if (ws === 'stage' && player && script.lineText(script.cursorLine).trim() && playing?.line !== script.cursorLine) runFrom(script.cursorLine);
   }
   for (const b of document.querySelectorAll<HTMLButtonElement>('.workspaces [data-workspace]')) {
     b.addEventListener('click', () => setWorkspace(b.dataset.workspace as Workspace));
@@ -393,6 +507,13 @@ async function main(): Promise<void> {
       ...(label ? [Object.assign(document.createElement('b'), { textContent: label }), ' · '] : []),
       `line ${line}`,
     );
+    if (workspace === 'story') {
+      if (storyPanelLabel !== label) {
+        storyPanelLabel = label;
+        storyPanel.setScene(label ? sceneInfo(label) : null);
+      }
+      return;
+    }
     if (workspace === 'write') return;
     inspector.show(line, script.lineText(line), label ?? '');
     if (workspace === 'stage') {
@@ -406,6 +527,8 @@ async function main(): Promise<void> {
   }
   /** The story was recompiled: the timeline redraws when next shown. */
   let timelineStale = true;
+  /** The scene the Story panel shows (undefined: draw it again). */
+  let storyPanelLabel: string | null | undefined;
 
   let saved: string | null = null;
   try { saved = localStorage.getItem(WORKSPACE_KEY); } catch { /* storage unavailable */ }
@@ -484,7 +607,16 @@ async function main(): Promise<void> {
     if (Object.keys(voices).length) story.voices = voices;
     document.title = `${story.meta.title ?? 'Untitled'} · Emaki editor`;
     $('.story-title').textContent = story.meta.title ?? 'Untitled';
-    flow.update(story, buildGraph(r.program));
+    lastGraph = buildGraph(r.program);
+    flow.update(story, lastGraph);
+    flow.recolour();
+    storyPanel.setStory(story, lastGraph);
+    if (workspace === 'story') {
+      storyPanelLabel = undefined;
+      cursorMoved(script.cursorLine, true);
+      window.clearTimeout(routeTimer);
+      routeTimer = window.setTimeout(() => searchRoutes(), ROUTE_DELAY_MS);
+    }
     assets.scriptChanged();
     if (!player) startPlayer(story);
     else if (!player.reload(story)) flashNote('Couldn’t find the line the game was on after that edit, so it went back to the title screen.');
@@ -508,6 +640,8 @@ async function main(): Promise<void> {
         playing = block && 'line' in block ? { line: block.line, ...(block.file ? { file: block.file } : {}) } : null;
         script.setPlayLine(playing && (playing.file ?? MAIN) === active ? playing.line : null);
         flow.setCurrent(block && 'label' in block ? block.label : null);
+        // Colouring by what's been read follows the playtest, a few times a second at most.
+        if (!recolourTimer) recolourTimer = window.setTimeout(() => { recolourTimer = 0; flow.recolourIfRead(); }, 1500);
       },
     });
     player.boot();

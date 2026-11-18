@@ -29,7 +29,20 @@ export interface FlowchartHooks {
   renameScene(from: string, to: string): Edit;
   deleteScene(name: string): Edit;
   connect(from: string, to: string): Edit;
+  /**
+   * How much each scene has of something, from 0 to 1, to colour the chart by: its words, or how much of it a
+   * playtest has read. Asked only while that colouring is chosen.
+   */
+  measure?(by: Colouring): Map<string, number> | null;
 }
+
+/** What the scenes are coloured by. */
+export type Colouring = 'none' | 'words' | 'read';
+const COLOURINGS: [Colouring, string, string][] = [
+  ['none', 'Plain', 'Scenes as they are'],
+  ['words', 'Words', 'Darker scenes have more words'],
+  ['read', 'Read', 'How much of each scene the game has shown so far (on this computer)'],
+];
 
 const SVG = 'http://www.w3.org/2000/svg';
 const NAME_MAX = 19;
@@ -55,6 +68,11 @@ export class Flowchart {
   private connectFrom: string | null = null;
   private onSubmit: ((value: string) => Edit) | null = null;
   private messageTimer = 0;
+  private readonly edges = new Map<string, SVGGElement>();
+  private colouring: Colouring = 'none';
+  private readonly colourSelect: HTMLSelectElement;
+  /** The scenes of the route shown, in order (null: none). */
+  private route: string[] | null = null;
 
   constructor(parent: HTMLElement, hooks: FlowchartHooks) {
     this.hooks = hooks;
@@ -96,7 +114,21 @@ export class Flowchart {
     this.input.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.closeForm(); });
     this.message = el('span', 'flow-message');
     this.message.setAttribute('role', 'status');
-    bar.append(...Object.values(this.buttons), this.form, this.message);
+    this.colourSelect = el('select', 'flow-colour') as HTMLSelectElement;
+    this.colourSelect.setAttribute('aria-label', 'Colour the scenes by');
+    for (const [value, label, title] of COLOURINGS) {
+      const o = el('option', '', label) as HTMLOptionElement;
+      o.value = value;
+      o.title = title;
+      this.colourSelect.append(o);
+    }
+    this.colourSelect.addEventListener('change', () => {
+      this.colouring = this.colourSelect.value as Colouring;
+      this.recolour();
+    });
+    const colour = el('label', 'flow-colour-field');
+    colour.append('Colour ', this.colourSelect);
+    bar.append(...Object.values(this.buttons), this.form, this.message, colour);
 
     this.canvas = el('div', 'flow-canvas');
     this.el.append(bar, this.canvas);
@@ -160,6 +192,40 @@ export class Flowchart {
 
   private scrollTo(label: string | null): void {
     if (label) this.nodes.get(label)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /** Colour the scenes again (the story changed, or the game showed more of it). */
+  recolour(): void {
+    if (this.colouring === 'none' && !this.el.classList.contains('coloured')) return;
+    const values = this.colouring === 'none' ? null : this.hooks.measure?.(this.colouring) ?? null;
+    this.el.classList.toggle('coloured', !!values);
+    this.el.dataset.colouring = this.colouring;
+    for (const [id, g] of this.nodes) {
+      const v = values?.get(id);
+      if (v === undefined) g.removeAttribute('data-level');
+      else g.setAttribute('data-level', String(this.colouring === 'read' ? (v >= 1 ? 4 : v > 0 ? Math.max(1, Math.ceil(v * 3)) : 0) : Math.round(v * 4)));
+    }
+  }
+
+  /** The game showed more of the story: colour again when colouring by what's been read. */
+  recolourIfRead(): void {
+    if (this.colouring === 'read') this.recolour();
+  }
+
+  /** Highlight a route through the story (its scenes in order), or none. */
+  setRoute(scenes: string[] | null): void {
+    this.route = scenes;
+    this.drawRoute();
+    if (scenes?.length) this.scrollTo(scenes[0]!);
+  }
+
+  private drawRoute(): void {
+    const on = new Set(this.route ?? []);
+    const steps = new Set<string>();
+    for (let i = 1; i < (this.route?.length ?? 0); i++) steps.add(`${this.route![i - 1]}>${this.route![i]}`);
+    this.el.classList.toggle('has-route', !!this.route);
+    for (const [id, g] of this.nodes) g.classList.toggle('on-route', on.has(id));
+    for (const [key, g] of this.edges) g.classList.toggle('on-route', steps.has(key));
   }
 
   /** Restyle only the scenes that changed (a long story has thousands). */
@@ -249,6 +315,7 @@ export class Flowchart {
   private render(graph: StoryGraph, start: string): void {
     const before = new Set(this.nodes.keys());
     this.nodes.clear();
+    this.edges.clear();
     if (!graph.nodes.length) {
       this.svg = null;
       this.canvas.replaceChildren(el('p', 'flow-empty', 'Add a scene to see your story as a flowchart.'));
@@ -270,7 +337,8 @@ export class Flowchart {
     svg.append(defs);
 
     for (const e of layout.edges) {
-      const g = s('g', { class: `flow-edge kind-${e.kind}${e.back ? ' back' : ''}` });
+      const g = s('g', { class: `flow-edge kind-${e.kind}${e.back ? ' back' : ''}` }) as SVGGElement;
+      this.edges.set(`${e.from}>${e.to}`, g);
       const why = e.via.length ? e.via.join('\n') : e.kind === 'call' ? 'call (comes back)' : 'jump';
       g.append(
         s('title', {}, `${e.from} → ${e.to}\n${why}\nClick to see it in the script`),
@@ -314,6 +382,8 @@ export class Flowchart {
     }
     this.svg = svg;
     this.canvas.replaceChildren(svg);
+    this.recolour();
+    this.drawRoute();
     if (this.connectFrom && !this.nodes.has(this.connectFrom)) this.stopConnect('');
     this.refresh();
     this.updateButtons();

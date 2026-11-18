@@ -185,25 +185,45 @@ export class Timeline {
     const num = document.createElement('button');
     num.type = 'button';
     num.className = 'timeline-num';
-    num.textContent = `${i + 1} · L${b.line}`;
-    num.title = `Go to line ${b.line}`;
     num.dataset.line = String(b.line);
-    const say = cell('timeline-say', b.kind === 'menu' ? `Choice: ${b.text}` : b.kind === 'end' ? '(end of scene)' : b.who ? `${b.who}: ${b.text}` : b.text);
-    if (b.who) {
-      const c = this.hooks.colorOf(b.who);
-      if (c) say.style.setProperty('--speaker', c);
-      say.classList.add('speaker');
-    }
+    num.title = `Go to line ${b.line}`;
+    const index = document.createElement('b');
+    index.textContent = String(i + 1);
+    num.append(index, ` line ${b.line}`);
+    const say = document.createElement('div');
+    say.className = 'timeline-cell timeline-say';
     if (b.depth) say.style.setProperty('--depth', String(b.depth));
-    col.append(num, say, cell('timeline-picture', b.picture.join('\n')), cell('timeline-sound', b.sound.join('\n')), cell('timeline-flow', b.flow.join('\n')));
+    if (b.kind === 'menu') say.append(tag('timeline-who', 'Choice'), b.text);
+    else if (b.kind === 'end') say.append(tag('timeline-who', 'End of scene'));
+    else {
+      if (b.who) {
+        const who = tag('timeline-who', b.who);
+        const c = this.hooks.colorOf(b.who);
+        if (c) who.style.color = c;
+        say.append(who);
+      }
+      say.append(b.text);
+    }
+    say.title = say.textContent ?? '';
+    col.append(num, say, chips('timeline-picture', b.picture), chips('timeline-sound', b.sound), chips('timeline-flow', b.flow));
     return col;
   }
 }
 
-function cell(cls: string, text: string): HTMLElement {
+function tag(cls: string, text: string): HTMLElement {
+  const t = document.createElement('span');
+  t.className = cls;
+  t.textContent = text;
+  return t;
+}
+
+/** A track's cell: its first event as a chip, and how many more there are. */
+function chips(cls: string, events: string[]): HTMLElement {
   const d = document.createElement('div');
-  d.className = `timeline-cell ${cls}${text ? '' : ' empty'}`;
-  d.textContent = text;
-  if (text) d.title = text;
+  d.className = `timeline-cell timeline-track ${cls}`;
+  if (!events.length) return d;
+  d.title = events.join('\n');
+  d.append(tag('timeline-chip', events[0]!));
+  if (events.length > 1) d.append(tag('timeline-more', `+${events.length - 1}`));
   return d;
 }

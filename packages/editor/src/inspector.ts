@@ -156,7 +156,7 @@ export class Inspector {
     const custom = document.createElement('input');
     custom.type = 'text';
     custom.className = 'inspector-input';
-    custom.placeholder = '30%';
+    custom.placeholder = 'or 30%';
     custom.setAttribute('aria-label', 'Another place, as a percentage across the screen');
     custom.value = at && !PLACES.includes(at) ? at : '';
     custom.addEventListener('change', () => {
