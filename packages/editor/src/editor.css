@@ -222,7 +222,7 @@ body.editor {
 .flow-form input:focus, .asset-filter:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .flow-message { color: var(--muted); font-size: 13px; }
 .flow-message.error { color: var(--danger); }
-.flow-canvas { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+.flow-canvas { flex: 1; min-height: 0; overflow: auto; padding: 8px; contain: strict; }
 .flowchart.connecting .flow-node { cursor: crosshair; }
 .flowchart.dragging, .flowchart.dragging .flow-node { cursor: grabbing; }
 .flow-drag { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
@@ -231,7 +231,11 @@ body.editor {
 .flow-edge .hit { fill: none; stroke: transparent; stroke-width: 12; }
 .flow-edge:hover .line { stroke: var(--text); }
 .flow-empty { color: var(--muted); padding: 12px; }
-.flow-svg { display: block; margin: 0 auto; font-family: var(--ui-font); touch-action: none; user-select: none; }
+/*
+ * Its own layer: otherwise every cursor move in the script repaints the whole chart with it, which in a long
+ * story (thousands of scenes) costs more than the move itself.
+ */
+.flow-svg { display: block; margin: 0 auto; font-family: var(--ui-font); touch-action: none; user-select: none; will-change: transform; }
 .flow-arrowhead { fill: var(--edge); }
 .flow-edge .line { fill: none; stroke: var(--edge); stroke-width: 1.6; }
 .flow-edge.kind-call .line { stroke: var(--edge-call); stroke-dasharray: 5 4; }

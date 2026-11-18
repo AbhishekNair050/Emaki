@@ -11,7 +11,7 @@
  * The scene the game is in and the scene the cursor is in are highlighted, so
  * the three panes always point at the same place.
  */
-import type { CompiledStory, StoryGraph } from '@emaki/format';
+import type { CompiledStory, StoryGraph, StoryNode } from '@emaki/format';
 import { layoutGraph } from '@emaki/player-web/layout';
 
 /** An edit hook returns an error message, or null when it worked. */
@@ -108,14 +108,34 @@ export class Flowchart {
     this.updateButtons();
   }
 
-  /** Redraw for a new version of the story (only if the shape of the graph changed). */
+  /**
+   * Redraw for a new version of the story. Only a change to its shape (scenes, links, endings) lays the chart out
+   * again; typing usually just moves scenes down the file, and then only their line numbers are rewritten.
+   */
   update(story: CompiledStory, graph: StoryGraph): void {
     const start = Object.entries(story.labels).find(([, i]) => i === story.start)?.[0] ?? '';
-    const signature = JSON.stringify([start, graph]);
-    if (signature === this.signature) return;
-    this.signature = signature;
+    const signature = JSON.stringify([start, graph.nodes.map((n) => [n.label, n.ending]), graph.edges.map((e) => [e.from, e.to, e.kind, e.via])]);
     this.graph = graph;
+    if (signature === this.signature) {
+      this.relabel(graph, start);
+      return;
+    }
+    this.signature = signature;
     this.render(graph, start);
+  }
+
+  /** Rewrite the line counts and numbers of scenes whose text changed. */
+  private relabel(graph: StoryGraph, start: string): void {
+    for (const n of graph.nodes) {
+      const g = this.nodes.get(n.label);
+      const meta = g?.querySelector('.meta');
+      if (!g || !meta) continue;
+      const text = metaText(n);
+      if (meta.textContent === text) continue;
+      meta.textContent = text;
+      const title = g.querySelector('title');
+      if (title) title.textContent = nodeTitle(n, n.label === start, g.classList.contains('unreachable'));
+    }
   }
 
   /** The scene the game is showing. */
@@ -261,8 +281,11 @@ export class Flowchart {
         const label = e.via.length > 1 ? `${e.via.length} choices` : truncate(e.via[0]!, EDGE_LABEL_MAX);
         g.append(s('text', { x: String(e.mid.x), y: String(e.mid.y), class: 'edge-label' }, label));
       }
-      const edge = graph.edges.find((x) => x.from === e.from && x.to === e.to);
-      if (edge?.line) g.addEventListener('click', () => this.hooks.revealLine(edge.line, edge.file));
+      // Looked up when clicked: the line moves as the script is edited (see relabel).
+      g.addEventListener('click', () => {
+        const edge = this.graph.edges.find((x) => x.from === e.from && x.to === e.to);
+        if (edge?.line) this.hooks.revealLine(edge.line, edge.file);
+      });
       svg.append(g);
     }
 
@@ -278,12 +301,11 @@ export class Flowchart {
         'data-label': n.id,
         'aria-label': `${n.id}: show in script (double-click or Shift+Enter to play from here)`,
       }) as SVGGElement;
-      const kind = meta.ending ? 'ending' : isStart ? 'start' : 'scene';
       g.append(
-        s('title', {}, `${n.id}\n${meta.lines} lines · line ${meta.line} · ${kind}${n.unreachable ? ' · never reached' : ''}\nClick: show in script · Double-click: play from here\nDrag to another scene: lead there`),
+        s('title', {}, nodeTitle(meta, isStart, !!n.unreachable)),
         s('rect', { width: String(n.w), height: String(n.h), rx: meta.ending ? String(n.h / 2) : '8' }),
         s('text', { x: String(n.w / 2), y: '21', class: 'name' }, truncate(n.id, NAME_MAX)),
-        s('text', { x: String(n.w / 2), y: '38', class: 'meta' }, `${meta.lines} lines · L${meta.line}`),
+        s('text', { x: String(n.w / 2), y: '38', class: 'meta' }, metaText(meta)),
       );
       if (isStart) g.append(s('text', { x: String(n.w / 2), y: '-6', class: 'badge' }, 'START'));
       this.wireNode(g, n.id, { x: n.x + n.w / 2, y: n.y + n.h });
@@ -388,4 +410,13 @@ function button(label: string, title: string, onClick: () => void): HTMLButtonEl
 
 function truncate(t: string, n: number): string {
   return t.length > n ? t.slice(0, n - 1) + '…' : t;
+}
+
+function metaText(n: StoryNode): string {
+  return `${n.lines} lines · L${n.line}`;
+}
+
+function nodeTitle(n: StoryNode, isStart: boolean, unreachable: boolean): string {
+  const kind = n.ending ? 'ending' : isStart ? 'start' : 'scene';
+  return `${n.label}\n${n.lines} lines · line ${n.line} · ${kind}${unreachable ? ' · never reached' : ''}\nClick: show in script · Double-click: play from here\nDrag to another scene: lead there`;
 }
