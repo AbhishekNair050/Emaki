@@ -48,6 +48,7 @@ interface Doc {
 }
 const SPLIT_KEY = 'emaki-editor:script-width';
 const WORKSPACE_KEY = 'emaki-editor:workspace';
+const INSPECTOR_KEY = 'emaki-editor:inspector';
 const ROUTE_KEY = 'emaki-editor:route';
 /** How long typing pauses before the panels (inspector, timeline) catch up with the cursor's line. */
 const PANELS_TYPING_DELAY_MS = 300;
@@ -83,7 +84,9 @@ async function main(): Promise<void> {
   let assetPaths = new Set<string>();
   let lastDiagnostics: Diagnostic[] = [];
   /** Where the game is: the line it shows, and which file that's in. */
-  let playing: { line: number; file?: string } | null = null;
+  let playing: { line: number; file?: string; label?: string } | null = null;
+  /** The timeline shows the scene that moved last: the cursor's, or the game's as it plays on. */
+  let timelineFollowsGame = false;
   let compileTimer = 0;
   /** Colouring the flowchart by what's been read waits for this, so playing doesn't recolour every line. */
   let recolourTimer = 0;
@@ -245,7 +248,7 @@ async function main(): Promise<void> {
   const script = new ScriptPane($('.cm-host'), initial.text, {
     onChange: () => { edited(); scheduleCompile(); },
     onRun: (line) => runFrom(line),
-    onCursor: (line, typing) => cursorMoved(line, typing),
+    onCursor: (line, typing) => { timelineFollowsGame = false; cursorMoved(line, typing); },
     onSave: () => { syncText(); void doc().sync.saveNow(); },
     onDrop: (drop, line) => void dropOnScript(drop, line),
     context: () => ({
@@ -354,7 +357,28 @@ async function main(): Promise<void> {
     },
     openOnStage: (label) => { setWorkspace('stage'); revealLabel(label); },
     openInScript: (label) => { setWorkspace('write'); revealLabel(label); },
+    hide: () => showInspector(false),
   });
+  /** The inspector can be hidden, giving its width to the middle; hidden, it isn't drawn at all. */
+  let inspectorShown = true;
+  try { inspectorShown = localStorage.getItem(INSPECTOR_KEY) !== 'hidden'; } catch { /* storage unavailable */ }
+  const inspectorButton = $<HTMLButtonElement>('#toggle-inspector');
+  function showInspector(on: boolean): void {
+    inspectorShown = on;
+    document.body.classList.toggle('inspector-hidden', !on);
+    inspectorButton.setAttribute('aria-pressed', String(on));
+    try { localStorage.setItem(INSPECTOR_KEY, on ? 'shown' : 'hidden'); } catch { /* storage unavailable */ }
+    if (on) {
+      // Draw it for where the cursor is now.
+      storyCardLabel = undefined;
+      inspectedLine = 0;
+      panelsStale = true;
+      cursorMoved(script.cursorLine, false, true);
+    }
+  }
+  inspectorButton.addEventListener('click', () => showInspector(!inspectorShown));
+  document.body.classList.toggle('inspector-hidden', !inspectorShown);
+  inspectorButton.setAttribute('aria-pressed', String(inspectorShown));
   const timeline = new Timeline($('.timeline-host'), {
     go: (line, file) => {
       if ((file ?? MAIN) !== active) openFile(file ?? MAIN);
@@ -676,13 +700,15 @@ async function main(): Promise<void> {
   }
   function updatePosition(line: number, label: string | null): void {
     const b = (text: string, cls = '') => Object.assign(document.createElement('b'), { textContent: text, className: cls });
+    // Each piece its own element: text side by side would run together in the pill's flex row.
+    const span = (text: string) => Object.assign(document.createElement('span'), { textContent: text });
     const route = chosen();
     position.replaceChildren(
-      'Everything is showing',
+      span('Everything is showing'),
       ...(docs.size > 1 && active !== MAIN ? [b(active)] : []),
       ...(label ? [b(label)] : []),
-      `line ${line}`,
-      ...(route ? ['· route', b(endingName(route.ending), 'route')] : []),
+      span(`line ${line}`),
+      ...(route ? [span('· route'), b(endingName(route.ending), 'route')] : []),
     );
   }
   let storyCardLabel: string | null | undefined;
@@ -699,12 +725,8 @@ async function main(): Promise<void> {
       dock.setCursor(label);
     }
     updatePosition(line, label);
-    if (timeline.scene !== label || stale || timelineStale) {
-      timelineStale = false;
-      const def = label ? labelNamed(label) : null;
-      timeline.setScene(def, def?.loc.file);
-    }
-    timeline.setCursor(line);
+    syncTimeline(stale);
+    if (!inspectorShown) return;
     if (workspace === 'story') {
       if (storyCardLabel !== label || stale) {
         storyCardLabel = label;
@@ -749,6 +771,22 @@ async function main(): Promise<void> {
   }
   /** The story was recompiled: the timeline redraws when next shown. */
   let timelineStale = true;
+  /**
+   * The timeline shows the cursor's scene, or the game's when it was the last to move, and marks both lines in it
+   * (the cursor's, and the game's as the script marks it).
+   */
+  function syncTimeline(stale = false): void {
+    const cursorScene = cursorLabel ?? null;
+    const label = timelineFollowsGame && playing?.label ? playing.label : cursorScene;
+    if (timeline.scene !== label || stale || timelineStale) {
+      timelineStale = false;
+      const def = label ? labelNamed(label) : null;
+      timeline.setScene(def, def?.loc.file);
+    }
+    const sameFile = (file: string | undefined) => (file ?? MAIN) === (timeline.sceneFile ?? MAIN);
+    timeline.setCursor(label === cursorScene && sameFile(active === MAIN ? undefined : active) ? script.cursorLine : null);
+    timeline.setPlaying(playing && playing.label === label && sameFile(playing.file) ? playing.line : null, timelineFollowsGame);
+  }
 
   /** The dock's list: every scene, the start and the endings marked. */
   function sceneList(): DockScene[] {
@@ -863,14 +901,21 @@ async function main(): Promise<void> {
     player = new Player(playerHost, s, {
       plugins,
       onUpdate: (block) => {
-        playing = block && 'line' in block ? { line: block.line, ...(block.file ? { file: block.file } : {}) } : null;
+        const was = playing;
+        const label = block && 'label' in block ? block.label : undefined;
+        playing = block && 'line' in block ? { line: block.line, ...(block.file ? { file: block.file } : {}), ...(label ? { label } : {}) } : null;
         script.setPlayLine(playing && (playing.file ?? MAIN) === active ? playing.line : null);
-        flow.setCurrent(block && 'label' in block ? block.label : null);
+        flow.setCurrent(label ?? null);
+        // The game moved on: the timeline follows it (and goes back to the cursor's scene when the cursor moves).
+        if (playing && (playing.line !== was?.line || playing.file !== was?.file)) {
+          timelineFollowsGame = true;
+          syncTimeline();
+        } else if (!playing) syncTimeline();
         // Colouring by what's been read follows the playtest, a few times a second at most.
         if (!recolourTimer) recolourTimer = window.setTimeout(() => { recolourTimer = 0; flow.recolourIfRead(); }, 1500);
         if (workspace === 'stage') {
           stageTools.follow();
-          showVars(cursorLabel ?? null);
+          if (inspectorShown) showVars(cursorLabel ?? null);
         }
       },
     });
@@ -918,7 +963,9 @@ async function main(): Promise<void> {
   $('#run').addEventListener('click', () => runFrom(script.cursorLine));
   const stepLine = (d: -1 | 1) => {
     const line = timeline.neighbour(d);
-    if (line !== null) script.revealLine(line, true, false);
+    if (line === null) return;
+    if ((timeline.sceneFile ?? MAIN) !== active) openFile(timeline.sceneFile ?? MAIN);
+    script.revealLine(line, true, false);
   };
   $('#prev-line').addEventListener('click', () => stepLine(-1));
   $('#next-line').addEventListener('click', () => stepLine(1));
@@ -933,6 +980,11 @@ async function main(): Promise<void> {
     if (e.altKey && !e.ctrlKey && !e.metaKey && ['1', '2', '3'].includes(e.key)) {
       e.preventDefault();
       setWorkspace(WORKSPACES[Number(e.key) - 1]!);
+      return;
+    }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyI') {
+      e.preventDefault();
+      showInspector(!inspectorShown);
       return;
     }
     if (!(e.ctrlKey || e.metaKey)) return;

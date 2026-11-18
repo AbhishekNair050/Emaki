@@ -18,6 +18,8 @@ export interface InspectorHooks {
   change(line: number, change: LineChange): string | null;
   openOnStage(label: string): void;
   openInScript(label: string): void;
+  /** Hide the inspector (the top bar's button shows it again). */
+  hide?(): void;
 }
 
 /** What the story declares, from the last compile that worked. */
@@ -61,6 +63,15 @@ export class Inspector {
     const head = el('h2', 'pane-head', 'Inspector');
     this.title = el('span', 'hint');
     head.append(' · ', this.title);
+    if (hooks.hide) {
+      const close = el('button', 'pane-close');
+      close.type = 'button';
+      close.title = 'Hide the inspector (Alt+I shows it again)';
+      close.setAttribute('aria-label', 'Hide the inspector');
+      close.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      close.addEventListener('click', () => hooks.hide!());
+      head.append(close);
+    }
     this.body = el('div', 'inspector-body');
     this.codeBox = el('div', 'inspector-code');
     this.codeBox.append(el('div', 'comment', '# written to the script'));

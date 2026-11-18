@@ -7,6 +7,7 @@
 
 /** The height of a scene's row in the list. */
 const ROW = 29;
+const ROUTES_KEY = 'emaki-editor:routes';
 
 export interface DockScene {
   label: string;
@@ -82,11 +83,20 @@ export class Dock {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-label]');
       if (b) this.hooks.reveal(b.dataset.label!);
     });
+    // "Route to" folds away, giving the scene list the whole height.
     const routeHead = el('div', 'dock-head');
-    routeHead.append(el('span', '', 'Route to'));
+    const fold = button('dock-fold', () => setFolded(fold.getAttribute('aria-expanded') === 'true'));
+    fold.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    fold.append('Route to');
     const again = button('dock-again', () => this.hooks.searchAgain(), 'Search again');
     again.title = 'Play the story again, trying every choice';
-    routeHead.append(again);
+    routeHead.append(fold, again);
+    const setFolded = (folded: boolean) => {
+      story.classList.toggle('routes-folded', folded);
+      fold.setAttribute('aria-expanded', String(!folded));
+      fold.title = folded ? 'Show the endings and their routes' : 'Hide the endings and their routes';
+      try { localStorage.setItem(ROUTES_KEY, folded ? 'folded' : 'open'); } catch { /* storage unavailable */ }
+    };
     this.endings = el('div', 'dock-endings');
     this.endings.setAttribute('role', 'listbox');
     this.endings.setAttribute('aria-label', 'Endings');
@@ -94,6 +104,9 @@ export class Dock {
     this.status.setAttribute('role', 'status');
     const note = el('p', 'dock-note', 'The route sets the variables used when you play from any line, and in the stage view.');
     story.append(this.list, routeHead, this.endings, this.status, note);
+    let folded = false;
+    try { folded = localStorage.getItem(ROUTES_KEY) === 'folded'; } catch { /* storage unavailable */ }
+    setFolded(folded);
     root.append(tabs, story, this.assetsHost);
     parent.append(root);
   }

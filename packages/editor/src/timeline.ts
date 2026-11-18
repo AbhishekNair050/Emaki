@@ -152,6 +152,8 @@ export class Timeline {
   private file: string | undefined;
   private label: string | null = null;
   private current = -1;
+  /** The column of the line the game is showing (-1: the game is elsewhere). */
+  private playing = -1;
   private col = MIN_COL;
   private drawn = '';
   private frame = 0;
@@ -218,6 +220,7 @@ export class Timeline {
       return d;
     }));
     this.current = -1;
+    this.playing = -1;
     this.drawn = '';
     this.updateCount();
     this.schedule();
@@ -227,38 +230,72 @@ export class Timeline {
     return this.label;
   }
 
-  /** How a character stands at the cursor's line (null: not on stage there). */
+  /** The file the scene shown is in (undefined: story.vn). */
+  get sceneFile(): string | undefined {
+    return this.file;
+  }
+
+  /** The column the arrows and the stage tools go by: the cursor's, else the game's. */
+  private get here(): number {
+    return this.current >= 0 ? this.current : this.playing;
+  }
+
+  /** How a character stands at the cursor's line, or the game's (null: not on stage there). */
   pose(tag: string): Pose | null {
-    return this.beats[this.current]?.cast[tag] ?? null;
+    return this.beats[this.playing >= 0 ? this.playing : this.current]?.cast[tag] ?? null;
   }
 
   /** The line of the column before or after the cursor's (for the top bar's arrows), or null at an end. */
   neighbour(step: -1 | 1): number | null {
-    const i = this.current + step;
+    const i = this.here < 0 && step < 0 ? -1 : this.here + step;
     return i >= 0 && i < this.beats.length ? this.beats[i]!.line : null;
   }
 
-  /** The cursor is on `line`: mark the column it belongs to, and keep it in view. */
-  setCursor(line: number): void {
-    // What a line does leads up to the next line of dialogue: the first beat at or after the line (in line order).
+  /** The column a line belongs to: what a line does leads up to the next line of dialogue, so the first beat at or after it. */
+  private columnOf(line: number | null): number {
+    if (line === null || !this.beats.length) return -1;
     let lo = 0, hi = this.beats.length - 1, at = this.beats.length - 1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       if (this.beats[mid]!.line >= line) { at = mid; hi = mid - 1; } else lo = mid + 1;
     }
+    return at;
+  }
+
+  /** The cursor is on `line` (null: it's in another scene): mark the column it belongs to, and keep it in view. */
+  setCursor(line: number | null): void {
+    const at = this.columnOf(line);
     if (at === this.current) return;
     const before = this.current;
     this.current = at;
     this.updateCount();
-    // Only the marked column changes; the rest stay as drawn.
-    for (const i of [before, at]) this.lane.querySelector(`[data-index="${i}"]`)?.classList.toggle('current', i === at);
-    if (at >= 0) {
-      const left = at * this.col, right = left + this.col;
-      if (left < this.scrollX || right > this.scrollX + this.viewWidth) {
-        this.scrollX = Math.max(0, left - this.viewWidth / 2 + this.col / 2);
-        this.scroller.scrollLeft = this.scrollX;
-        this.schedule();
-      }
+    this.mark('current', before, at);
+    this.reveal(at);
+  }
+
+  /** The game is showing `line` of this scene (null: it's elsewhere): mark its column, as the script marks the line. */
+  setPlaying(line: number | null, scroll: boolean): void {
+    const at = this.columnOf(line);
+    if (at === this.playing) return;
+    const before = this.playing;
+    this.playing = at;
+    this.mark('playing', before, at);
+    if (this.current < 0) this.updateCount();
+    if (scroll) this.reveal(at);
+  }
+
+  /** Only the marked columns change; the rest stay as drawn. */
+  private mark(cls: string, before: number, at: number): void {
+    for (const i of [before, at]) this.lane.querySelector(`[data-index="${i}"]`)?.classList.toggle(cls, i === at);
+  }
+
+  private reveal(at: number): void {
+    if (at < 0) return;
+    const left = at * this.col, right = left + this.col;
+    if (left < this.scrollX || right > this.scrollX + this.viewWidth) {
+      this.scrollX = Math.max(0, left - this.viewWidth / 2 + this.col / 2);
+      this.scroller.scrollLeft = this.scrollX;
+      this.schedule();
     }
   }
 
@@ -279,7 +316,7 @@ export class Timeline {
   }
 
   private updateCount(): void {
-    this.count.textContent = this.beats.length ? `${Math.max(0, this.current) + 1} / ${this.beats.length}` : '';
+    this.count.textContent = this.beats.length ? `${Math.max(0, this.here) + 1} / ${this.beats.length}` : '';
   }
 
   private schedule(): void {
@@ -312,7 +349,7 @@ export class Timeline {
 
   private column(b: Beat, i: number): HTMLElement {
     const col = document.createElement('div');
-    col.className = `timeline-col kind-${b.kind}${i === this.current ? ' current' : ''}`;
+    col.className = `timeline-col kind-${b.kind}${i === this.current ? ' current' : ''}${i === this.playing ? ' playing' : ''}`;
     col.style.left = `${i * this.col}px`;
     col.style.width = `${this.col}px`;
     col.dataset.line = String(b.line);

@@ -5,6 +5,8 @@
  *  - click an arrow to see the line that makes it
  *  - edit the story's shape: add, rename and delete scenes, and drag from one
  *    scene to another (or use "Lead to…") to connect them
+ *  - move around it as in a design tool: drag the background (or hold Space, or
+ *    the middle button) to pan, scroll to pan, Ctrl+scroll or pinch to zoom
  *
  * Edits go through hooks that rewrite the script with the printer, so the
  * script stays the single source of truth and every change can be undone there.
@@ -54,9 +56,18 @@ const COLOURINGS: [Colouring, string, string][] = [
 const SVG = 'http://www.w3.org/2000/svg';
 const NAME_MAX = 19;
 const EDGE_LABEL_MAX = 24;
-/** The chart shrinks to fit its pane, but not below this (then it scrolls). */
+/** The chart first shrinks to fit its pane's width, but not below this (then it pans). */
 const MIN_FIT = 0.72;
 const DRAG_THRESHOLD = 6;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 3;
+/** Room kept around the chart when it is fitted or a scene is brought into view. */
+const MARGIN = 24;
+/** The background's dots, this far apart at 100%. */
+const GRID = 20;
+
+/** Where the chart is in its pane: moved by (x, y) and scaled by k. */
+interface View { x: number; y: number; k: number }
 
 export class Flowchart {
   readonly el: HTMLElement;
@@ -87,6 +98,20 @@ export class Flowchart {
   private readonly info = new Map<string, StoryNode>();
   /** The scenes of the route shown, in order (null: none). */
   private route: string[] | null = null;
+  private view: View = { x: MARGIN, y: MARGIN, k: 1 };
+  /** The view has been placed (it is kept as the story changes; the first one waits for the pane's size). */
+  private placed = false;
+  /** The pane's size, kept from its own events: reading it when panning to a scene would lay the page out. */
+  private paneW = 0;
+  private paneH = 0;
+  private layoutHeight = 0;
+  /** Each scene's box, in chart units. */
+  private readonly boxes = new Map<string, { x: number; y: number; w: number; h: number }>();
+  private readonly zoomLabel: HTMLButtonElement;
+  private spaceHeld = false;
+  private hovering = false;
+  private settleTimer = 0;
+  private glideTimer = 0;
 
   constructor(parent: HTMLElement, hooks: FlowchartHooks) {
     this.hooks = hooks;
@@ -153,14 +178,184 @@ export class Flowchart {
     this.colourBy('none');
 
     this.canvas = el('div', 'flow-canvas');
-    new ResizeObserver(() => this.fit()).observe(this.canvas);
-    this.el.append(bar, this.canvas);
+    this.canvas.title = 'Drag or scroll to move around · Ctrl+scroll to zoom';
+    new ResizeObserver((e) => {
+      const r = e[0]?.contentRect;
+      if (!r) return;
+      this.paneW = r.width;
+      this.paneH = r.height;
+      if (!this.placed) this.fitWidth();
+    }).observe(this.canvas);
+    const zoom = el('div', 'flow-zoom');
+    zoom.setAttribute('role', 'toolbar');
+    zoom.setAttribute('aria-label', 'Zoom');
+    this.zoomLabel = button('100%', 'Back to 100% (Ctrl+0)', () => this.zoomTo(1));
+    this.zoomLabel.className = 'flow-zoom-level';
+    zoom.append(
+      button('−', 'Zoom out (Ctrl+−, or Ctrl+scroll)', () => this.zoomBy(1 / 1.25)),
+      this.zoomLabel,
+      button('+', 'Zoom in (Ctrl+=, or Ctrl+scroll)', () => this.zoomBy(1.25)),
+      button('Fit', 'Show the whole story (Shift+1)', () => this.fitAll()),
+    );
+    const stage = el('div', 'flow-stage');
+    stage.append(this.canvas, zoom);
+    this.el.append(bar, stage);
     parent.append(this.el);
+    this.wireCanvas();
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.connectFrom) this.stopConnect('Cancelled.');
     });
     this.updateButtons();
+  }
+
+  // ---------------------------------------------------------------- moving around
+
+  /** Pan and zoom, as in a design tool. Only the chart moves: the page itself never zooms or scrolls. */
+  private wireCanvas(): void {
+    const c = this.canvas;
+    c.addEventListener('pointerenter', () => { this.hovering = true; });
+    c.addEventListener('pointerleave', () => { this.hovering = false; });
+    c.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.paneH : 1;
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+scroll, or a pinch on a touchpad (which the browser sends as Ctrl+scroll): zoom on the pointer.
+        const dy = Math.max(-100, Math.min(100, e.deltaY * unit));
+        const at = this.pointer(e);
+        this.zoomAt(this.view.k * Math.exp(-dy * 0.0035), at.x, at.y);
+      } else {
+        // Scroll pans; Shift+scroll pans sideways (a touchpad pans both ways at once).
+        const sideways = e.shiftKey && !e.deltaX;
+        const dx = (sideways ? e.deltaY : e.deltaX) * unit;
+        const dy = (sideways ? 0 : e.deltaY) * unit;
+        this.setView({ ...this.view, x: this.view.x - dx, y: this.view.y - dy });
+      }
+    }, { passive: false });
+    // The middle button would start the browser's own autoscroll.
+    c.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
+    // A press on the background (or anywhere with Space held, or with the middle button) pans; one on a scene or
+    // an arrow is left to them. Captured first, so a scene never starts a connection while Space is held.
+    c.addEventListener('pointerdown', (down) => {
+      const onChart = !!(down.target as Element).closest('.flow-node, .flow-edge');
+      const pan = down.button === 1 || (down.button === 0 && (this.spaceHeld || !onChart));
+      if (!pan) return;
+      down.preventDefault();
+      down.stopPropagation();
+      c.setPointerCapture(down.pointerId);
+      c.classList.add('panning');
+      const start = { ...this.view };
+      const move = (ev: PointerEvent) => this.setView({ ...start, x: start.x + ev.clientX - down.clientX, y: start.y + ev.clientY - down.clientY });
+      const up = () => {
+        c.classList.remove('panning');
+        c.removeEventListener('pointermove', move);
+        c.removeEventListener('pointerup', up);
+        c.removeEventListener('pointercancel', up);
+      };
+      c.addEventListener('pointermove', move);
+      c.addEventListener('pointerup', up);
+      c.addEventListener('pointercancel', up);
+    }, { capture: true });
+    // Keys act while the pointer is over the chart (the keyboard usually stays with the script).
+    const field = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
+    window.addEventListener('keydown', (e) => {
+      // (A hidden pane reports no size: the chart isn't showing.)
+      if (!this.hovering || !this.paneW || field(e.target)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const act = (f: () => void) => { e.preventDefault(); e.stopPropagation(); f(); };
+      if (e.code === 'Space' && !mod) act(() => { this.spaceHeld = true; c.classList.add('space-pan'); });
+      else if (mod && (e.key === '=' || e.key === '+')) act(() => this.zoomBy(1.25));
+      else if (mod && (e.key === '-' || e.key === '_')) act(() => this.zoomBy(1 / 1.25));
+      else if (mod && e.key === '0') act(() => this.zoomTo(1));
+      else if (e.shiftKey && !mod && e.code === 'Digit1') act(() => this.fitAll());
+    }, { capture: true });
+    const release = () => { this.spaceHeld = false; c.classList.remove('space-pan'); };
+    window.addEventListener('keyup', (e) => { if (e.code === 'Space' && this.spaceHeld) release(); }, { capture: true });
+    window.addEventListener('blur', release);
+  }
+
+  /** A pointer's place in the pane. */
+  private pointer(e: MouseEvent): { x: number; y: number } {
+    const r = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  /** A pointer's place on the chart (in the layout's units). */
+  private toChart(e: MouseEvent): { x: number; y: number } {
+    const p = this.pointer(e);
+    return { x: (p.x - this.view.x) / this.view.k, y: (p.y - this.view.y) / this.view.k };
+  }
+
+  private zoomAt(k: number, px: number, py: number): void {
+    const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, k));
+    const v = this.view;
+    // The point under the pointer stays where it is.
+    this.setView({ k: z, x: px - (px - v.x) * (z / v.k), y: py - (py - v.y) * (z / v.k) });
+  }
+
+  private zoomBy(f: number): void {
+    this.glide();
+    this.zoomAt(this.view.k * f, this.paneW / 2, this.paneH / 2);
+  }
+
+  private zoomTo(k: number): void {
+    this.glide();
+    this.zoomAt(k, this.paneW / 2, this.paneH / 2);
+  }
+
+  /** Show the whole chart. */
+  private fitAll(): void {
+    if (!this.layoutWidth || !this.paneW) return;
+    const k = Math.max(MIN_ZOOM, Math.min(1, (this.paneW - 2 * MARGIN) / this.layoutWidth, (this.paneH - 2 * MARGIN) / this.layoutHeight));
+    this.glide();
+    this.setView({ k, x: (this.paneW - this.layoutWidth * k) / 2, y: Math.max(MARGIN, (this.paneH - this.layoutHeight * k) / 2) });
+  }
+
+  /** The first view: the chart's width fitted to the pane (but not smaller than MIN_FIT), from the top. */
+  private fitWidth(): void {
+    if (!this.svg || !this.layoutWidth || !this.paneW) return;
+    this.placed = true;
+    const k = Math.max(MIN_FIT, Math.min(1, (this.paneW - 2 * MARGIN) / this.layoutWidth));
+    const w = this.layoutWidth * k;
+    this.setView({ k, x: w < this.paneW ? (this.paneW - w) / 2 : MARGIN, y: MARGIN });
+    if (this.selected) this.scrollTo(this.selected);
+  }
+
+  /** Animate the next change of view (buttons, keys, and going to a scene; never the pointer's own moves). */
+  private glide(): void {
+    this.canvas.classList.add('gliding');
+    window.clearTimeout(this.glideTimer);
+    this.glideTimer = window.setTimeout(() => this.canvas.classList.remove('gliding'), 260);
+  }
+
+  private setView(v: View): void {
+    // Keep some of the chart in the pane, however far it is dragged.
+    const w = this.layoutWidth * v.k, h = this.layoutHeight * v.k;
+    const x = this.paneW ? Math.min(this.paneW - 60, Math.max(60 - w, v.x)) : v.x;
+    const y = this.paneH ? Math.min(this.paneH - 60, Math.max(60 - h, v.y)) : v.y;
+    const zoomed = v.k !== this.view.k;
+    this.view = { x, y, k: v.k };
+    this.applyView();
+    if (zoomed) this.settle();
+  }
+
+  private applyView(): void {
+    const { x, y, k } = this.view;
+    if (this.svg) this.svg.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
+    this.canvas.style.backgroundSize = `${GRID * k}px ${GRID * k}px`;
+    this.canvas.style.backgroundPosition = `${x}px ${y}px`;
+    this.zoomLabel.textContent = `${Math.round(k * 100)}%`;
+  }
+
+  /** Once zooming stops, draw the chart sharp at its new size (as its own layer it is otherwise scaled as a picture). */
+  private settle(): void {
+    window.clearTimeout(this.settleTimer);
+    this.settleTimer = window.setTimeout(() => {
+      const svg = this.svg;
+      if (!svg) return;
+      svg.style.willChange = 'auto';
+      requestAnimationFrame(() => { svg.style.willChange = ''; });
+    }, 200);
   }
 
   /**
@@ -220,8 +415,15 @@ export class Flowchart {
     this.scrollTo(this.selected);
   }
 
+  /** Pan a scene into view when it isn't (no layout is read: the boxes and the pane's size are kept). */
   private scrollTo(label: string | null): void {
-    if (label) this.nodes.get(label)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    const b = label ? this.boxes.get(label) : undefined;
+    if (!b || !this.paneW || !this.placed) return;
+    const { x, y, k } = this.view;
+    const left = x + b.x * k, top = y + b.y * k, right = left + b.w * k, bottom = top + b.h * k;
+    if (left >= 0 && top >= 0 && right <= this.paneW && bottom <= this.paneH) return;
+    this.glide();
+    this.setView({ k, x: this.paneW / 2 - (b.x + b.w / 2) * k, y: this.paneH / 2 - (b.y + b.h / 2) * k });
   }
 
   private colourBy(c: Colouring): void {
@@ -230,15 +432,6 @@ export class Flowchart {
     this.varSelect.classList.toggle('on', c.startsWith('var:'));
     if (!c.startsWith('var:')) this.varSelect.value = '';
     this.recolour(true);
-  }
-
-  /** The variables to colour by, read when the list is opened (they change as the script does). */
-  /** Shrink the chart to the pane's width when it is only a little wider; otherwise keep its size and scroll. */
-  private fit(): void {
-    if (!this.svg || !this.layoutWidth) return;
-    const room = this.canvas.clientWidth - 48;
-    this.svg.style.maxWidth = room > 0 && room / this.layoutWidth >= MIN_FIT ? '100%' : 'none';
-    this.svg.style.height = 'auto';
   }
 
   /** The story changed: the variables to colour by may have too. */
@@ -391,6 +584,7 @@ export class Flowchart {
     this.nodes.clear();
     this.edges.clear();
     this.chips.clear();
+    this.boxes.clear();
     if (!graph.nodes.length) {
       this.svg = null;
       this.canvas.replaceChildren(el('p', 'flow-empty', 'Add a scene to see your story as a flowchart.'));
@@ -466,14 +660,18 @@ ${why}`),
       );
       if (isStart) g.append(s('text', { x: String(n.w / 2), y: '-6', class: 'badge' }, 'START'));
       this.wireNode(g, n.id, { x: n.x + n.w / 2, y: n.y + n.h });
+      this.boxes.set(n.id, { x: n.x, y: n.y, w: n.w, h: n.h });
       this.nodes.set(n.id, g);
       svg.append(g);
     }
     svg.append(...this.chips.values());
     this.svg = svg;
     this.layoutWidth = layout.width;
+    this.layoutHeight = layout.height + 16;
     this.canvas.replaceChildren(svg);
-    this.fit();
+    // The view stays where the writer left it as the story changes; the first one is fitted.
+    if (this.placed) this.applyView();
+    else this.fitWidth();
     this.recolour();
     this.drawRoute();
     if (this.connectFrom && !this.nodes.has(this.connectFrom)) this.stopConnect('');
@@ -506,15 +704,14 @@ ${why}`),
     g.addEventListener('mousedown', (ev) => ev.preventDefault());
     // A press that moves becomes a drag that draws a connection; one that doesn't is a click.
     g.addEventListener('pointerdown', (down) => {
-      if (down.button !== 0) return;
-      const svg = this.svg!;
+      if (down.button !== 0 || this.spaceHeld) return;
       let line: SVGElement | null = null;
       const move = (ev: PointerEvent) => {
         if (!line && Math.hypot(ev.clientX - down.clientX, ev.clientY - down.clientY) < DRAG_THRESHOLD) return;
-        const p = toSvg(svg, ev);
+        const p = this.toChart(ev);
         if (!line) {
           line = s('line', { class: 'flow-drag', x1: String(anchor.x), y1: String(anchor.y), 'marker-end': 'url(#flow-arrow)' });
-          svg.append(line);
+          this.svg!.append(line);
           this.el.classList.add('dragging');
         }
         line.setAttribute('x2', String(p.x));
@@ -539,13 +736,6 @@ ${why}`),
 
 function target(ev: PointerEvent): Element | null {
   return document.elementFromPoint(ev.clientX, ev.clientY);
-}
-
-function toSvg(svg: SVGSVGElement, ev: PointerEvent): { x: number; y: number } {
-  const m = svg.getScreenCTM();
-  if (!m) return { x: 0, y: 0 };
-  const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse());
-  return { x: p.x, y: p.y };
 }
 
 function s(tag: string, attrs: Record<string, string> = {}, content?: string): SVGElement {
