@@ -35,6 +35,24 @@ describe('local launcher API', () => {
     expect(readFileSync(join(p.path, 'story.vn'), 'utf8')).toContain('A <story>');
   });
 
+  it('works out a project’s info off the main thread, then serves its picture', async () => {
+    const p = await (await post('create', { parent: root, folder: 'Info game', title: 'Info' })).json() as { path: string };
+    const info = `${launcher.url}__launcher/info?path=${encodeURIComponent(p.path)}`;
+    let r = await fetch(info).then((x) => x.json()) as { working: boolean; info: { scenes: number; errors: number } | null };
+    for (let i = 0; i < 100 && r.working; i++) {
+      await new Promise((ok) => setTimeout(ok, 50));
+      r = await fetch(info).then((x) => x.json()) as typeof r;
+    }
+    expect(r.working).toBe(false);
+    expect(r.info).toMatchObject({ errors: 0 });
+    expect(r.info!.scenes).toBeGreaterThan(0);
+    // Only known projects are read.
+    expect((await fetch(`${launcher.url}__launcher/info?path=${encodeURIComponent(root)}`)).status).toBe(400);
+    const picture = await fetch(`${launcher.url}__launcher/picture?path=${encodeURIComponent(p.path)}`);
+    expect([200, 404]).toContain(picture.status);
+    await post('remove', { path: p.path });
+  });
+
   it('refuses to start an arbitrary unregistered folder or invalid session type', async () => {
     expect((await post('start', { path: root, kind: 'editor' })).status).toBe(400);
     expect((await post('export', { path: root, target: 'anything' })).status).toBe(400);

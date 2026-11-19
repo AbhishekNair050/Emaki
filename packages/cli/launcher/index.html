@@ -3,50 +3,117 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='8' width='26' height='16' rx='2' fill='%23c8b08c'/%3E%3Cpath d='M3 5v22M29 5v22' stroke='%238c7659' stroke-width='4'/%3E%3Cpath d='m8 21 6-8 4 5 6-7' fill='none' stroke='%233a4145' stroke-width='2'/%3E%3C/svg%3E" />
-    <title>Emaki — Projects</title>
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f07a52'/%3E%3Ctext x='16' y='23' font-size='19' font-family='sans-serif' font-weight='700' text-anchor='middle' fill='%23121317'%3E%E7%B5%B5%3C/text%3E%3C/svg%3E" />
+    <title>Emaki projects</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header class="app-header">
-      <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="8" width="26" height="16" rx="1" fill="currentColor" opacity=".75"/><path d="M3 5v22M29 5v22" stroke="currentColor" stroke-width="3"/><path d="m8 21 6-8 4 5 6-7" fill="none" stroke="#292c30" stroke-width="2"/></svg><strong>Emaki</strong><span class="header-divider"></span><span>Project manager</span></div>
-      <a href="https://github.com/AbhishekNair050/Emaki/blob/main/docs/getting-started.md" target="_blank" rel="noreferrer">Documentation <span aria-hidden="true">↗</span></a>
+    <header class="topbar">
+      <span class="brand" aria-hidden="true">絵</span>
+      <span class="brand-name">Emaki</span>
+      <span class="brand-sub">Projects</span>
+      <span class="spacer"></span>
+      <span id="connection" class="connection" role="status"><i></i><span>Connecting…</span></span>
+      <a class="doc-link" href="https://github.com/AbhishekNair050/Emaki/blob/main/docs/getting-started.md" target="_blank" rel="noreferrer">Documentation <span aria-hidden="true">↗</span></a>
     </header>
-    <main class="workspace">
-      <aside class="project-pane" aria-label="Projects">
-        <div class="project-toolbar"><h1>Projects</h1><button id="new-project" class="primary compact">New project</button></div>
-        <button id="open-project" class="open-project">Open existing project…</button>
+
+    <main class="shell">
+      <aside class="sidebar" aria-label="Projects">
+        <div class="side-actions">
+          <button id="new-project" class="primary">
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+            New project
+          </button>
+          <button id="open-project">Open…</button>
+        </div>
         <label class="search"><span class="sr-only">Filter projects</span><input id="search" type="search" placeholder="Filter projects" autocomplete="off" /></label>
-        <div class="list-label"><span>RECENT PROJECTS</span><span id="project-count"></span></div>
+        <div class="list-label"><span>Recent</span><span id="project-count"></span></div>
         <div id="project-list" class="project-list" aria-label="Recent projects"></div>
-        <div class="pane-footer"><button id="example" class="text-button">Try the example game <span aria-hidden="true">↗</span></button></div>
+        <div class="side-footer"><button id="example" class="link-button">Try the example game</button></div>
       </aside>
-      <section class="detail-pane" aria-label="Selected project">
+
+      <section class="content" aria-label="Selected project">
         <div id="notice" class="notice" role="status" hidden></div>
+
         <div id="welcome" class="welcome">
           <div class="welcome-mark" aria-hidden="true">絵巻</div>
-          <h2>Create or open a project.</h2>
-          <p>Create a project to start writing, or open a game you’re already working on.</p>
-          <p class="welcome-note">The script, live game and story map are together in the editor. Your project stays in a folder you control.</p>
-          <button id="welcome-new" class="primary">Create a project</button>
+          <h1>Make a visual novel</h1>
+          <p>Start a new story, or open a game you’re already working on. Your project stays in a folder you control.</p>
+          <div class="welcome-actions">
+            <button id="welcome-new" class="primary big">Create a project</button>
+            <button id="welcome-open" class="big">Open a game folder</button>
+          </div>
+          <ul class="welcome-points">
+            <li><b>Write</b> the script with the game playing beside it</li>
+            <li><b>Stage</b> scenes by moving characters on the game itself</li>
+            <li><b>Story</b>: see every route, and test from any line</li>
+          </ul>
         </div>
+
         <div id="project-detail" class="project-detail" hidden>
-          <div class="project-heading"><span class="eyebrow">EMAKI PROJECT</span><h2 id="project-title"></h2><p id="project-path" class="project-path"></p></div>
-          <p id="missing-project" class="warning" hidden>This project could not be found. If you moved it, use Open existing project to select its new location.</p>
-          <div class="main-actions"><button id="edit" class="primary">Open editor <span aria-hidden="true">↗</span></button><button id="play">Play <span aria-hidden="true">↗</span></button><button id="folder" class="text-button">Open folder</button></div>
-          <div class="section-heading"><h3>Sessions</h3><span>Editor and player open in separate tabs.</span></div>
-          <div id="sessions" class="sessions"></div>
-          <div class="section-heading export-heading"><h3>Export game</h3></div>
-          <p class="section-description">Build a playable version of this project. Files are written to its <code>export</code> folder.</p>
-          <form id="export-form" class="export-form"><label for="target">Platform</label><select id="target"><option value="web">Web · browser / itch.io</option><option value="desktop">Desktop · this computer</option></select><button id="export" type="submit">Export</button></form>
-          <p id="desktop-note" class="field-hint" hidden>Desktop export downloads Electron on the first build. Packaging may take a few minutes.</p>
-          <div id="export-progress" class="export-progress" hidden><div class="export-status"><span id="export-status" role="status"></span><button id="output-folder" class="text-button" hidden>Open export folder</button></div><details id="export-details"><summary>Build output</summary><pre id="export-log" tabindex="0" aria-label="Build output"></pre></details></div>
-          <div class="project-bottom"><span id="last-opened"></span><button id="remove-project" class="text-button">Remove from list</button></div>
+          <section class="hero">
+            <div class="hero-picture" id="hero-picture"><img id="picture" alt="" hidden /><span id="picture-initial" aria-hidden="true"></span></div>
+            <div class="hero-text">
+              <span class="eyebrow">Project</span>
+              <h1 id="project-title"></h1>
+              <p id="project-path" class="project-path"></p>
+              <p id="missing-project" class="warning" hidden>This project’s folder can’t be found. If you moved it, use Open… to choose its new place.</p>
+              <div class="main-actions">
+                <button id="edit" class="primary big">Open editor <span aria-hidden="true">↗</span></button>
+                <div class="seg" id="workspace-seg" role="group" aria-label="Open the editor in">
+                  <button type="button" data-workspace="write" title="The script and the game">
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 11l7-7 2 2-7 7H2zM8 5l2 2" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>Write
+                  </button>
+                  <button type="button" data-workspace="stage" title="The game large, to stage scenes">
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 3h11v8h-11zM5 13h4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>Stage
+                  </button>
+                  <button type="button" data-workspace="story" title="The whole story and its routes">
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3.5a1.5 1.5 0 1 0 0 .01M11 3.5a1.5 1.5 0 1 0 0 .01M7 10.5a1.5 1.5 0 1 0 0 .01M4 4.5l2.5 5M10 4.5l-2.5 5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>Story
+                  </button>
+                </div>
+              </div>
+              <div class="sub-actions">
+                <button id="play" class="link-button">Play in a browser tab</button>
+                <button id="folder" class="link-button">Show folder</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="stats" aria-label="About this story">
+            <div id="health" class="health" role="status"></div>
+            <div id="stats" class="stat-grid"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><h2>Running</h2><span class="hint">The editor and the player each run in their own tab.</span></div>
+            <div id="sessions" class="sessions"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><h2>Export</h2><span class="hint">Written to the project’s <code>export</code> folder.</span></div>
+            <form id="export-form" class="export-form">
+              <div class="seg" id="target-seg" role="group" aria-label="Platform">
+                <button type="button" data-target="web">Web</button>
+                <button type="button" data-target="desktop">Desktop</button>
+                <button type="button" data-target="android">Android</button>
+                <button type="button" data-target="ios">iOS</button>
+              </div>
+              <button id="export" type="submit" class="primary">Export</button>
+            </form>
+            <p id="target-note" class="field-hint"></p>
+            <div id="export-progress" class="export-progress" hidden>
+              <div class="export-status"><span id="export-status" role="status"></span><button id="output-folder" type="button" class="link-button" hidden>Show export folder</button></div>
+              <details id="export-details"><summary>Build output</summary><pre id="export-log" tabindex="0" aria-label="Build output"></pre></details>
+            </div>
+          </section>
+
+          <div class="project-bottom"><span id="last-opened"></span><button id="remove-project" class="link-button">Remove from list</button></div>
         </div>
-        <footer class="detail-footer"><span id="connection">Connecting to Emaki…</span><span>Local workspace</span></footer>
+        <p class="keep-open">Keep the launcher’s terminal open while you work.</p>
       </section>
     </main>
+
     <dialog id="project-dialog" aria-labelledby="dialog-title">
       <form id="project-form">
         <div class="dialog-header"><h2 id="dialog-title">New project</h2><button type="button" class="close-button" data-close="project-dialog" aria-label="Close">×</button></div>

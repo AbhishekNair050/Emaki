@@ -22,7 +22,7 @@ It opens in your browser (usually http://127.0.0.1:5175). Keep the terminal open
 
 Choose **New project**, enter your game's title and location, then **Create project**. Select **Open editor** to write with the game running beside your script, or **Play** to open the game on its own. **Try the example game** opens *The Keeper of Gullwing Point* in the project list.
 
-Use **Open existing project** for a game you already have: paste its folder path or use **Browse** to find the folder containing `story.vn`. Recent projects are remembered between launcher sessions. Removing a project from the list does not delete its files.
+Use **Open…** for a game you already have: paste its folder path or use **Browse** to find the folder containing `story.vn`. Recent projects are remembered between launcher sessions. Removing a project from the list does not delete its files.
 
 The rest of this guide also shows the terminal commands, if you prefer those.
 

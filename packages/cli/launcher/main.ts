@@ -1,14 +1,16 @@
 import type { Project } from '../src/projects.ts';
 import type { Session, SessionKind } from '../src/serve.ts';
+import type { ProjectInfo } from '../src/project-info.ts';
 
 interface Job { id: number; path: string; target: string; status: 'running' | 'done' | 'failed'; log: string; output: string }
 interface State { projects: Project[]; sessions: Session[]; jobs: Job[]; defaultDirectory: string; home: string; platform: string }
 interface Folders { path: string; parent: string | null; folders: string[]; game: boolean; roots: string[] }
+interface InfoState { working: boolean; info: ProjectInfo | null; error: string | null }
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id)! as T;
 const button = (id: string) => $<HTMLButtonElement>(id);
 const input = (id: string) => $<HTMLInputElement>(id);
 let state: State = { projects: [], sessions: [], jobs: [], defaultDirectory: '', home: '', platform: '' };
-let selected = localStorage.getItem('emaki-launcher:selected') ?? '';
+let selected = stored('emaki-launcher:selected', null, '');
 let mode: 'create' | 'open' = 'create';
 let folderEdited = false;
 let folderTarget: 'parent' | 'existing-path' = 'parent';
@@ -20,6 +22,24 @@ let detailSignature = '';
 let browseRequest = 0;
 let connected = false;
 const pending = new Set<SessionKind>();
+/** Each project's info (picture, size, problems), as last fetched. */
+const infos = new Map<string, InfoState>();
+/** The workspace "Open editor" opens, and the platform to export to: remembered. */
+let workspace = stored('emaki-launcher:workspace', ['write', 'stage', 'story'], 'write');
+let target = stored('emaki-launcher:target', ['web', 'desktop', 'android', 'ios'], 'web');
+const TARGET_NOTES: Record<string, string> = {
+  web: 'A folder to upload to itch.io or any web host. It plays in every modern browser.',
+  desktop: 'An app for this computer. The first desktop export downloads Electron, so it can take a few minutes.',
+  android: 'An Android Studio project, and a test APK when the Android SDK is installed.',
+  ios: 'An Xcode project. Building it needs a Mac with Xcode.',
+};
+const TARGET_NAMES: Record<string, string> = { web: 'web', desktop: 'desktop', android: 'Android', ios: 'iOS' };
+const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+
+function stored(key: string, allowed: string[] | null, fallback: string): string {
+  try { const v = localStorage.getItem(key); return v && (!allowed || allowed.includes(v)) ? v : fallback; } catch { return fallback; }
+}
+function remember(key: string, value: string): void { try { localStorage.setItem(key, value); } catch { /* storage unavailable */ } }
 
 async function api<T>(route: string, data?: object): Promise<T> {
   const res = await fetch(`/__launcher/${route}`, data === undefined ? { cache: 'no-store' } : {
@@ -38,15 +58,45 @@ function joinPath(parent: string, name: string): string { return `${parent.repla
 
 function select(path: string): void {
   selected = path;
-  localStorage.setItem('emaki-launcher:selected', path);
+  remember('emaki-launcher:selected', path);
   render();
+  void loadInfo(path);
+}
+
+/** A colour of its own for each project without a picture. */
+function hue(text: string): string {
+  let h = 0;
+  for (const ch of text) h = (h * 31 + ch.codePointAt(0)!) % 360;
+  return `hsl(${h} 38% 34%)`;
+}
+function initial(title: string): string { return [...title.trim()][0]?.toLocaleUpperCase() ?? '?'; }
+function pictureUrl(path: string, info: ProjectInfo): string { return `/__launcher/picture?path=${encodeURIComponent(path)}&v=${info.at}`; }
+
+function thumb(p: Project): HTMLElement {
+  const box = document.createElement('span');
+  box.className = 'thumb';
+  box.style.setProperty('--thumb', hue(p.title));
+  box.textContent = initial(p.title);
+  const info = infos.get(p.path)?.info;
+  if (info?.picture) {
+    const img = document.createElement('img');
+    img.src = pictureUrl(p.path, info); img.alt = ''; img.loading = 'lazy';
+    img.onerror = () => img.remove();
+    box.append(img);
+  }
+  if (state.sessions.some((s) => s.path === p.path)) {
+    const dot = document.createElement('i'); dot.className = 'running'; dot.title = 'Running';
+    box.append(dot);
+  }
+  return box;
 }
 
 function render(): void {
   const project = current();
   const query = input('search').value.trim().toLocaleLowerCase();
   const visible = state.projects.filter((p) => `${p.title} ${p.path}`.toLocaleLowerCase().includes(query));
-  const signature = JSON.stringify([visible, selected]);
+  const thumbs = visible.map((p) => [infos.get(p.path)?.info?.picture ?? null, infos.get(p.path)?.info?.at ?? 0, state.sessions.some((s) => s.path === p.path)]);
+  const signature = JSON.stringify([visible, selected, thumbs]);
   if (signature !== listSignature) {
     listSignature = signature;
     const list = $('project-list');
@@ -56,12 +106,10 @@ function render(): void {
       row.className = 'project-row';
       row.setAttribute('aria-current', String(p.path === selected));
       row.title = p.path;
-      const icon = document.createElement('span');
-      icon.className = 'project-icon'; icon.textContent = 'VN'; icon.setAttribute('aria-hidden', 'true');
-      const content = document.createElement('span'); content.className = 'project-row-content';
-      const title = document.createElement('span'); title.className = 'project-row-title'; title.textContent = p.title;
-      const path = document.createElement('span'); path.className = 'project-row-path'; path.textContent = p.available ? p.path : 'Folder not found';
-      content.append(title, path); row.append(icon, content);
+      const content = document.createElement('span'); content.className = 'row-text';
+      const title = document.createElement('span'); title.className = 'row-title'; title.textContent = p.title;
+      const path = document.createElement('span'); path.className = `row-path${p.available ? '' : ' missing'}`; path.textContent = p.available ? p.path : 'Folder not found';
+      content.append(title, path); row.append(thumb(p), content);
       row.addEventListener('click', () => select(p.path));
       row.addEventListener('dblclick', () => { select(p.path); if (p.available) void launch('editor'); });
       list.append(row);
@@ -75,27 +123,34 @@ function render(): void {
   $('project-count').textContent = String(state.projects.length);
   $('welcome').hidden = !!project;
   $('project-detail').hidden = !project;
-  for (const id of ['new-project', 'welcome-new', 'open-project', 'example']) button(id).disabled = !connected;
-  if (!project) return;
-  const nextDetail = JSON.stringify([project, state.sessions.filter((s) => s.path === selected), [...pending], connected]);
+  for (const id of ['new-project', 'welcome-new', 'welcome-open', 'open-project', 'example']) button(id).disabled = !connected;
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#workspace-seg [data-workspace]')) b.setAttribute('aria-pressed', String(b.dataset.workspace === workspace));
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#target-seg [data-target]')) b.setAttribute('aria-pressed', String(b.dataset.target === target));
+  $('target-note').textContent = TARGET_NOTES[target]!;
+  if (!project) { document.title = 'Emaki projects'; return; }
+  const infoState = infos.get(project.path) ?? null;
+  const nextDetail = JSON.stringify([project, state.sessions.filter((s) => s.path === selected), [...pending], connected, infoState]);
   if (detailSignature !== nextDetail) {
     detailSignature = nextDetail;
     $('project-title').textContent = project.title;
     $('project-path').textContent = project.path;
     $('missing-project').hidden = project.available;
     $('last-opened').textContent = `Last opened ${new Date(project.lastOpened).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
-    document.title = `${project.title} — Emaki`;
+    document.title = `${project.title} · Emaki`;
+    renderPicture(project, infoState);
+    renderStats(project, infoState);
     button('edit').disabled = !connected || !project.available || pending.has('editor');
     button('play').disabled = !connected || !project.available || pending.has('play');
-    button('edit').firstChild!.textContent = pending.has('editor') ? 'Starting editor… ' : 'Open editor ';
-    button('play').firstChild!.textContent = pending.has('play') ? 'Starting player… ' : 'Play ';
+    button('edit').firstChild!.textContent = pending.has('editor') ? 'Starting the editor… ' : 'Open editor ';
+    button('play').textContent = pending.has('play') ? 'Starting the player…' : 'Play in a browser tab';
     button('folder').disabled = !connected || !project.available;
     const rows = $('sessions'); rows.replaceChildren();
     for (const kind of ['editor', 'play'] as const) {
       const session = state.sessions.find((s) => s.path === selected && s.kind === kind);
       const row = document.createElement('div'); row.className = 'session-row';
       const name = document.createElement('span'); name.className = 'session-name'; name.textContent = kind === 'editor' ? 'Editor' : 'Player';
-      const status = document.createElement('span'); status.className = `session-state${session ? ' running' : ''}`;
+      const status = document.createElement('span');
+      status.className = `session-state${pending.has(kind) ? ' starting' : session ? ' running' : ''}`;
       status.textContent = pending.has(kind) ? 'Starting…' : session ? 'Running' : 'Not running';
       row.append(name, status);
       if (session) {
@@ -116,18 +171,80 @@ function render(): void {
   const running = state.jobs.some((j) => j.status === 'running');
   const canRemove = connected && !state.sessions.some((s) => s.path === selected) && pending.size === 0 && job?.status !== 'running';
   button('remove-project').disabled = !canRemove;
-  button('remove-project').title = canRemove ? 'Remove this entry without deleting any files.' : 'Stop this project’s sessions and wait for its export to finish first.';
+  button('remove-project').title = canRemove ? 'Remove this entry. No files are deleted.' : 'Stop this project’s sessions and wait for its export to finish first.';
   button('export').disabled = !connected || !project.available || running || busy;
-  button('export').textContent = running ? 'Export in progress…' : 'Export';
+  button('export').textContent = running ? 'Exporting…' : 'Export';
   $('export-progress').hidden = !job;
   if (job) {
-    $('export-status').textContent = job.status === 'running' ? `Building ${job.target === 'web' ? 'web' : 'desktop'} version…` : job.status === 'done' ? 'Export complete' : 'Export failed — see build output below';
+    $('export-status').textContent = job.status === 'running' ? `Building the ${TARGET_NAMES[job.target] ?? job.target} version…` : job.status === 'done' ? 'Export complete' : 'Export failed: see the build output below';
     const log = $('export-log');
-    if (log.textContent !== job.log) { const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40; log.textContent = job.log || 'Starting build…'; if (atEnd) log.scrollTop = log.scrollHeight; }
+    if (log.textContent !== job.log) { const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40; log.textContent = job.log || 'Starting the build…'; if (atEnd) log.scrollTop = log.scrollHeight; }
     button('output-folder').hidden = job.status !== 'done';
     button('output-folder').disabled = !connected;
     if (job.status === 'failed') $<HTMLDetailsElement>('export-details').open = true;
   }
+}
+
+function renderPicture(project: Project, s: InfoState | null): void {
+  $('hero-picture').style.setProperty('--thumb', hue(project.title));
+  const img = $<HTMLImageElement>('picture');
+  const letter = $('picture-initial');
+  letter.textContent = initial(project.title);
+  const src = s?.info?.picture ? pictureUrl(project.path, s.info) : '';
+  if (!src) { img.hidden = true; img.removeAttribute('src'); letter.hidden = false; return; }
+  if (img.getAttribute('src') !== src) {
+    img.onload = () => { img.hidden = false; letter.hidden = true; };
+    img.onerror = () => { img.hidden = true; letter.hidden = false; };
+    img.src = src;
+  }
+}
+
+function renderStats(project: Project, s: InfoState | null): void {
+  const health = $('health');
+  const info = s?.info;
+  const plural = (n: number, one: string) => `${n.toLocaleString()} ${one}${n === 1 ? '' : 's'}`;
+  const say = (cls: string, title: string, detail?: string | null) => {
+    health.className = `health ${cls}`;
+    const dot = document.createElement('i'); dot.className = 'dot';
+    const text = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = title;
+    text.append(b);
+    if (detail) { const d = document.createElement('span'); d.className = 'detail'; d.textContent = detail; text.append(d); }
+    health.replaceChildren(dot, text);
+  };
+  if (!project.available) say('error', 'The project’s folder can’t be found.');
+  else if (!info && s?.error) say('error', 'The story couldn’t be read.', s.error);
+  else if (!info) say('working', 'Reading the story…', 'A long game takes a few seconds the first time.');
+  else if (info.errors) say('error', `${plural(info.errors, 'error')}${info.warnings ? ` and ${plural(info.warnings, 'warning')}` : ''}: the game won’t start until they’re fixed`, info.firstProblem);
+  else if (info.warnings) say('warn', `${plural(info.warnings, 'warning')}: the game runs, but have a look`, info.firstProblem);
+  else say('ok', s?.working ? 'No problems (checking the latest changes…)' : 'No problems: the story compiles');
+  const tiles: [string, number | undefined][] = [
+    ['scenes', info?.scenes], ['words', info?.words], ['choices', info?.choices], ['endings', info?.endings], ['story files', info?.files], ['lines', info?.lines],
+  ];
+  $('stats').replaceChildren(...tiles.map(([label, n]) => {
+    const tile = document.createElement('div');
+    tile.className = `stat${n === undefined ? ' placeholder' : ''}`;
+    const b = document.createElement('b'); b.textContent = n === undefined ? '–' : n >= 10_000 ? compact.format(n) : n.toLocaleString();
+    if (n !== undefined && n >= 10_000) b.title = n.toLocaleString();
+    const span = document.createElement('span'); span.textContent = label;
+    tile.append(b, span);
+    return tile;
+  }));
+}
+
+/** Ask for a project's info; the server works it out once per version of the story, so asking again is cheap. */
+async function loadInfo(path: string): Promise<void> {
+  if (!path || !state.projects.find((p) => p.path === path)?.available) return;
+  try {
+    infos.set(path, await api<InfoState>(`info?path=${encodeURIComponent(path)}`));
+    render();
+  } catch { /* the next refresh asks again */ }
+}
+
+function setConnection(on: boolean): void {
+  const pill = $('connection');
+  pill.className = `connection ${on ? 'on' : 'off'}`;
+  pill.lastElementChild!.textContent = on ? 'Connected' : 'Disconnected: start the launcher again in its terminal';
 }
 
 async function refresh(): Promise<void> {
@@ -137,10 +254,14 @@ async function refresh(): Promise<void> {
     state = await api<State>('state');
     connected = true;
     if (!current()) selected = state.projects[0]?.path ?? '';
-    $('connection').textContent = 'Keep the launcher terminal open while working.';
+    setConnection(true);
+    void loadInfo(selected);
+    // The other projects' pictures and numbers, one project at a time in the background.
+    const missing = state.projects.find((p) => p.available && p.path !== selected && !infos.get(p.path)?.info && !infos.get(p.path)?.error);
+    if (missing) void loadInfo(missing.path);
   } catch {
     connected = false;
-    $('connection').textContent = 'Launcher disconnected. Start it again in the terminal to reconnect.';
+    setConnection(false);
   } finally { refreshing = false; render(); }
 }
 
@@ -159,8 +280,10 @@ async function launch(kind: SessionKind): Promise<void> {
   await action(async () => {
     try {
       const session = await api<Session>('start', { path, kind });
-      if (tab && !tab.closed) tab.location.replace(session.url);
-      else notice('Your session is ready. Use Open tab in Sessions to open it.');
+      // The editor opens in the workspace chosen beside its button.
+      const url = kind === 'editor' ? `${session.url}${session.url.includes('?') ? '&' : '?'}workspace=${workspace}` : session.url;
+      if (tab && !tab.closed) tab.location.replace(url);
+      else notice('Your session is ready. Use Open tab under Running to open it.');
     } catch (err) { tab?.close(); throw err; }
     finally { pending.delete(kind); await refresh(); }
   });
@@ -170,8 +293,8 @@ function updatePath(): void { $('create-path').textContent = joinPath(input('par
 
 function openProjectDialog(next: 'create' | 'open'): void {
   mode = next; folderEdited = false;
-  $('dialog-title').textContent = next === 'create' ? 'New project' : 'Open project';
-  $('dialog-description').textContent = next === 'create' ? 'Start with a short, playable story. You can change its title and appearance at any time.' : 'Open an Emaki game from your computer. Its files stay in their current location.';
+  $('dialog-title').textContent = next === 'create' ? 'New project' : 'Open a project';
+  $('dialog-description').textContent = next === 'create' ? 'You start with a short story that already plays. Change its title and look whenever you like.' : 'Open an Emaki game from your computer. Its files stay where they are.';
   $('create-fields').hidden = next !== 'create'; $('open-fields').hidden = next !== 'open';
   input('title').value = ''; input('folder-name').value = ''; input('parent').value = state.defaultDirectory;
   input('existing-path').value = ''; $('project-error').hidden = true;
@@ -197,29 +320,35 @@ async function loadFolders(path: string): Promise<void> {
       row.addEventListener('click', () => { void loadFolders(joinPath(next.path, folder)); });
       list.append(row);
     }
-    if (!next.folders.length) { const empty = document.createElement('p'); empty.className = 'field-hint'; empty.textContent = 'No subfolders here.'; list.append(empty); }
+    if (!next.folders.length) { const empty = document.createElement('p'); empty.className = 'field-hint'; empty.textContent = 'No folders here.'; list.append(empty); }
     const roots = $('roots'); roots.replaceChildren();
     for (const location of [state.home, ...next.roots]) {
       const root = document.createElement('button'); root.textContent = location === state.home ? 'Home' : location; root.title = location;
       root.addEventListener('click', () => { void loadFolders(location); }); roots.append(root);
     }
-    $('browse-info').textContent = next.game ? 'This folder contains an Emaki game (story.vn).' : folderTarget === 'existing-path' ? 'Open a folder containing story.vn.' : 'Your new project folder will be created inside this location.';
+    $('browse-info').textContent = next.game ? 'This folder has an Emaki game (story.vn).' : folderTarget === 'existing-path' ? 'Open a folder that has a story.vn.' : 'Your new project folder will be made inside this one.';
     button('select-folder').disabled = folderTarget === 'existing-path' && !next.game;
   } catch (err) { if (request === browseRequest) showError('browse-error', err); }
 }
 
-function openBrowser(target: 'parent' | 'existing-path'): void {
-  folderTarget = target; folders = null;
-  $('folder-title').textContent = target === 'parent' ? 'Choose a project location' : 'Choose a game folder';
+function openBrowser(next: 'parent' | 'existing-path'): void {
+  folderTarget = next; folders = null;
+  $('folder-title').textContent = next === 'parent' ? 'Choose where to make the project' : 'Choose a game folder';
   $('folders').replaceChildren(); $('roots').replaceChildren(); $('browse-info').textContent = '';
-  input('browse-path').value = input(target).value || state.home;
+  input('browse-path').value = input(next).value || state.home;
   $<HTMLDialogElement>('folder-dialog').showModal();
   // A default location may not exist yet. The first browse starts at Home.
-  void loadFolders(target === 'parent' && input(target).value === state.defaultDirectory ? state.home : input(target).value || state.home);
+  void loadFolders(next === 'parent' && input(next).value === state.defaultDirectory ? state.home : input(next).value || state.home);
 }
 
 button('new-project').onclick = button('welcome-new').onclick = () => openProjectDialog('create');
-button('open-project').onclick = () => openProjectDialog('open');
+button('open-project').onclick = button('welcome-open').onclick = () => openProjectDialog('open');
+for (const b of document.querySelectorAll<HTMLButtonElement>('#workspace-seg [data-workspace]')) {
+  b.onclick = () => { workspace = b.dataset.workspace!; remember('emaki-launcher:workspace', workspace); render(); };
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('#target-seg [data-target]')) {
+  b.onclick = () => { target = b.dataset.target!; remember('emaki-launcher:target', target); render(); };
+}
 input('search').addEventListener('input', render);
 button('edit').onclick = () => { void launch('editor'); };
 button('play').onclick = () => { void launch('play'); };
@@ -260,14 +389,13 @@ button('select-folder').onclick = () => {
   input(folderTarget).value = folders.path; updatePath();
   $<HTMLDialogElement>('folder-dialog').close();
 };
-$<HTMLSelectElement>('target').onchange = () => { $('desktop-note').hidden = $<HTMLSelectElement>('target').value !== 'desktop'; };
 $<HTMLFormElement>('export-form').onsubmit = (event) => {
   event.preventDefault();
   if (button('export').disabled) return;
   busy = true; render();
   void action(async () => {
     try {
-      await api('export', { path: selected, target: $<HTMLSelectElement>('target').value });
+      await api('export', { path: selected, target });
       $<HTMLDetailsElement>('export-details').open = true;
     } finally { busy = false; await refresh(); }
   });

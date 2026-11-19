@@ -3,7 +3,9 @@
 Emaki's tools all read the same script and report the same problems, so use whichever suits you: the web editor, VS Code, or any text editor with the dev server.
 
 ## The project launcher
-Run `npm run launch` to open the project manager in your browser. Create a game with **New project**, or select **Open existing project** and browse to a folder containing `story.vn`. Choose a recent project to open its editor or player, or export it for the web or your desktop. **Try the example game** adds the bundled demo to the list.
+Run `npm run launch` to open the project manager in your browser. Create a game with **New project**, or use **Open…** and browse to a folder containing `story.vn`. **Try the example game** adds the bundled demo to the list.
+
+Each project shows its picture (the `title_image`, else the background of its own `screen title`, else its first scene), how big it is (scenes, words, choices, endings, files and lines) and whether it has problems, with the first one spelled out, the same check as `emaki check`. A long game takes a few seconds to read the first time; this happens in the background, and again only when a story file changes. **Open editor** opens the editor in the workspace chosen beside it (**Write**, **Stage** or **Story**); **Play in a browser tab** runs the game on its own. **Export** builds it for the web, the desktop, Android or iOS (the last two make projects for Android Studio and Xcode; see [exporting](exporting.md)).
 
 Editor and player sessions open in separate tabs. Reopening a session reuses its server; use **Stop** in the launcher to close it. Keep the launcher terminal open: Ctrl+C stops the launcher and all its sessions. Closing a browser tab alone does not stop a session. Recent projects are stored in `~/.emaki/launcher.json`; removing one from the list never deletes the game. Missing or moved folders stay listed until you remove or reopen them.
 
@@ -47,7 +49,7 @@ Run from the Emaki folder as `npm run emaki -- <command>`:
 
 | Command | |
 |---|---|
-| `launch [--port 5175] [--no-open]` | The project manager: recent games, new/open, editor, play and export. |
+| `launch [--port 5175] [--no-open]` | The project manager: recent games with their picture, size and problems; new/open, editor, play and export. |
 | `edit <game folder> [--no-open]` | Open the editor for a game, without environment variables. |
 | `play <game folder> [--no-open]` | Play a game with live reload, without environment variables. |
 | `new <folder> [--title "Name"]` | Start a game: a short story that runs as it is. |

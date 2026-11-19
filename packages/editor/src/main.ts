@@ -813,7 +813,11 @@ async function main(): Promise<void> {
   recompile();
   updateFileList();
   script.revealLine(1, true, false);
-  setWorkspace(WORKSPACES.includes(saved as Workspace) ? saved as Workspace : 'write');
+  // The launcher can open the editor straight into a workspace (`?workspace=story`); otherwise the last one used.
+  const asked = new URLSearchParams(location.search).get('workspace');
+  if (asked) history.replaceState(null, '', location.pathname + location.hash);
+  const first = [asked, saved].find((w): w is Workspace => WORKSPACES.includes(w as Workspace)) ?? 'write';
+  setWorkspace(first);
   void assets.refresh();
 
   /** An asset (or files from the computer) dropped onto line `line` of the script. */

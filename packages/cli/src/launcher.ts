@@ -1,14 +1,17 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer, type ViteDevServer } from 'vite';
 import { DEFAULT_PROJECTS_DIR, Projects, projectPath } from './projects.ts';
 import { openOnDesktop, Sessions, type SessionKind } from './serve.ts';
+import { assetFile, PICTURE_TYPES, storySignature, type ProjectInfo } from './project-info.ts';
+import { TARGETS, type Target } from './export.ts';
 
 interface ExportJob {
-  id: number; path: string; target: 'web' | 'desktop'; status: 'running' | 'done' | 'failed';
+  id: number; path: string; target: Target; status: 'running' | 'done' | 'failed';
   log: string; output: string;
 }
 export interface Launcher {
@@ -74,6 +77,27 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
     if (!project) throw new Error('Open this project in the launcher first.');
     return project;
   };
+  // Each project's info, worked out in a worker and kept until a story file changes (see project-info.ts).
+  const infos = new Map<string, { signature: string; info?: ProjectInfo; error?: string; worker?: Worker }>();
+  const infoOf = (path: string): { working: boolean; info: ProjectInfo | null; error: string | null } => {
+    let signature: string;
+    try { signature = storySignature(path); } catch { return { working: false, info: null, error: 'The story files could not be read.' }; }
+    const entry = infos.get(path);
+    if (entry && (entry.signature === signature || entry.worker)) {
+      return { working: !!entry.worker || entry.signature !== signature, info: entry.info ?? null, error: entry.error ?? null };
+    }
+    const worker = new Worker(resolve(import.meta.dirname, 'project-info-worker.ts'), { workerData: path });
+    const next = { signature, ...(entry?.info ? { info: entry.info } : {}), worker };
+    infos.set(path, next);
+    const done = (result: { info?: ProjectInfo; error?: string }) => {
+      if (infos.get(path) !== next) return;
+      infos.set(path, { signature, ...(result.info ? { info: result.info } : next.info ? { info: next.info } : {}), ...(result.error ? { error: result.error } : {}) });
+    };
+    worker.once('message', done);
+    worker.once('error', (err) => done({ error: err.message }));
+    worker.once('exit', () => { if (infos.get(path) === next) done({ error: 'The project could not be read.' }); });
+    return { working: true, info: entry?.info ?? null, error: null };
+  };
   const kindOf = (data: Record<string, unknown>): SessionKind => {
     if (data.kind !== 'editor' && data.kind !== 'play') throw new Error('Choose Editor or Play.');
     return data.kind;
@@ -86,6 +110,21 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
     const route = url.pathname;
     if (req.method === 'GET' && route === '/__launcher/state') {
       return send(res, 200, { projects: projects.list(), sessions: sessions.list(), jobs, defaultDirectory: DEFAULT_PROJECTS_DIR, home: homedir(), platform: process.platform });
+    }
+    if (req.method === 'GET' && route === '/__launcher/info') {
+      const path = url.searchParams.get('path') ?? '';
+      known(path);
+      return send(res, 200, infoOf(path));
+    }
+    if (req.method === 'GET' && route === '/__launcher/picture') {
+      const path = url.searchParams.get('path') ?? '';
+      known(path);
+      const picture = infos.get(path)?.info?.picture;
+      const file = picture ? assetFile(path, picture) : null;
+      if (!file) return send(res, 404, { error: 'This project has no picture yet.' });
+      res.writeHead(200, { 'Content-Type': PICTURE_TYPES[extname(file).toLowerCase()]!, 'Cache-Control': 'no-cache' });
+      createReadStream(file).pipe(res);
+      return;
     }
     if (req.method === 'GET' && route === '/__launcher/browse') {
       return send(res, 200, browse(url.searchParams.get('path') || homedir()));
@@ -127,15 +166,16 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
     if (route === '/__launcher/export') {
       const path = projectPath(text(data, 'path'));
       known(path);
-      if (data.target !== 'web' && data.target !== 'desktop') throw new Error('Choose Web or Desktop.');
+      if (!TARGETS.includes(data.target as Target)) throw new Error('Choose Web, Desktop, Android or iOS.');
+      const target = data.target as Target;
       if (jobs.some((j) => j.status === 'running')) throw new Error('An export is already running. Wait for it to finish.');
-      const job: ExportJob = { id: nextJob++, path, target: data.target, status: 'running', log: '', output: join(path, 'export', data.target) };
+      const job: ExportJob = { id: nextJob++, path, target, status: 'running', log: '', output: join(path, 'export', target === 'android' || target === 'ios' ? 'mobile' : target) };
       // Keep memory bounded, including after many exports in a long launcher session.
       if (jobs.length >= 10) jobs.shift();
       jobs.push(job);
       const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1' };
       delete env.NODE_ENV;
-      const child = spawn(process.execPath, [resolve(import.meta.dirname, 'main.ts'), 'export', data.target, path], {
+      const child = spawn(process.execPath, [resolve(import.meta.dirname, 'main.ts'), 'export', target, path], {
         cwd: resolve(import.meta.dirname, '../../..'), env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
       });
       children.add(child);
@@ -170,6 +210,7 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
   const close = async () => {
     closing = true;
     for (const child of children) child.kill();
+    for (const entry of infos.values()) void entry.worker?.terminate();
     await sessions.close();
     await server.close();
   };
