@@ -15,6 +15,7 @@
     "./assets-middleware": "./src/assets-middleware.ts",
     "./plugins": "./src/plugins.ts",
     "./plugin-types": "./src/plugin-types.ts",
+    "./host-guard": "./src/host-guard.ts",
     "./host": "./src/host.ts",
     "./build": "./src/build.ts"
   },

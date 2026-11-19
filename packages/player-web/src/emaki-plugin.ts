@@ -14,6 +14,7 @@ import {
 } from '@emaki/format';
 import { compileGame, readPlugins, storyParts, where } from '@emaki/format/files';
 import { serveAssets } from './assets-middleware.ts';
+import { localHostsOnly } from './host-guard.ts';
 import { updatePluginTypes } from './plugin-types.ts';
 import { uiSourceStrings } from './ui-strings.ts';
 
@@ -163,6 +164,8 @@ export function emakiGame(gameDir: string): Plugin {
     },
     configureServer(server) {
       const log = server.config.logger;
+      // First of all: the game's own routes below run before Vite's host check (see host-guard.ts).
+      server.middlewares.use(localHostsOnly(server.config.server.allowedHosts));
       server.middlewares.use((req, res, next) => {
         if (req.url?.split('?')[0] !== DEV_GAME_URL) return next();
         devData ??= JSON.stringify(gameData((msg, isError) => (isError ? log.warn(msg) : log.info(msg)), false));

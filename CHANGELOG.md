@@ -38,6 +38,7 @@ The first public version. Everything below is new.
 - The VS Code extension: highlighting, errors as you type, completion, go to definition, references, hover, outline, formatting, and play from the cursor's line.
 - The dev server with live reload at the same line, a story map for jumping anywhere and testing routes, and previews from any line with chosen variables.
 - The CLI: `new`, `check`, `fmt`, `graph`, `build`, `strings`, `voices`, `export`.
+- The editor, dev server and launcher listen only on this computer and refuse requests from other sites, including through DNS rebinding (requests are only answered for localhost or an IP address; Vite's `server.allowedHosts` adds names).
 
 ### Plugins
 - Game plugins in `plugins/<name>/` (a `plugin.json` manifest and JavaScript): commands (effects, lasting effects that survive saves and rollback, and commands the story waits on with a result), screen elements, functions in expressions, and events. The compiler, editor and VS Code check every use against the manifest.
