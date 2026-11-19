@@ -29,7 +29,7 @@ let workspace = stored('emaki-launcher:workspace', ['write', 'stage', 'story'], 
 let target = stored('emaki-launcher:target', ['web', 'desktop', 'android', 'ios'], 'web');
 const TARGET_NOTES: Record<string, string> = {
   web: 'A folder to upload to itch.io or any web host. It plays in every modern browser.',
-  desktop: 'An app for this computer. The first desktop export downloads Electron, so it can take a few minutes.',
+  desktop: 'An app for this computer. Windows x64 uses WebView2 and an encrypted game pack. Steam games and other platforms use Electron.',
   android: 'An Android Studio project, and a test APK when the Android SDK is installed.',
   ios: 'An Xcode project. Building it needs a Mac with Xcode.',
 };

@@ -2,14 +2,15 @@
  * `emaki export`: one command from a game folder to something players can run.
  *
  *   web      a static site (itch.io, any web host)
- *   desktop  a Windows, macOS or Linux app (Electron), with Steam support
+ *   desktop  a Windows WebView2 game or an Electron app with optional Steam support
  *   android  an Android Studio project and, with the Android SDK, a debug APK
  *   ios      an Xcode project (needs a Mac to build)
  *
  * Everything goes into <game>/export/.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { parseAspect } from '@emaki/format';
 import { compileGame, where } from '@emaki/format/files';
 import { buildWeb } from '@emaki/player-web/build';
 
@@ -22,6 +23,7 @@ export interface ExportArgs {
   game: string;
   platform?: string;
   arch?: string;
+  shell?: string;
   /** android: skip the Gradle build even if the SDK is there. */
   noBuild?: boolean;
 }
@@ -34,6 +36,8 @@ export interface GameInfo {
   appId: string;
   steamAppId: number | null;
   icon: string | null;
+  /** The stage's shape, width / height (header `aspect:`; 16:9 unless set). */
+  aspect: number;
 }
 
 /** Read and check the game's header; throws a message for the writer on problems. */
@@ -58,6 +62,7 @@ export function gameInfo(game: string, defaultAppId: (title: string) => string):
   const icon = [join(dir, 'icon.png'), join(dir, 'assets', 'icon.png')].find((p) => existsSync(p)) ?? null;
   return {
     dir, title, steamAppId, icon,
+    aspect: (meta.aspect ? parseAspect(meta.aspect) : null) ?? 16 / 9,
     appId: meta.app_id?.trim() || defaultAppId(title),
     ...(meta.author ? { author: meta.author } : {}),
     ...(meta.version ? { version: meta.version } : {}),
@@ -77,23 +82,28 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
   const exportDir = join(info.dir, 'export');
   const webDir = join(exportDir, 'web');
 
-  log(`Building ${info.title} for the web…`);
-  await buildWeb(info.dir, webDir, { quiet: true });
-  if (a.target === 'web') {
-    return [`Web build: ${webDir}`, 'Zip the folder and upload it to itch.io as an HTML game, or put it on any web host.'];
-  }
-
+  if (a.shell && a.target !== 'desktop') throw new Error('--shell applies to desktop exports.');
   if (a.target === 'desktop') {
-    const { exportDesktop } = await import('@emaki/desktop');
+    const { desktopShell, exportDesktop } = await import('@emaki/desktop');
     const platform = (a.platform ?? process.platform) as 'win32' | 'darwin' | 'linux';
     if (!['win32', 'darwin', 'linux'].includes(platform)) throw new Error(`--platform must be win32, darwin or linux (got '${platform}')`);
     const arch = (a.arch ?? (process.arch === 'arm64' ? 'arm64' : 'x64')) as 'x64' | 'arm64';
     if (arch !== 'x64' && arch !== 'arm64') throw new Error(`--arch must be x64 or arm64 (got '${arch}')`);
-    const out = await exportDesktop({
-      webDir, outDir: join(exportDir, 'desktop'), title: info.title, appId: info.appId, steamAppId: info.steamAppId,
-      iconPng: info.icon, platform, arch, log, languages: translationLanguages(info.dir),
-      ...(info.author ? { author: info.author } : {}), ...(info.version ? { version: info.version } : {}),
-    });
+    const shell = desktopShell(platform, arch, info.steamAppId, a.shell);
+    // WebView2 packs the web build and leaves no plain copy. It's built next to
+    // the export, on the game's drive: a large game would fill the system drive's temp folder.
+    if (shell === 'webview2') mkdirSync(exportDir, { recursive: true });
+    const staging = shell === 'webview2' ? mkdtempSync(join(exportDir, '.web-')) : undefined;
+    let out: string;
+    try {
+      log(`Building ${info.title} for ${shell === 'electron' ? 'Electron' : 'WebView2'}…`);
+      await buildWeb(info.dir, staging ?? webDir, { quiet: true });
+      out = await exportDesktop({
+        webDir: staging ?? webDir, shell, outDir: join(exportDir, 'desktop'), title: info.title, appId: info.appId, steamAppId: info.steamAppId,
+        iconPng: info.icon, aspect: info.aspect, platform, arch, log, languages: translationLanguages(info.dir),
+        ...(info.author ? { author: info.author } : {}), ...(info.version ? { version: info.version } : {}),
+      });
+    } finally { if (staging) rmSync(staging, { recursive: true, force: true }); }
     const notes = [`Desktop app: ${out}`];
     if (platform === 'darwin') notes.push('macOS apps must be signed and notarized before other people can open them without warnings (see docs/exporting.md).');
     if (info.steamAppId) notes.push(`Steam: upload this folder as a depot of App ${info.steamAppId}. Achievements use the ids from your story's 'achievement' lines.`);
@@ -101,6 +111,11 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
     return notes;
   }
 
+  log(`Building ${info.title} for the web…`);
+  await buildWeb(info.dir, webDir, { quiet: true });
+  if (a.target === 'web') {
+    return [`Web build: ${webDir}`, 'Zip the folder and upload it to itch.io as an HTML game, or put it on any web host.'];
+  }
   const r = await mobile.exportMobile({
     webDir, projectDir: join(exportDir, 'mobile'), platform: a.target, title: info.title, appId: info.appId,
     build: !a.noBuild, log, ...(info.version ? { version: info.version } : {}),

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { productName, pruneLocales, semver, win32Metadata } from '../src/export.ts';
+import { productName, pruneLocales, semver, win32Metadata, windowShape } from '../src/export.ts';
 import { pngToIco } from '../src/icon.ts';
 
 /** The smallest valid PNG header for a w×h image (enough for the .ico wrapper). */
@@ -46,5 +46,14 @@ describe('desktop export helpers', () => {
     pruneLocales(dir, ['fr', 'pt-BR']);
     expect(readdirSync(join(dir, 'locales')).sort()).toEqual(['en-US.pak', 'fr.pak', 'pt-BR.pak', 'pt-PT.pak']);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('the window follows the game shape', () => {
+  it('opens at the largest size of that shape within 1280x720, never smaller than 480x270 allows', () => {
+    expect(windowShape()).toEqual({ width: 1280, height: 720, minWidth: 480, minHeight: 270, aspect: 16 / 9 });
+    expect(windowShape(4 / 3)).toMatchObject({ width: 960, height: 720, minWidth: 360, minHeight: 270 });
+    expect(windowShape(21 / 9)).toMatchObject({ width: 1280, height: 549, minWidth: 480, minHeight: 206 });
+    expect(windowShape(9 / 16)).toMatchObject({ width: 405, height: 720, minWidth: 152, minHeight: 270 });
   });
 });

@@ -45,3 +45,23 @@ jobs:
 
       - name: Export the demo for the web
         run: npm run export -- web games/gullwing
+
+  windows-player:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test -- packages/desktop/test
+      - run: npm run export -- desktop games/gullwing --shell webview2
+      - name: Play, save, and reopen the exported Windows game
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem games/gullwing/export/desktop/*-webview2/*.exe
+          & packages/desktop/test/webview2-smoke.ps1 -GameExe $exe.FullName

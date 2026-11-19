@@ -1,5 +1,5 @@
 /**
- * Desktop export: wraps a game's web build in Electron for Windows, macOS and Linux.
+ * Desktop export: the Windows x64 WebView2 player and the cross-platform Electron shell.
  *
  * The app is assembled in a staging folder (the shell from ../app, the web
  * build as game/, and a small emaki.json), then packaged with
@@ -10,10 +10,21 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
-import { packager } from '@electron/packager';
 import { pngToIco } from './icon.ts';
+import { exportWebView2 } from './webview2.ts';
+import { windowShape } from './window.ts';
+
+export { windowShape, type WindowShape } from './window.ts';
 
 export type DesktopPlatform = 'win32' | 'darwin' | 'linux';
+export type DesktopShell = 'webview2' | 'electron';
+
+export function desktopShell(platform: string, arch: string, steam: number | null | undefined, requested?: string, host: string = process.platform): DesktopShell {
+  if (requested && requested !== 'electron' && requested !== 'webview2') throw new Error('--shell must be webview2 or electron.');
+  const supported = host === 'win32' && platform === 'win32' && arch === 'x64' && !steam;
+  if (requested === 'webview2' && !supported) throw new Error('WebView2 export requires a Windows build machine, a Windows x64 target and a game without steam_app_id. Use --shell electron for other targets or Steam.');
+  return requested === 'electron' || !supported ? 'electron' : 'webview2';
+}
 
 export interface DesktopExportOptions {
   /** The game's web build (index.html and assets). */
@@ -31,6 +42,9 @@ export interface DesktopExportOptions {
   iconPng?: string | null;
   platform?: DesktopPlatform;
   arch?: 'x64' | 'arm64';
+  shell?: DesktopShell;
+  /** The game's shape, width / height (header `aspect:`); the window opens in it. 16:9 unless given. */
+  aspect?: number;
   /** Languages the game is translated into: Chromium's own files for other languages are left out (about 45 MB). */
   languages?: string[];
   log?: (msg: string) => void;
@@ -45,6 +59,11 @@ export async function exportDesktop(o: DesktopExportOptions): Promise<string> {
   const platform = o.platform ?? (process.platform as DesktopPlatform);
   const arch = o.arch ?? (process.arch === 'arm64' ? 'arm64' : 'x64');
   const name = productName(o.title);
+  if (desktopShell(platform, arch, o.steamAppId, o.shell) === 'webview2') {
+    const legalName = name.replace(/[. ]+$/g, '').replace(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\.|$)/i, '_$1') || 'Emaki Game';
+    return exportWebView2(o, legalName, semver(o.version));
+  }
+  const { packager } = await import('@electron/packager');
   const stage = join(o.outDir, '.staging');
   rmSync(stage, { recursive: true, force: true });
   mkdirSync(stage, { recursive: true });
@@ -52,7 +71,7 @@ export async function exportDesktop(o: DesktopExportOptions): Promise<string> {
   // The shell and the game.
   for (const f of ['main.mjs', 'preload.cjs']) cpSync(join(appTemplate, f), join(stage, f));
   cpSync(o.webDir, join(stage, 'game'), { recursive: true });
-  writeFileSync(join(stage, 'emaki.json'), JSON.stringify({ title: o.title, steamAppId: o.steamAppId ?? null }, null, 2));
+  writeFileSync(join(stage, 'emaki.json'), JSON.stringify({ title: o.title, steamAppId: o.steamAppId ?? null, window: windowShape(o.aspect) }, null, 2));
   writeFileSync(join(stage, 'package.json'), JSON.stringify({
     name: o.appId.toLowerCase().replace(/[^a-z0-9.-]/g, '-'),
     productName: name,

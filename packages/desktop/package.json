@@ -1,7 +1,7 @@
 {
   "name": "@emaki/desktop",
   "version": "0.1.0",
-  "description": "Desktop export for Emaki games: an Electron shell, with optional Steamworks support.",
+  "description": "Desktop export for Emaki games with WebView2, encrypted Windows game packs, Electron and Steamworks.",
   "license": "MIT",
   "type": "module",
   "private": true,

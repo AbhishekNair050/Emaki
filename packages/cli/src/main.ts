@@ -47,7 +47,7 @@ const USAGE = `Usage:
   emaki fmt   <story.vn> [--write | --check]
   emaki strings <story.vn> [--lang fr,de] [--csv]   translation files in lang/ (without --lang: progress)
   emaki voices  <story.vn>                          recording script and missing voice files (header 'voice:')
-  emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]`;
+  emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--shell webview2|electron] [--no-build]`;
 
 if (cmd === 'launch' || cmd === 'edit' || cmd === 'play') {
   try {
@@ -380,10 +380,13 @@ async function exportCommand(): Promise<never> {
   try {
     const platform = opt('--platform');
     const arch = opt('--arch');
+    const shell = opt('--shell');
+    if (rest.includes('--shell') && !shell) throw new Error('--shell requires webview2 or electron.');
     const notes = await runExport({
       target, game, noBuild: rest.includes('--no-build'),
       ...(platform ? { platform } : {}),
       ...(arch ? { arch } : {}),
+      ...(shell ? { shell } : {}),
     }, (m) => console.log(m));
     console.log('');
     for (const n of notes) console.log(n);

@@ -62,7 +62,7 @@ npm run emaki -- new ../my-game      # start your own game
 - **CLI**: `emaki new`, `check`, `fmt` (keeps your comments), `graph`, `strings` (translation files), `voices` (recording script), `export`.
 
 **Shipping**
-- One command for each target: a website for itch.io, a desktop app (Electron) with Steam achievements, and Android and iOS projects (Capacitor). See [Exporting](docs/exporting.md).
+- One command for each target: a website for itch.io, a Windows x64 player with WebView2 and an encrypted game pack, desktop apps with Electron and Steam achievements, and Android and iOS projects (Capacitor). See [Exporting](docs/exporting.md).
 - Translations as PO files or spreadsheets, with pictures and movies per language. Players switch language in Settings, and changed lines come back marked for review.
 - **Plugins** for what the script doesn't do: your own JavaScript commands, screen elements and functions (`@weather start kind="snow"`, `if @dice.roll(6) > 4:`), checked by the compiler. Plugins can change the variables they declare and keep their own data; `emaki plugin` starts one, typed for JavaScript or TypeScript. See [Plugins](docs/plugins.md).
 
@@ -99,7 +99,7 @@ Found a bug, or something you need for your game? [Open an issue](https://github
 | `@emaki/editor` | the web editor (`npm run edit`) |
 | `@emaki/language` | editor features over plain text, shared by the editor and the VS Code extension |
 | `@emaki/cli` | `new`, `check`, `build`, `graph`, `fmt`, `strings`, `voices`, `export` |
-| `@emaki/desktop` | desktop export (Electron shell, Steamworks) |
+| `@emaki/desktop` | Windows WebView2 player, encrypted game packs, Electron and Steamworks export |
 | `@emaki/mobile` | Android and iOS export (Capacitor) |
 | [`emaki-vscode`](packages/vscode) | the VS Code extension |
 

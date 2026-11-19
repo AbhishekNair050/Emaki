@@ -1,7 +1,7 @@
 /**
  * What the player can ask of the app it runs in.
  *
- * The same web build runs in a browser, in the desktop app (Electron) and in
+ * The same web build runs in a browser, in the desktop app (WebView2 or Electron) and in
  * the phone apps (Capacitor). Each shell exposes what it can as
  * `window.emakiHost`; the player only uses what is there, so nothing here is
  * required and a plain browser needs none of it.

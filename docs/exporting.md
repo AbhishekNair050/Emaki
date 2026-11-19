@@ -41,10 +41,35 @@ Put a square `icon.png` (512×512 or larger) in the game folder to give the desk
 `export web` makes a static site in `export/web/`. Zip the folder's contents and upload it to itch.io as an HTML game ("This file will be played in the browser"), or put it on any web host. Saves stay in the player's browser.
 
 ## Desktop (Windows, macOS, Linux)
-`export desktop` wraps the web build in [Electron](https://www.electronjs.org/): `export/desktop/<Title>-<platform>-<arch>/` holds the finished app. Zip that folder for itch.io, or upload it to Steam.
+`export desktop` selects WebView2 for Windows x64 games built on Windows. Games with a `steam_app_id`, other desktop targets and cross-builds use Electron. The project launcher makes the same selection. To choose a shell explicitly:
+
+```sh
+npm run export -- desktop games/gullwing --platform win32 --arch x64 --shell webview2
+npm run export -- desktop games/gullwing --shell electron
+```
+
+Both shells open the window in the game's shape (`aspect:` in the story header, 16:9 unless set): the largest size of that shape within 1280×720, so 960×720 for a 4:3 game, made smaller to fit the screen. Sizes are the inside of the window, in display-independent pixels. A size the player chooses is remembered; one saved for another shape, by a release before the window followed the game's, is set aside.
+
+### Windows with WebView2
+
+Distribute the whole `export/desktop/<Title>-win32-x64-webview2/` folder. It contains the game's executable, `game.emaki` and Microsoft's small WebView2 support libraries. The player uses the shared Evergreen WebView2 Runtime and .NET Framework 4.8 on Windows 10/11. On a machine missing WebView2, the game offers Microsoft's installer. For offline installations, distribute Microsoft's Evergreen standalone installer alongside your game. [Microsoft's deployment guide](https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution)
+
+The first export downloads the pinned Microsoft.Web.WebView2 SDK (1.0.2903.40) from NuGet, checks it against the SHA-512 NuGet publishes, and caches it under `%LOCALAPPDATA%\Emaki\SDK`. Windows' .NET Framework C# compiler builds the shell. For offline authoring set `EMAKI_WEBVIEW2_SDK` to the extracted Microsoft.Web.WebView2 1.0.2903.40 package, with its `lib/net462` and `runtimes/win-x64/native` folders and `LICENSE.txt`. The SDK's DLLs ship with every game, so an export stops if they are another version or the license is missing.
+
+The exporter encrypts the directory and contents of the pack with a fresh key per build. The player authenticates and decrypts 256 KiB chunks on demand, including for movie and music seeking, and asks the webview to keep responses out of its HTTP cache. Developer tools are off, and the player ignores the `WEBVIEW2_*` environment variables that would open a debugging port or swap the browser. Ship the executable and pack from the same export together. This deters casual extraction. Someone who controls the computer can recover the key or capture assets during playback. A separate web export still contains ordinary web assets, so upload only the `-webview2` folder.
+
+The player behaves like the Electron app: it opens in the game's shape and remembers its size and full screen, follows each monitor's display scaling (so text stays sharp at 125% or 150%), focuses the open window on a second launch, opens links in the browser, and doesn't zoom with Ctrl+wheel. F11 and Alt+Enter toggle full screen. Steam games use Electron, since achievements and the overlay need Steamworks.
+
+The player keeps saves and settings under `%LOCALAPPDATA%\Emaki\<game-id-hash>\`. Keep the story title and `app_id` stable across releases. On first launch the player looks for the former Electron game's local storage under the same Windows account, copies it to a fresh profile and imports Emaki keys. Close the Electron game first so its database can be copied consistently. The original profile stays available to the old release.
+
+Windows SmartScreen and some antivirus programs are wary of new, unsigned programs. Before a wide release, sign the executable with a code-signing certificate (`signtool sign /fd sha256 /tr <timestamp server> /td sha256 "<Title>.exe"`). The pack needs no signature: the player rejects any change to it.
+
+### Desktop with Electron
+
+The finished app is in `export/desktop/<Title>-<platform>-<arch>/`. Zip that folder for itch.io, or upload it to Steam.
 
 - Build for another system with `--platform win32|darwin|linux` and `--arch x64|arm64`. Electron for that system is downloaded the first time (about 100 MB).
-- The app opens at 1280×720, remembers its size, and goes full screen with **F11** or **Alt+Enter** (also in Settings). The title screen has a **Quit** button.
+- The window has the game's shape (`aspect:` in the story header): 1280×720 inside for 16:9, 960×720 for 4:3, and smaller if the screen can't hold it. It remembers the size the player gives it, and goes full screen with **F11** or **Alt+Enter** (also in Settings). The title screen has a **Quit** button.
 - Saves live in the player's app-data folder, like any PC game.
 - **macOS:** apps from the internet must be signed and notarized with an Apple Developer account, or players have to right-click → Open the first time. Use Apple's `codesign` and `notarytool` on the `.app`; Emaki doesn't do this for you yet.
 - **Size:** a desktop build is about 300 MB unpacked (around 110 MB zipped). Almost all of it is Electron itself (the browser engine). Chromium's own translations are trimmed to English plus your game's languages.
