@@ -103,7 +103,12 @@ namespace Emaki {
             if (IsDisposed || failed) return;
             failed = true;
             Console.Error.WriteLine(err);
-            MessageBox.Show(this, err.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); Close();
+            // Without a desktop to show it on (a service, a CI runner), the dialog
+            // itself throws, which would leave the window open on a blank page.
+            if (Environment.UserInteractive)
+                try { MessageBox.Show(this, err.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                catch (InvalidOperationException) {}
+            Close();
         }
         private void ReportReadError(Exception err) {
             if (IsHandleCreated && !IsDisposed) BeginInvoke(new Action(() => Fail(err)));

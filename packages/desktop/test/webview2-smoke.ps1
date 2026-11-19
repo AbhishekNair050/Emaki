@@ -28,14 +28,39 @@ if ($LegacyProfile) {
     Copy-Item -LiteralPath $LegacyProfile -Destination (Join-Path $dest 'Local Storage') -Recurse
 }
 
-function Wait-For($test, $description) {
+# What WebView2 did, printed when a step times out: a failure on a CI runner
+# otherwise shows only a blank page.
+$trace = [Collections.Generic.List[string]]::new()
+function Note([string]$text) { $trace.Add(('{0:N1}s {1}' -f $script:started.Elapsed.TotalSeconds, $text)) }
+$script:started = [Diagnostics.Stopwatch]::StartNew()
+$elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+try { $runtime = [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::GetAvailableBrowserVersionString() } catch { $runtime = "none ($($_.Exception.Message))" }
+Note ("WebView2 runtime {0}; interactive {1}; elevated {2}; session {3}; temp {4}" -f $runtime, [Environment]::UserInteractive, $elevated, (Get-Process -Id $PID).SessionId, [IO.Path]::GetTempPath())
+
+function Watch-View($view) {
+    $view.add_CoreWebView2InitializationCompleted({
+        param($s, $e)
+        Note "initialized: success $($e.IsSuccess) $($e.InitializationException)"
+        if (-not $e.IsSuccess) { return }
+        $core = $s.CoreWebView2
+        $core.add_NavigationStarting({ param($c, $a) Note "navigation starting: $($a.Uri)" })
+        $core.add_NavigationCompleted({ param($c, $a) Note "navigation completed: success $($a.IsSuccess), $($a.WebErrorStatus), HTTP $($a.HttpStatusCode), at $($c.Source)" })
+        $core.add_ProcessFailed({ param($c, $a) Note "process failed: $($a.ProcessFailedKind) $($a.Reason) exit $($a.ExitCode) $($a.ProcessDescription)" })
+        $core.add_WebResourceRequested({ param($c, $a) Note "request: $($a.Request.Method) $($a.Request.Uri)" })
+    })
+}
+
+function Wait-For($test, $description, $seconds = 30) {
     $clock = [Diagnostics.Stopwatch]::StartNew()
     do {
         [Windows.Forms.Application]::DoEvents()
         if (& $test) { return }
         Start-Sleep -Milliseconds 15
-    } while ($clock.Elapsed.TotalSeconds -lt 30)
+    } while ($clock.Elapsed.TotalSeconds -lt $seconds)
     $url = if ($view.CoreWebView2) { $view.CoreWebView2.Source } else { 'WebView2 did not initialize' }
+    $failed = try { $playerType.GetField('failed', $bindings).GetValue($form) } catch { '?' }
+    [Console]::Error.WriteLine("WebView2 trace (player failed: $failed; window open: $(-not $form.IsDisposed)):")
+    foreach ($line in $trace) { [Console]::Error.WriteLine("  $line") }
     throw "Timed out waiting for $description ($url)"
 }
 function Js([string]$code) {
@@ -55,8 +80,10 @@ try {
             $form.Opacity = 0
             $form.ShowInTaskbar = $false
             $view = $form.Controls[0]
+            Watch-View $view
             $form.Show()
-            Wait-For { $view.CoreWebView2 -and $view.CoreWebView2.Source -eq 'https://game.emaki.invalid/' } 'game navigation'
+            # A fresh CI machine starts WebView2 cold: allow it a minute.
+            Wait-For { $view.CoreWebView2 -and $view.CoreWebView2.Source -eq 'https://game.emaki.invalid/' } 'game navigation' 60
             Wait-For { (Js "!!document.querySelector('.title-menu button')") -eq 'true' } 'title menu'
             Check (Js 'emakiHost.platform') '"desktop"' 'host'
             if ($pass -eq 1) {
