@@ -383,6 +383,25 @@ export class Runner {
     this.state.vars[name] = value;
   }
 
+  /**
+   * Change a variable while the story shows what it shows now (a screen's
+   * button, a plugin). The change belongs to this point of the story: going
+   * back to it keeps the change, going back before it undoes it. A `global
+   * var` is kept for later playthroughs too (the `globals` effect says what
+   * to store). Throws for unknown names.
+   */
+  assign(name: string, value: Value): Effect[] {
+    if (!Object.prototype.hasOwnProperty.call(this.story.vars, name)) {
+      throw new StoryError(`Unknown variable '${name}'`, null);
+    }
+    this.state.vars[name] = value;
+    const now = this.history[this.history.length - 1];
+    if (now) now.state.vars[name] = value;
+    if (!this.story.globals?.includes(name)) return [];
+    this.globalValues[name] = value;
+    return [{ type: 'globals', values: this.globals }];
+  }
+
   /** Continue past the current dialogue line or wait. */
   advance(): Step {
     const b = this.current;

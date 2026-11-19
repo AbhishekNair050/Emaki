@@ -6,7 +6,8 @@ start: start
 # A small game using three example plugins (see docs/plugins.md):
 # weather (a lasting effect), memory (a minigame the story waits on) and
 # meter (an element for screens). The memory plugin also has a function,
-# used in an expression below.
+# used in an expression below, keeps the best round on the device and
+# sets new_best for the story.
 
 define mira "Mira"
 
@@ -16,6 +17,7 @@ image mira = "sprites/mira_smile.svg"
 
 var trust = 3
 var turns = 0
+var new_best = false
 
 screen hud:
   text "Trust" at 3% 3%
@@ -35,6 +37,8 @@ label start:
   else:
     set trust += 1
     mira: {turns} turns. Not bad.
+  if new_best:
+    mira: That's your best round yet.
   @weather start kind="rain" amount=200
   mira: And there's the rain.
   @weather stop

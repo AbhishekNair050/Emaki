@@ -59,6 +59,11 @@ export interface PluginManifest {
   commands?: Record<string, PluginCommandSpec>;
   elements?: Record<string, PluginElementSpec>;
   functions?: Record<string, PluginFunctionSpec>;
+  /**
+   * The story variables the plugin may change (`ctx.set`): a battle's hit
+   * points, a shop's gold. The compiler checks they're declared.
+   */
+  sets?: string[];
 }
 
 export const PLUGIN_NAME = /^[a-z][a-z0-9_]*$/;
@@ -140,7 +145,14 @@ export function parseManifest(raw: unknown, name: string): { manifest: PluginMan
     return f;
   });
   if (functions) manifest.functions = functions;
-  if (!manifest.commands && !manifest.elements && !manifest.functions) errors.push('plugin.json declares no "commands", "elements" or "functions"');
+  if (r.sets !== undefined) {
+    if (!Array.isArray(r.sets) || !r.sets.every((v) => typeof v === 'string')) errors.push('"sets" should be a list of variable names, like ["hp", "gold"]');
+    else {
+      for (const v of r.sets) if (!ident.test(v)) errors.push(`sets: '${v}' isn't a valid variable name`);
+      if (r.sets.length) manifest.sets = [...new Set(r.sets as string[])];
+    }
+  }
+  if (!manifest.commands && !manifest.elements && !manifest.functions && !manifest.sets) errors.push('plugin.json declares no "commands", "elements", "functions" or "sets"');
   return { manifest: errors.length ? null : manifest, errors };
 }
 

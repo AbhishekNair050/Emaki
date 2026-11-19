@@ -64,7 +64,7 @@ npm run emaki -- new ../my-game      # start your own game
 **Shipping**
 - One command for each target: a website for itch.io, a desktop app (Electron) with Steam achievements, and Android and iOS projects (Capacitor). See [Exporting](docs/exporting.md).
 - Translations as PO files or spreadsheets, with pictures and movies per language. Players switch language in Settings, and changed lines come back marked for review.
-- **Plugins** for what the script doesn't do: your own JavaScript commands, screen elements and functions (`@weather start kind="snow"`, `if @dice.roll(6) > 4:`), checked by the compiler. See [Plugins](docs/plugins.md).
+- **Plugins** for what the script doesn't do: your own JavaScript commands, screen elements and functions (`@weather start kind="snow"`, `if @dice.roll(6) > 4:`), checked by the compiler. Plugins can change the variables they declare and keep their own data; `emaki plugin` starts one, typed for JavaScript or TypeScript. See [Plugins](docs/plugins.md).
 
 ## Documentation
 - **[Getting started](docs/getting-started.md)**: your first game, step by step

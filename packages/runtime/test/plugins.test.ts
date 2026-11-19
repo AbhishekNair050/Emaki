@@ -34,7 +34,7 @@ describe('plugin manifests', () => {
     expect(parseManifest({ commands: { x: { args: { n: 'int' } } } }, 'p').errors[0]).toMatch(/should be "number"/);
     expect(parseManifest({ commands: { x: { ends: true } } }, 'p').errors[0]).toMatch(/needs the "lasting"/);
     expect(parseManifest({ commands: { x: { waits: true, lasting: 'a' } } }, 'p').errors[0]).toMatch(/can't also last/);
-    expect(parseManifest({}, 'p').errors[0]).toMatch(/no "commands", "elements" or "functions"/);
+    expect(parseManifest({}, 'p').errors[0]).toMatch(/no "commands", "elements", "functions" or "sets"/);
     expect(parseManifest({ commands: {} }, 'Bad-Name').errors[0]).toMatch(/lowercase/);
   });
 });
@@ -100,6 +100,58 @@ describe('running plugin commands', () => {
     const preview = new Runner(story());
     preview.startAtLine(SRC.split('\n').indexOf('  "Rain."') + 1);
     expect(preview.pluginState.map((c) => c.args.kind)).toEqual(['rain']);
+  });
+});
+
+describe('plugins changing story variables', () => {
+  const battle = parseManifest({ sets: ['hp', 'gold', 'hp'] }, 'battle').manifest!;
+  const SRC3 = `var hp = 10
+global var gold = 0
+
+label start:
+  "One."
+  "Two."
+  "Three."
+`;
+
+  it('declare what they change in plugin.json, checked against the story', () => {
+    expect(battle.sets).toEqual(['hp', 'gold']);                              // listed once
+    expect(parseManifest({ sets: 'hp' }, 'p').errors[0]).toMatch(/list of variable names/);
+    expect(parseManifest({ sets: ['2x'] }, 'p').errors[0]).toMatch(/isn't a valid variable name/);
+    const r = compile(SRC3, { plugins: { battle } });
+    expect(r.diagnostics).toEqual([]);
+    expect(r.story!.pluginSets).toEqual({ battle: ['hp', 'gold'] });
+    const missing = compile('label start:\n  "x"\n', { plugins: { battle } }).diagnostics;
+    expect(missing.map((d) => [d.file, d.code])).toEqual([['plugins/battle/plugin.json', 'bad-plugin'], ['plugins/battle/plugin.json', 'bad-plugin']]);
+    expect(missing[0]!.message).toMatch(/var hp = 0/);
+    expect(compile(SRC3).story!.pluginSets).toBeUndefined();
+  });
+
+  it('change the story from where it is: going back before undoes it, coming back to it keeps it', () => {
+    const run = new Runner(compile(SRC3, { plugins: { battle } }).story!);
+    run.start();                                                              // "One."
+    run.advance();                                                            // "Two."
+    expect(run.assign('hp', 7)).toEqual([]);
+    run.advance();                                                            // "Three."
+    expect(run.vars.hp).toBe(7);
+    run.back();                                                               // back to "Two.": still 7
+    expect(run.vars.hp).toBe(7);
+    run.back();                                                               // "One.": before it
+    expect(run.vars.hp).toBe(10);
+    const saved = new Runner(run.story);
+    run.advance();
+    run.assign('hp', 3);
+    saved.load(run.save());
+    expect(saved.vars.hp).toBe(3);
+    expect(() => run.assign('nope', 1)).toThrow(/Unknown variable/);
+  });
+
+  it('keep a global for later playthroughs', () => {
+    const run = new Runner(compile(SRC3, { plugins: { battle } }).story!);
+    run.start();
+    expect(run.assign('gold', 5)).toEqual([{ type: 'globals', values: { gold: 5 } }]);
+    run.start();                                                              // a new game keeps it
+    expect(run.vars.gold).toBe(5);
   });
 });
 

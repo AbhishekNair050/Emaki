@@ -4,6 +4,7 @@
  *   screen hud:
  *     @meter bar value=trust max=10 label="Trust" at 3% 4% size 20% 2%
  */
+/** @type {import('../emaki-plugin').PluginSetup} */
 export default function meter() {
   return {
     elements: {

@@ -53,6 +53,7 @@ Run from the Emaki folder as `npm run emaki -- <command>`:
 | `edit <game folder> [--no-open]` | Open the editor for a game, without environment variables. |
 | `play <game folder> [--no-open]` | Play a game with live reload, without environment variables. |
 | `new <folder> [--title "Name"]` | Start a game: a short story that runs as it is. |
+| `plugin <game folder> <name> [--ts]` | Start a plugin: `plugins/<name>/` with a command that works as it is, and the plugin API's types. See [Plugins](plugins.md). |
 | `check <story.vn>` | Every problem in the story (and its plugins), with line numbers. |
 | `fmt <story.vn> [--write \| --check]` | Tidy the layout, keeping comments and blank lines. |
 | `graph <story.vn>` | The story's scenes as a Mermaid flowchart. |

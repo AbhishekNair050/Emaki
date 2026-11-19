@@ -345,6 +345,18 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     }
   }
 
+  // Variables a plugin may change must exist: the message goes on its plugin.json.
+  const pluginSets: Record<string, string[]> = {};
+  for (const [name, m] of Object.entries(opts.plugins ?? {})) {
+    if (!m.sets) continue;
+    for (const v of m.sets) {
+      if (!Object.prototype.hasOwnProperty.call(vars, v)) {
+        diagnostics.push({ severity: 'error', line: 1, file: `plugins/${name}/plugin.json`, code: 'bad-plugin', message: `"sets" names '${v}', but the story declares no such variable (add 'var ${v} = 0')` });
+      }
+    }
+    pluginSets[name] = m.sets.filter((v) => Object.prototype.hasOwnProperty.call(vars, v));
+  }
+
   const labelNames = new Set<string>();
   for (const l of program.labels) {
     if (labelNames.has(l.name)) error(l.loc, 'duplicate', `Label '${l.name}' is already defined`);
@@ -834,6 +846,7 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
     ...(replays.length ? { replays } : {}),
     vars,
     ...(program.vars.some((v) => v.global) ? { globals: program.vars.filter((v) => v.global).map((v) => v.name) } : {}),
+    ...(Object.keys(pluginSets).length ? { pluginSets } : {}),
     labels, code,
     hash: '',
   };

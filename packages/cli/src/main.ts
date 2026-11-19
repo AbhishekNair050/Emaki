@@ -16,6 +16,8 @@
  *                                     create/update translation files in lang/, or report progress
  *   emaki voices <story.vn>           write the recording script (voice-script.csv) and report
  *                                     which voice files are missing or left over
+ *   emaki plugin <game folder> <name> [--ts]
+ *                                     start a plugin: plugins/<name>/ with a command that works as it is
  *   emaki export <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]
  *                                     package the game for players (into <game>/export/)
  */
@@ -29,6 +31,7 @@ import { addVoices, MAIN_FILE, pluginManifests, readPlugins, storyParts } from '
 import { uiSourceStrings } from '@emaki/player-web/ui-strings';
 import { runExport, TARGETS, type Target } from './export.ts';
 import { newGame } from './new.ts';
+import { newPlugin } from './new-plugin.ts';
 
 const [cmd, file, ...rest] = process.argv.slice(2);
 
@@ -37,6 +40,7 @@ const USAGE = `Usage:
   emaki edit  <game folder> [--no-open]           open the editor for a game
   emaki play  <game folder> [--no-open]           play a game with live reload
   emaki new   <folder> [--title "Name"]            start a new game in a new folder
+  emaki plugin <game folder> <name> [--ts]         start a plugin (plugins/<name>/, see docs/plugins.md)
   emaki check <story.vn>
   emaki build <story.vn> [out.json]
   emaki graph <story.vn>
@@ -84,6 +88,7 @@ if (!cmd || !file || cmd === 'help' || cmd === '--help') {
 
 if (cmd === 'export') await exportCommand();
 if (cmd === 'new') newCommand();
+if (cmd === 'plugin') pluginCommand();
 
 let source: string;
 try {
@@ -208,6 +213,25 @@ Play it while you write (it reloads as you save):
   PowerShell: $env:EMAKI_GAME="${game}"; npm run dev
 Or open it in the editor: the same, with 'npm run edit'.
 Then: docs/getting-started.md`);
+    process.exit(0);
+  } catch (e) {
+    console.error((e as Error).message);
+    process.exit(1);
+  }
+}
+
+function pluginCommand(): never {
+  const name = rest.find((a) => !a.startsWith('--'));
+  const unknown = rest.find((a) => a.startsWith('--') && a !== '--ts');
+  try {
+    if (!name) throw new Error('Usage: emaki plugin <game folder> <name> [--ts]');
+    if (unknown) throw new Error(`Unknown option: ${unknown}`);
+    const files = newPlugin(file!, name, rest.includes('--ts'));
+    console.log(`✓ Started the plugin @${name}`);
+    for (const f of files) console.log(`  ${f}`);
+    console.log(`
+Use it in the story:  @${name} note text="Hello!"
+Then: docs/plugins.md`);
     process.exit(0);
   } catch (e) {
     console.error((e as Error).message);

@@ -82,6 +82,7 @@ What the port still drew as dead art, made real.
 - [x] Plugin functions in expressions: `if @dice.roll(6) > 4:` (D-058); the demo's memory plugin has one
 - [x] VS Code checks scripts against the game's plugins/*/plugin.json, and shows problems with a plugin on it
 - [x] Completion of plugins, commands, elements, arguments, their values and functions (VS Code and the editor), with hovers from the manifests
+- [x] Plugins change listed story variables (`"sets"`, `ctx.set`, rollback-safe), keep their own data (`ctx.storage`), and are typed (`emaki plugin` scaffold, `plugins/emaki-plugin.d.ts`, TypeScript plugins) (D-066); the demo's memory plugin keeps its best round and sets `new_best`
 - [x] End-of-line comments: `scene kitchen  # morning light` (D-057)
 
 ## ✅ Milestone 9 — Scene replay and music room

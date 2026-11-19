@@ -2,7 +2,7 @@
 
 Emaki scripts never contain code (D-005). When a game needs something the script language doesn't do, like falling snow, a minigame or a meter on the screen, the game ships a **plugin**: a little JavaScript, described by a manifest so the compiler can check every use of it before the game runs.
 
-`games/plugin-demo` is a small game using three example plugins; copy them as starting points.
+`games/plugin-demo` is a small game using three example plugins. Copy them as starting points, or start a new one with `emaki plugin <game folder> <name>`.
 
 ## Using a plugin
 
@@ -29,6 +29,23 @@ screen hud:
 
 A plugin is a folder `plugins/<name>/` in the game, with two files. The name is lowercase letters, digits and `_`, and is what scripts write after `@`.
 
+The quickest start is `emaki plugin <game folder> <name>` (add `--ts` for TypeScript). It writes both files with a small command that works as it is (`@name note text="Hello!"`), and `plugins/emaki-plugin.d.ts`, the plugin API's types. With the types, VS Code and other editors complete `ctx.` and point out mistakes. In JavaScript, put this line above the default export:
+
+```js
+/** @type {import('../emaki-plugin').PluginSetup} */
+export default function weather(ctx) { ... }
+```
+
+In TypeScript, set `"main": "index.ts"` in plugin.json; exports and the dev server compile it:
+
+```ts
+import type { PluginSetup } from '../emaki-plugin';
+const weather: PluginSetup = (ctx) => ({ commands: { start(args: { kind: string; amount?: number }) { ... } } });
+export default weather;
+```
+
+Playing, editing or building the game keeps `plugins/emaki-plugin.d.ts` current with the engine, so don't edit it.
+
 ### plugin.json: what scripts can write
 
 ```json
@@ -43,7 +60,8 @@ A plugin is a folder `plugins/<name>/` in the game, with two files. The name is 
   },
   "functions": {
     "wind": { "args": { "at": "number?" }, "returns": "number", "description": "How hard the wind blows now, 0 to 10." }
-  }
+  },
+  "sets": ["wet"]
 }
 ```
 
@@ -55,7 +73,8 @@ A plugin is a folder `plugins/<name>/` in the game, with two files. The name is 
 | `waits` | The story waits until the command finishes (its promise resolves); `-> variable` keeps the result. |
 | `lasting` | The command's effect lasts, and is part of the saved game under this slot: loading, going back and line previews redo it. A later command with the same slot replaces it. |
 | `ends` | The command clears its `lasting` slot (snow stops). |
-| `main` | The code file, if not `index.js`. |
+| `sets` | The story variables the plugin may change with `ctx.set` (a battle's hit points, a shop's gold). The compiler checks the story declares them. |
+| `main` | The code file, if not `index.js` (`index.ts` works too). |
 
 ### index.js: what it does
 
@@ -81,7 +100,9 @@ export default function weather(ctx) {
 | `stage` | The whole stage (for its size). |
 | `modal()` | `{ root, close() }`: a full-screen area over the story that takes clicks, for a command the story waits on. The player closes it if the player goes back or loads. |
 | `asset(path)` | URL of a file in the game's assets/ (in the player's language when it has a version). Files in the plugin's own folder: `new URL('./petal.png', import.meta.url)`. |
-| `vars()` | The story's variables, read-only. Plugins change the story only through results (`-> variable`). |
+| `vars()` | The story's variables. |
+| `set(name, value)` | Change a story variable listed in `"sets"`, to a value of the type it started with. See below. |
+| `storage` | The plugin's own data on this device: `get(key)`, `set(key, value)` (anything JSON can hold), `remove(key)`, `keys()`. See below. |
 | `reducedMotion` | True when the player asked for less motion: keep effects still or subtle. |
 | `volume(channel)`, `playSound(path)` | The volume `music`, `sound` or `voice` plays at now (master volume and mutes included), and a sound at the sound effects volume. |
 | `language` | The language shown (null for the one the game is written in). |
@@ -96,6 +117,15 @@ export default function weather(ctx) {
 | `destroy()` | The player is going away. |
 
 **Lasting effects come back by being run again.** A plugin doesn't save anything itself: the story keeps each lasting command and its arguments, and after a load the player calls `reset()` and runs them again with `run.restoring` set. So a lasting command should draw its whole state from its arguments.
+
+**Changing story variables.** A plugin can change the story in two ways. A waiting command returns a result (`-> turns`). Or the plugin calls `ctx.set` on a variable its plugin.json lists in `"sets"`: a battle that takes hit points as it goes, a shop that spends gold, a minigame that also says whether the round was a record. Screens that show the variable redraw at once. A change belongs to the point in the story where it was made, like a `set` line there. Saves keep it, going back to that line keeps it, and going back to before it undoes it. A `global var` is kept for later playthroughs as usual. Setting a variable not in `"sets"`, or giving a value of another type (text into a number), throws. Three things mustn't change the story: redoing a lasting command (`run.restoring`), a function, and drawing an element. A `ctx.set` in any of them is ignored, with a warning in the console.
+
+**The plugin's own data.** `ctx.storage` keeps what belongs to the plugin rather than to one playthrough: best scores, unlocked levels, the plugin's own options. It lives on the device, across saves and playthroughs (like `global var`), and going back doesn't undo it. Each plugin has its own. Values come back as copies, so after changing one, `set` it again. Anything the story should see, or that should go back with rollback, belongs in a story variable instead.
+
+```js
+const best = ctx.storage.get('best');           // undefined the first time
+if (best === undefined || turns < best) ctx.storage.set('best', turns);
+```
 
 **Functions answer; they don't act.** A function should only work something out (a dice roll, the hour, how many pairs a perfect round takes) and not change what the story shows: that's what commands are for. The story doesn't remember answers: going back past a line and playing on asks again, so a random function can give a different answer the second time. A starting value (`var luck = ...`) can't call one, since it's worked out before the game runs; `set` it at the start of the story instead.
 

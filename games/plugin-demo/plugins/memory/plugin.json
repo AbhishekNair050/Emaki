@@ -1,5 +1,6 @@
 {
   "description": "A card-matching minigame; the story waits until every pair is found.",
+  "sets": ["new_best"],
   "commands": {
     "play": {
       "description": "Play a round; the result is how many turns it took.",

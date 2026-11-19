@@ -81,6 +81,8 @@ export class Analysis {
   readonly program: Program;
   private readonly compileNow: () => Diagnostic[];
   private compiled: Diagnostic[] | undefined;
+  /** Every problem of the story, all files. */
+  private everything: Diagnostic[] | undefined;
 
   /** This document's file: undefined for story.vn, as in the compiler's locations. */
   readonly file: string | undefined;
@@ -111,7 +113,20 @@ export class Analysis {
 
   /** This document's problems (the other files' are reported in their own files). Compiles the story the first time. */
   get diagnostics(): Diagnostic[] {
-    return (this.compiled ??= this.compileNow().filter((d) => d.file === this.file));
+    return (this.compiled ??= this.all().filter((d) => d.file === this.file));
+  }
+
+  /**
+   * Problems the story finds with its plugins' manifests (a "sets" naming a
+   * variable the story doesn't declare), on plugins/<name>/plugin.json: an
+   * editor shows them on that file.
+   */
+  get pluginDiagnostics(): Diagnostic[] {
+    return this.all().filter((d) => d.file?.startsWith('plugins/'));
+  }
+
+  private all(): Diagnostic[] {
+    return (this.everything ??= this.compileNow());
   }
 
   // ------------------------------------------------------------ problems

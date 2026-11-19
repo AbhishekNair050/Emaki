@@ -113,11 +113,31 @@ async function locate(doc: vscode.TextDocument, a: Analysis, s: StorySymbol): Pr
 export function activate(context: vscode.ExtensionContext): void {
   const problems = vscode.languages.createDiagnosticCollection(LANGUAGE);
   pluginProblems = vscode.languages.createDiagnosticCollection(`${LANGUAGE}-plugins`);
+  /** Problems the story finds with its plugins' manifests (see Analysis.pluginDiagnostics), by game, on their plugin.json. */
+  const manifestProblems = vscode.languages.createDiagnosticCollection(`${LANGUAGE}-plugin-uses`);
+  const manifestProblemFiles = new Map<string, vscode.Uri[]>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const check = (doc: vscode.TextDocument) => {
     if (doc.languageId !== LANGUAGE) return;
-    problems.set(doc.uri, analyze(doc).problems().map((p) => {
+    const analysis = analyze(doc);
+    const game = gameOf(doc.uri.fsPath);
+    if (game) {
+      for (const uri of manifestProblemFiles.get(game.dir) ?? []) manifestProblems.delete(uri);
+      const byFile = new Map<string, vscode.Diagnostic[]>();
+      for (const d of analysis.pluginDiagnostics) {
+        const list = byFile.get(d.file!) ?? [];
+        const severity = d.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning;
+        list.push(Object.assign(new vscode.Diagnostic(new vscode.Range(0, 0, 0, 0), d.message, severity), { source: 'emaki', code: d.code }));
+        byFile.set(d.file!, list);
+      }
+      manifestProblemFiles.set(game.dir, [...byFile].map(([file, list]) => {
+        const uri = vscode.Uri.file(join(game.dir, file));
+        manifestProblems.set(uri, list);
+        return uri;
+      }));
+    }
+    problems.set(doc.uri, analysis.problems().map((p) => {
       const d = new vscode.Diagnostic(
         new vscode.Range(p.range.line, p.range.start, p.range.line, p.range.end),
         p.message,
@@ -147,6 +167,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     problems,
     pluginProblems,
+    manifestProblems,
     watcher,
     watcher.onDidCreate(storyChanged),
     watcher.onDidDelete(storyChanged),

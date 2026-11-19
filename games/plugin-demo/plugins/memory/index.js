@@ -4,10 +4,15 @@
  *
  *   @memory play pairs=4 -> turns
  *   if turns <= @memory.perfect(4) + 2:     the fewest turns a round can take
+ *   if new_best:                            set by the plugin (plugin.json "sets")
+ *
+ * The best round for each size is kept on the device (ctx.storage), across
+ * playthroughs, and shown under the board.
  */
 const FACES = ['🐚', '⚓', '🌊', '🐟', '⛵', '🦀', '🌙', '⭐'];
 const size = (pairs) => Math.max(2, Math.min(FACES.length, Math.round(pairs ?? 4)));
 
+/** @type {import('../emaki-plugin').PluginSetup} */
 export default function memory(ctx) {
   const style = document.createElement('style');
   style.textContent = `
@@ -38,8 +43,10 @@ export default function memory(ctx) {
         counter.setAttribute('aria-live', 'polite');
         root.append(board, counter);
         let turns = 0, open = [], found = 0;
-        const show = () => { counter.textContent = `Turns: ${turns}`; };
+        const best = ctx.storage.get(`best${pairs}`);
+        const show = () => { counter.textContent = `Turns: ${turns}${typeof best === 'number' ? ` · Best: ${best}` : ''}`; };
         show();
+        /** @type {Promise<number>} */
         return new Promise((resolve) => {
           deck.forEach((face, i) => {
             const card = document.createElement('button');
@@ -65,6 +72,9 @@ export default function memory(ctx) {
                 }
                 open = [];
                 if (match && (found += 1) === pairs) {
+                  const record = typeof best !== 'number' || turns < best;
+                  if (record) ctx.storage.set(`best${pairs}`, turns);
+                  ctx.set('new_best', record);
                   setTimeout(() => { close(); resolve(turns); }, 400);
                 }
               }, match ? 250 : 700);

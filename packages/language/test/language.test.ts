@@ -259,4 +259,11 @@ describe('plugins', () => {
     expect(a.hoverAt(7, 17)).toBe('**@dice.roll**(sides, times?) → number — plugin function\n\nRoll dice');
     expect(a.hoverAt(3, 10)).toContain('**@clock face** — plugin element');
   });
+
+  it('report a manifest naming a variable the story lacks on that plugin.json, not on the script', () => {
+    const battle = parseManifest({ sets: ['hp', 'mana'] }, 'battle').manifest!;
+    const a = new Analysis('var hp = 10\nlabel start:\n  "Hi."\n', { file: 'story.vn', files: [], plugins: { battle } });
+    expect(a.diagnostics).toEqual([]);
+    expect(a.pluginDiagnostics.map((d) => [d.file, d.code, d.message.includes("'mana'")])).toEqual([['plugins/battle/plugin.json', 'bad-plugin', true]]);
+  });
 });

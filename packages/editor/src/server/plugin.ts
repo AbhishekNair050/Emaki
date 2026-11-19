@@ -21,6 +21,7 @@ import { existsSync, mkdirSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { MAIN_FILE, readPlugins, storyParts } from '@emaki/format/files';
 import { pluginModule } from '@emaki/player-web/plugin';
+import { updatePluginTypes } from '@emaki/player-web/plugin-types';
 import { serveAssets } from '@emaki/player-web/assets-middleware';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -70,6 +71,7 @@ export function emakiEditor(gameDir: string): Plugin {
       return existsSync(themePath) ? `import ${JSON.stringify(themePath.replace(/\\/g, '/'))};` : '';
     },
     configureServer(server) {
+      updatePluginTypes(gameDir); // a game with plugins keeps its copy of the plugin API's types current
       // The game's assets, from the root, exactly where the player looks for them.
       server.middlewares.use(serveAssets(assets.root));
       server.middlewares.use('/__emaki/files', (req, res) => {

@@ -5,6 +5,7 @@
  *   @weather start kind="petals" amount=60
  *   @weather stop
  */
+/** @type {import('../emaki-plugin').PluginSetup} */
 export default function weather(ctx) {
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';

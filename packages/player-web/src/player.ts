@@ -236,6 +236,10 @@ export class Player {
       volume: (ch) => this.vol(ch),
       playSound: (path) => this.playSound(path),
       language: () => this.runner.language,
+      set: (name, value) => this.pluginSet(name, value),
+      sets: story.pluginSets ?? {},
+      load: (key) => storage.get(`${this.storeKey}:${key}`),
+      save: (key, value) => { storage.set(`${this.storeKey}:${key}`, value); },
     });
     this.applySettings();
     this.applyLanguage();
@@ -1148,6 +1152,22 @@ export class Player {
     await delay(rise);
   }
 
+  /** Screens are redrawn once after a plugin's changes (several `ctx.set`s in a row draw once). */
+  private pluginRedraw = false;
+
+  /** A plugin changed a variable (checked against its "sets"): keep it, and redraw what shows it. */
+  private pluginSet(name: string, value: Value): void {
+    for (const fx of this.runner.assign(name, value)) {
+      if (fx.type === 'globals') storage.set(`${this.storeKey}:globals`, JSON.stringify(fx.values));
+    }
+    if (this.pluginRedraw) return;
+    this.pluginRedraw = true;
+    queueMicrotask(() => {
+      this.pluginRedraw = false;
+      if (this.mode === 'playing') this.drawStoryScreens();
+    });
+  }
+
   /** `global var` values from earlier playthroughs on this device. */
   private loadGlobals(): void {
     if (!this.story.globals?.length) return;
@@ -1906,12 +1926,13 @@ export class Player {
             const v = evaluate(a.value, vars, this.callPlugin);
             const old = vars[a.name];
             const next = a.op === '=' ? v : typeof old === 'number' && typeof v === 'number' ? (a.op === '+=' ? old + v : old - v) : a.op === '+=' ? String(old) + String(v) : v;
-            this.runner.setVar(a.name, next);
+            for (const fx of this.runner.assign(a.name, next)) {
+              if (fx.type === 'globals') storage.set(`${this.storeKey}:globals`, JSON.stringify(fx.values));
+            }
           } catch (err) {
             this.fail(err);
             return;
           }
-          if (this.story.globals?.includes(a.name)) storage.set(`${this.storeKey}:globals`, JSON.stringify(this.runner.globals));
           redraw = true;
           break;
         }

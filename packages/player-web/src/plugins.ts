@@ -19,77 +19,10 @@
  */
 import type { Value } from '@emaki/format';
 import type { PluginCommand } from '@emaki/runtime';
+import type { CommandRun, Json, Plugin, PluginArgs, PluginContext, PluginSetup, PluginStorage } from './plugin-api.d.ts';
 
-export type PluginArgs = Readonly<Record<string, Value>>;
-
-/** What a plugin can use. */
-export interface PluginContext {
-  /** The plugin's name (its folder). */
-  readonly name: string;
-  /** The plugin's own layer: over the characters, under the text box; clicks go through it. */
-  readonly layer: HTMLElement;
-  /** The whole stage (for its size: `stage.clientWidth`). */
-  readonly stage: HTMLElement;
-  /** URL of a file in the game's assets/ (the player's language's version, when there is one). */
-  asset(path: string): string;
-  /** The story's variables, read-only. */
-  vars(): Readonly<Record<string, Value>>;
-  /** True when the player asked for less motion: keep effects still or subtle. */
-  readonly reducedMotion: boolean;
-  /** The volume a channel plays at now (master volume and mutes included), 0..1. */
-  volume(channel: 'music' | 'sound' | 'voice'): number;
-  /** Play a sound from assets/ at the sound effects volume. */
-  playSound(path: string): void;
-  /** The language the game is shown in (null: the one it's written in). */
-  readonly language: string | null;
-  /**
-   * A full-screen area over the story that takes clicks, for a command the
-   * story waits on (a minigame). Close it when done; the player also closes
-   * it if the player goes back or loads.
-   */
-  modal(): { root: HTMLElement; close(): void };
-}
-
-/** How a command is being run. */
-export interface CommandRun {
-  /** Draw the end state straight away: skipping, or redoing a lasting command. */
-  instant: boolean;
-  /** Redoing a lasting command after a load, going back or a line preview. */
-  restoring: boolean;
-}
-
-export interface Plugin {
-  /**
-   * The plugin's commands by name. A command the story waits on returns a
-   * promise; what it resolves to goes into the `-> variable`.
-   */
-  commands?: Record<string, (args: PluginArgs, run: CommandRun) => void | Value | Promise<Value | void>>;
-  /** Elements for screens (`@clock face` in a screen): return what to place. */
-  elements?: Record<string, (args: PluginArgs) => HTMLElement>;
-  /**
-   * Functions for expressions (`if @dice.roll(6) > 4`): given the arguments in
-   * order, return a number, text or true/false straight away.
-   */
-  functions?: Record<string, (...args: Value[]) => Value>;
-  /** Things happening in the game. */
-  on?: {
-    start?(): void;
-    title?(): void;
-    line?(line: { id: string; speaker: string | null; text: string; label: string }): void;
-    choice?(choice: { id: string; text: string }): void;
-    ending?(ending: { id: string; name: string }): void;
-    achievement?(achievement: { id: string; name: string }): void;
-    save?(): void;
-    load?(): void;
-  };
-  /** Forget every lasting effect (a new game, a load, going back); lasting commands are then run again. */
-  reset?(): void;
-  /** The player is going away. */
-  destroy?(): void;
-}
-
-/** A plugin's code: its default export. */
-export type PluginSetup = (ctx: PluginContext) => Plugin;
+// The API itself is in plugin-api.d.ts, which stands alone so games can have a copy (`emaki plugin`).
+export type { CommandRun, Json, Plugin, PluginArgs, PluginContext, PluginSetup, PluginStorage };
 
 /** What the player gives the manager. */
 export interface PluginEnvironment {
@@ -104,6 +37,13 @@ export interface PluginEnvironment {
   volume(channel: 'music' | 'sound' | 'voice'): number;
   playSound(path: string): void;
   language(): string | null;
+  /** Change a story variable (already checked against the plugin's "sets"). */
+  set(name: string, value: Value): void;
+  /** The variables each plugin may change (the story's `pluginSets`). */
+  sets: Readonly<Record<string, readonly string[]>>;
+  /** Read and write the device's storage for a key (null: nothing kept). */
+  load(key: string): string | null;
+  save(key: string, value: string): void;
 }
 
 type EventName = keyof NonNullable<Plugin['on']>;
@@ -111,6 +51,8 @@ type EventName = keyof NonNullable<Plugin['on']>;
 export class PluginManager {
   private readonly loaded = new Map<string, Plugin>();
   private readonly modals = new Set<HTMLElement>();
+  /** What's running that mustn't change the story (redoing lasting commands, a function, drawing an element). */
+  private quiet: string | null = null;
 
   constructor(setups: Readonly<Record<string, PluginSetup>>, env: PluginEnvironment) {
     for (const [name, setup] of Object.entries(setups)) {
@@ -118,9 +60,22 @@ export class PluginManager {
       layer.className = `layer plugin-layer plugin-${name}`;
       env.stage.insertBefore(layer, env.before);
       const modals = this.modals;
+      const sets = new Set(env.sets[name] ?? []);
       const ctx: PluginContext = {
         name, layer, stage: env.stage,
         asset: env.asset, vars: env.vars, volume: env.volume, playSound: env.playSound,
+        set: (v, value) => {
+          if (!sets.has(v)) {
+            throw new Error(`Plugin '${name}' can't set '${v}': list it in plugin.json, "sets": [${[...sets, v].map((x) => JSON.stringify(x)).join(', ')}]`);
+          }
+          const was = env.vars()[v];
+          if (typeof value !== typeof was || (typeof value === 'number' && !Number.isFinite(value))) {
+            throw new Error(`Plugin '${name}' set '${v}' to ${JSON.stringify(value)}, but it holds ${typeof was === 'string' ? 'text' : `a ${typeof was}`}`);
+          }
+          if (this.quiet) { console.warn(`Plugin '${name}' set '${v}' ${this.quiet}; ignored, as that mustn't change the story`); return; }
+          env.set(v, value);
+        },
+        storage: pluginStorage(`plugin:${name}`, env),
         get reducedMotion() { return env.reducedMotion(); },
         get language() { return env.language(); },
         modal() {
@@ -163,7 +118,7 @@ export class PluginManager {
     const fn = this.loaded.get(plugin)?.elements?.[element];
     if (!fn) { console.error(`Plugin '${plugin}' has no element '${element}'`); return null; }
     try {
-      const node = fn(args);
+      const node = this.quietly(`while drawing @${plugin} ${element}`, () => fn(args));
       return node instanceof HTMLElement ? node : null;
     } catch (err) {
       console.error(`@${plugin} ${element} failed`, err);
@@ -177,7 +132,14 @@ export class PluginManager {
     if (!p) throw new Error(`plugin '${plugin}' isn't loaded`);
     const f = p.functions?.[fn];
     if (typeof f !== 'function') throw new Error(`plugin '${plugin}' has no function '${fn}'`);
-    return f(...args);
+    return this.quietly(`in @${plugin}.${fn}()`, () => f(...args));
+  }
+
+  /** Run `fn` with ctx.set turned off, saying why. */
+  private quietly<T>(why: string, fn: () => T): T {
+    const was = this.quiet;
+    this.quiet = was ?? why;
+    try { return fn(); } finally { this.quiet = was; }
   }
 
   /** Tell every plugin something happened. */
@@ -199,7 +161,7 @@ export class PluginManager {
     for (const [name, p] of this.loaded) {
       try { p.reset?.(); } catch (err) { console.error(`Plugin '${name}' (reset)`, err); }
     }
-    for (const c of lasting) void this.run(c, { instant: true, restoring: true });
+    for (const c of lasting) this.quietly(`while @${c.plugin} ${c.command} was redone`, () => void this.run(c, { instant: true, restoring: true }));
   }
 
   destroy(): void {
@@ -207,4 +169,36 @@ export class PluginManager {
       try { p.destroy?.(); } catch (err) { console.error(`Plugin '${name}' (destroy)`, err); }
     }
   }
+}
+
+/**
+ * A plugin's own data: one JSON object under `key` in the device's storage,
+ * read once and written whenever it changes.
+ */
+function pluginStorage(key: string, env: Pick<PluginEnvironment, 'load' | 'save'>): PluginStorage {
+  let data: Record<string, Json> | null = null;
+  const all = (): Record<string, Json> => {
+    if (data) return data;
+    try {
+      const raw = JSON.parse(env.load(key) ?? '{}') as unknown;
+      data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, Json> : {};
+    } catch { data = {}; }
+    return data;
+  };
+  const copy = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)) as T);
+  return {
+    get: <T extends Json = Json>(k: string) => copy(Object.prototype.hasOwnProperty.call(all(), k) ? all()[k] as T : undefined),
+    set(k, value) {
+      const text = JSON.stringify(value);
+      if (text === undefined) throw new Error(`storage.set('${k}'): the value can't be kept as JSON`);
+      all()[k] = JSON.parse(text) as Json;
+      env.save(key, JSON.stringify(all()));
+    },
+    remove(k) {
+      if (!Object.prototype.hasOwnProperty.call(all(), k)) return;
+      delete all()[k];
+      env.save(key, JSON.stringify(all()));
+    },
+    keys: () => Object.keys(all()),
+  };
 }

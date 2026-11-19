@@ -14,6 +14,7 @@ import {
 } from '@emaki/format';
 import { compileGame, readPlugins, storyParts, where } from '@emaki/format/files';
 import { serveAssets } from './assets-middleware.ts';
+import { updatePluginTypes } from './plugin-types.ts';
 import { uiSourceStrings } from './ui-strings.ts';
 
 const VIRTUAL = 'virtual:emaki-game';
@@ -127,6 +128,10 @@ export function emakiGame(gameDir: string): Plugin {
     },
     configResolved(config) {
       devServer = config.command === 'serve';
+    },
+    buildStart() {
+      // A game with plugins keeps its copy of the plugin API's types current.
+      updatePluginTypes(gameDir);
     },
     resolveId(id) {
       return id === VIRTUAL ? RESOLVED : id === PLUGINS ? PLUGINS_RESOLVED : null;

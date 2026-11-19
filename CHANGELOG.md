@@ -41,6 +41,8 @@ The first public version. Everything below is new.
 
 ### Plugins
 - Game plugins in `plugins/<name>/` (a `plugin.json` manifest and JavaScript): commands (effects, lasting effects that survive saves and rollback, and commands the story waits on with a result), screen elements, functions in expressions, and events. The compiler, editor and VS Code check every use against the manifest.
+- Plugins can change the story variables their manifest lists (`"sets"`, `ctx.set`), with saves and rollback handled, and keep their own data on the device (`ctx.storage`).
+- `emaki plugin <game> <name> [--ts]` starts a plugin. Games with plugins get the plugin API's types (`plugins/emaki-plugin.d.ts`) for completion and checking in JavaScript or TypeScript.
 
 ### Long games
 - Tested on a full-length game (80,000 lines in 758 files, 31,000 assets): story files are packed (D-059), the player fetches the story as `game.json` (D-060), and edits recompile only what changed, so the dev server, the editor and VS Code stay quick at that size.

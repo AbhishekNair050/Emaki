@@ -154,6 +154,8 @@ export interface CompiledStory {
   voices?: Record<string, string>;
   /** Variables declared `global var`: the player keeps their values across playthroughs. */
   globals?: string[];
+  /** Variables each plugin may change (its manifest's `sets`), by plugin; absent when none do. */
+  pluginSets?: Record<string, string[]>;
   /** Label name -> instruction index. */
   labels: Record<string, number>;
   code: Instr[];
