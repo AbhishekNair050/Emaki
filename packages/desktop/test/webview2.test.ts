@@ -84,7 +84,9 @@ it.runIf(process.platform === 'win32')('downloads the SDK only when it matches t
     vi.stubGlobal('fetch', fetchSdk);
 
     // A package that isn't the published one is never extracted or cached.
-    await expect(resolveWebView2Sdk(work, () => {}, { ...pin, sha512: 'x' + pin.sha512.slice(1) })).rejects.toThrow(/SHA-512/);
+    // The archive's hash changes with every run (zip timestamps), so change its first character to one it isn't.
+    const wrong = (pin.sha512[0] === 'A' ? 'B' : 'A') + pin.sha512.slice(1);
+    await expect(resolveWebView2Sdk(work, () => {}, { ...pin, sha512: wrong })).rejects.toThrow(/SHA-512/);
     expect(existsSync(join(work, 'local', 'Emaki', 'SDK', pin.version))).toBe(false);
 
     const first = await resolveWebView2Sdk(work, () => {}, pin);
