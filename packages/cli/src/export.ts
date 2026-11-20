@@ -13,6 +13,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { gameOrientation, parseAspect, type Orientation } from '@emaki/format';
 import { compileGame, where } from '@emaki/format/files';
 import { buildWeb } from '@emaki/player-web/build';
+import { compressBuild, parseCompression, readCompression, recordRenamed, summary, type Compression } from './compress.ts';
 
 export const TARGETS = ['web', 'desktop', 'android', 'ios'] as const;
 export type Target = (typeof TARGETS)[number];
@@ -26,6 +27,8 @@ export interface ExportArgs {
   shell?: string;
   /** android: skip the Gradle build even if the SDK is there. */
   noBuild?: boolean;
+  /** Overrides the game's export.json, kind by kind (see compress.ts). */
+  compress?: Partial<Compression>;
 }
 
 export interface GameInfo {
@@ -84,6 +87,16 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
   const info = gameInfo(a.game, mobile.defaultAppId);
   const exportDir = join(info.dir, 'export');
   const webDir = join(exportDir, 'web');
+  const compression = parseCompression({ ...readCompression(info.dir), ...a.compress });
+  const compressed: string[] = [];
+  /** The web build every target starts from, made smaller as the game asks. */
+  const build = async (outDir: string) => {
+    await buildWeb(info.dir, outDir, { quiet: true });
+    const r = await compressBuild(info.dir, outDir, compression, { cacheDir: join(exportDir, '.compress-cache'), log });
+    recordRenamed(outDir, r.renamed);
+    const line = summary(r);
+    if (line) compressed.push(line);
+  };
 
   if (a.shell && a.target !== 'desktop') throw new Error('--shell applies to desktop exports.');
   if (a.target === 'desktop') {
@@ -100,14 +113,14 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
     let out: string;
     try {
       log(`Building ${info.title} for ${shell === 'electron' ? 'Electron' : 'WebView2'}…`);
-      await buildWeb(info.dir, staging ?? webDir, { quiet: true });
+      await build(staging ?? webDir);
       out = await exportDesktop({
         webDir: staging ?? webDir, shell, outDir: join(exportDir, 'desktop'), title: info.title, appId: info.appId, steamAppId: info.steamAppId,
         iconPng: info.icon, aspect: info.aspect, platform, arch, log, languages: translationLanguages(info.dir),
         ...(info.author ? { author: info.author } : {}), ...(info.version ? { version: info.version } : {}),
       });
     } finally { if (staging) rmSync(staging, { recursive: true, force: true }); }
-    const notes = [`Desktop app: ${out}`];
+    const notes = [`Desktop app: ${out}`, ...compressed];
     if (platform === 'darwin') notes.push('macOS apps must be signed and notarized before other people can open them without warnings (see docs/exporting.md).');
     if (info.steamAppId) notes.push(`Steam: upload this folder as a depot of App ${info.steamAppId}. Achievements use the ids from your story's 'achievement' lines.`);
     if (!info.icon) notes.push('Tip: put a square icon.png (512x512) in the game folder to give the app its own icon.');
@@ -115,9 +128,9 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
   }
 
   log(`Building ${info.title} for the web…`);
-  await buildWeb(info.dir, webDir, { quiet: true });
+  await build(webDir);
   if (a.target === 'web') {
-    return [`Web build: ${webDir}`, 'Zip the folder and upload it to itch.io as an HTML game, or put it on any web host.'];
+    return [`Web build: ${webDir}`, ...compressed, 'Zip the folder and upload it to itch.io as an HTML game, or put it on any web host.'];
   }
   const r = await mobile.exportMobile({
     webDir, projectDir: join(exportDir, 'mobile'), platform: a.target, title: info.title, appId: info.appId,
@@ -127,6 +140,7 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
   return [
     `${a.target === 'android' ? 'Android' : 'iOS'} project: ${r.projectDir}${defaultId}`,
     ...(r.apk ? [`APK: ${r.apk}`] : []),
+    ...compressed,
     ...r.nextSteps,
   ];
 }

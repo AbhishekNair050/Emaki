@@ -15,6 +15,7 @@
     "@emaki/editor": "0.1.0",
     "@emaki/format": "0.1.0",
     "@emaki/mobile": "0.1.0",
-    "@emaki/player-web": "0.1.0"
+    "@emaki/player-web": "0.1.0",
+    "sharp": "^0.35.5"
   }
 }

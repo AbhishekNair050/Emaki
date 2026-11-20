@@ -19,6 +19,7 @@
  *   emaki plugin <game folder> <name> [--ts]
  *                                     start a plugin: plugins/<name>/ with a command that works as it is
  *   emaki export <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]
+ *                [--images off|lossless|50-100] [--audio off|24-256] [--video off|15-40]
  *                                     package the game for players (into <game>/export/)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -30,6 +31,7 @@ import {
 import { addVoices, MAIN_FILE, pluginManifests, readPlugins, storyParts } from '@emaki/format/files';
 import { uiSourceStrings } from '@emaki/player-web/ui-strings';
 import { runExport, TARGETS, type Target } from './export.ts';
+import { parseCompression } from './compress.ts';
 import { newGame } from './new.ts';
 import { newPlugin } from './new-plugin.ts';
 
@@ -47,7 +49,8 @@ const USAGE = `Usage:
   emaki fmt   <story.vn> [--write | --check]
   emaki strings <story.vn> [--lang fr,de] [--csv]   translation files in lang/ (without --lang: progress)
   emaki voices  <story.vn>                          recording script and missing voice files (header 'voice:')
-  emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--shell webview2|electron] [--no-build]`;
+  emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--shell webview2|electron] [--no-build]
+                [--images off|lossless|50-100] [--audio off|24-256] [--video off|15-40]   (default: the game's export.json)`;
 
 if (cmd === 'launch' || cmd === 'edit' || cmd === 'play') {
   try {
@@ -382,8 +385,17 @@ async function exportCommand(): Promise<never> {
     const arch = opt('--arch');
     const shell = opt('--shell');
     if (rest.includes('--shell') && !shell) throw new Error('--shell requires webview2 or electron.');
+    const compress: Record<string, string> = {};
+    for (const kind of ['images', 'audio', 'video']) {
+      if (!rest.includes(`--${kind}`)) continue;
+      const value = opt(`--${kind}`);
+      if (!value || value.startsWith('--')) throw new Error(`--${kind} requires a value: off, or a number (see emaki help).`);
+      compress[kind] = value;
+    }
     const notes = await runExport({
       target, game, noBuild: rest.includes('--no-build'),
+      // Only the kinds given here replace the game's export.json.
+      ...(Object.keys(compress).length ? { compress: Object.fromEntries(Object.entries(parseCompression(compress)).filter(([k]) => k in compress)) } : {}),
       ...(platform ? { platform } : {}),
       ...(arch ? { arch } : {}),
       ...(shell ? { shell } : {}),
