@@ -76,6 +76,8 @@ export interface GameData {
   sourceLines: Record<string, string[]>;
   /** The story map, a dev tool: never shipped in a build, where it would be a map of every route. */
   graph: StoryGraph | null;
+  /** Files an export compressed under a new name (bg/a.png → bg/a.webp): added by the export, see packages/cli/src/compress.ts. */
+  renamed?: Record<string, string>;
 }
 
 /** Where a build puts the game's data, next to index.html. */

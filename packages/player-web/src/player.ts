@@ -62,6 +62,8 @@ export interface PlayerOptions {
   host?: EmakiHost;
   /** The game's plugins (plugins/<name>/index.js default exports), by name. */
   plugins?: Readonly<Record<string, PluginSetup>>;
+  /** Files a compressed export gave a new name (bg/a.png → bg/a.webp), by the path the story uses. */
+  renamed?: Readonly<Record<string, string>>;
 }
 
 export class Player {
@@ -169,6 +171,7 @@ export class Player {
     this.runner = new Runner(story);
     this.runner.callPlugin = this.callPlugin;
     this.opts = opts;
+    renamed = opts.renamed ?? {};
     this.host = opts.host ?? detectHost();
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
     this.settings = loadSettings(this.storeKey + ':settings');
@@ -2850,9 +2853,17 @@ function row(...children: Node[]): HTMLElement {
   return r;
 }
 
-function asset(path: string): string {
-  return /^(https?:|data:|\/)/.test(path) ? path : `./${path}`;
+/** Set by the Player from its options: one game per page. */
+let renamed: Readonly<Record<string, string>> = {};
+
+/** The URL of a file in the game's assets/ (or a full URL, as it is), under its compressed name if it has one. */
+export function asset(path: string): string {
+  if (/^(https?:|data:|\/)/.test(path)) return path;
+  return `./${Object.hasOwn(renamed, path) ? renamed[path] : path}`;
 }
+
+/** For tests: which files have new names. */
+export function setRenamedAssets(map: Readonly<Record<string, string>>): void { renamed = map; }
 
 function cssEscape(s: string): string {
   return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/"/g, '\\"');

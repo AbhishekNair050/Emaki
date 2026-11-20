@@ -22,5 +22,7 @@ declare module 'virtual:emaki-game' {
     sourceLines: Record<string, string[]>;
     /** Only present on the dev server (null in builds). */
     graph: StoryGraph | null;
+    /** In a compressed export: the new names of files that changed format (bg/a.png → bg/a.webp). */
+    renamed?: Record<string, string>;
   }>;
 }
