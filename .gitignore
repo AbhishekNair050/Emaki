@@ -8,3 +8,6 @@ Thumbs.db
 
 # emaki export output
 games/*/export/
+
+# Emaki Studio build output
+packages/studio/out/

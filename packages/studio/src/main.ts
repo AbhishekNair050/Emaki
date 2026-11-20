@@ -8,8 +8,9 @@
 // `npm run launch` uses, on this computer's loopback address only.
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, shell, type BrowserWindowConstructorOptions, type WebContents } from 'electron';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { startLauncher, type Launcher } from '@emaki/cli/launcher';
+import { join, resolve } from 'node:path';
+import type { Launcher } from '@emaki/cli/launcher';
+import { linkPackages } from './link.ts';
 import { isExternalUrl, isLocalUrl } from './urls.ts';
 
 /** The launcher's own port, apart from `npm run launch` (5175), so both can run at once. */
@@ -118,6 +119,9 @@ async function start(): Promise<void> {
   main = openLauncherWindow();
   void main.loadURL(startingPage());
   try {
+    // An installed Studio carries the engine's packages but not npm's links between them: make those first.
+    if (app.isPackaged) linkPackages(resolve(import.meta.dirname, '../../..'));
+    const { startLauncher } = await import('@emaki/cli/launcher');
     launcher = await startLauncher({ port: PORT, open: false });
   } catch (err) {
     dialog.showErrorBox('Emaki Studio could not start', err instanceof Error ? err.message : String(err));
