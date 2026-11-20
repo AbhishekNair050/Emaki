@@ -234,6 +234,9 @@ body.inspector-hidden .workspace > .inspector-host { display: none; }
   border-bottom: 1px solid var(--border);
 }
 .game-note { color: var(--warn); text-transform: none; letter-spacing: 0; font-weight: 400; }
+.game-head h2 { margin: 0; font: inherit; }
+.editor .game-head .pane-toggle { margin-left: auto; padding: 2px 9px; font-size: 11.5px; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--muted); }
+.editor .game-head .pane-toggle[aria-pressed='true'] { border-color: var(--blue); color: var(--text); background: color-mix(in srgb, var(--blue) 14%, var(--panel-bg)); }
 .cm-host { flex: 1; min-height: 0; }
 .file-head label { font-weight: 600; }
 .file-head select { min-width: 10em; max-width: 60%; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-size: 12px; text-transform: none; letter-spacing: 0; }
@@ -255,6 +258,27 @@ body.inspector-hidden .workspace > .inspector-host { display: none; }
   display: grid;
   place-items: center;
   background: var(--bg);
+  container: game-pane / size;
+}
+/*
+ * The player's host, in the game's own shape (--frame-aspect, set from the header), so a narrow pane shows
+ * the game smaller instead of switching to the layout for phones held upright. With Phone on, it's a
+ * phone's screen instead: upright, or sideways for a landscape game, as the phone app would be.
+ */
+.game-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100cqw, calc(100cqh * var(--frame-aspect, 16 / 9)));
+  aspect-ratio: var(--frame-aspect, 16 / 9);
+}
+.game-frame.phone {
+  --bezel: 10px;
+  width: min(calc(100cqw - 2 * var(--bezel) - 24px), calc((100cqh - 2 * var(--bezel) - 24px) * var(--frame-aspect)));
+  border-radius: 26px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 0 0 var(--bezel) #0b0c0f, 0 0 0 calc(var(--bezel) + 1px) var(--border-strong), 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 body[data-workspace='stage'] .player-host {
   padding: 16px;

@@ -11,7 +11,7 @@
  *  - a story can span several files: pick one above the script, or add one
  */
 import {
-  buildGraph, compileFiles, createCompileCache, voiceMap,
+  buildGraph, compileFiles, createCompileCache, gameOrientation, parseAspect, voiceMap,
   type CompiledStory, type Diagnostic, type LabelDef, type Program, type Stmt, type StoryGraph, type Value,
 } from '@emaki/format';
 import { Runner, type Route, type RouteSearch } from '@emaki/runtime';
@@ -50,6 +50,9 @@ const SPLIT_KEY = 'emaki-editor:script-width';
 const WORKSPACE_KEY = 'emaki-editor:workspace';
 const INSPECTOR_KEY = 'emaki-editor:inspector';
 const ROUTE_KEY = 'emaki-editor:route';
+const PHONE_KEY = 'emaki-editor:phone';
+/** A phone's screen, long side over short side (most are 19.5:9 to 20:9). */
+const PHONE_ASPECT = 19.5 / 9;
 /** How long typing pauses before the panels (inspector, timeline) catch up with the cursor's line. */
 const PANELS_TYPING_DELAY_MS = 300;
 /** How long the cursor rests before the inspector is drawn again (a held arrow key moves it every 30 ms). */
@@ -74,6 +77,8 @@ async function main(): Promise<void> {
   const fileSelect = $<HTMLSelectElement>('#file');
 
   const playerHost = $('.player-host');
+  /** Where the player is mounted: the game's shape, or a phone's (see fitGameFrame). */
+  const gameFrame = $('.game-frame');
   const gameNote = $('.game-note');
   const problemsBtn = $<HTMLButtonElement>('#problems');
   const status = $('.save-status');
@@ -414,6 +419,31 @@ async function main(): Promise<void> {
     },
     changed: (tag, change) => restage(tag, change),
   });
+
+  // Phone: the game in a phone's screen, upright, or sideways for a landscape game, as the phone app shows it.
+  // Off, the game keeps its own shape however narrow the pane is.
+  let phone = false;
+  try { phone = localStorage.getItem(PHONE_KEY) === 'on'; } catch { /* storage unavailable */ }
+  const phoneButton = $<HTMLButtonElement>('#phone-preview');
+  function fitGameFrame(placeTools = true): void {
+    const sideways = story ? gameOrientation(story.meta) === 'landscape' : false;
+    const aspect = (story?.meta.aspect ? parseAspect(story.meta.aspect) : null) ?? 16 / 9;
+    gameFrame.classList.toggle('phone', phone);
+    gameFrame.style.setProperty('--frame-aspect', String(phone ? (sideways ? PHONE_ASPECT : 1 / PHONE_ASPECT) : aspect));
+    phoneButton.setAttribute('aria-pressed', String(phone));
+    phoneButton.title = phone
+      ? 'Back to the game at its own shape'
+      : `Show the game as a phone shows it (${sideways ? 'sideways: this game is landscape' : 'held upright'})`;
+    if (placeTools) stageTools.update();
+  }
+  phoneButton.addEventListener('click', () => {
+    phone = !phone;
+    try { localStorage.setItem(PHONE_KEY, phone ? 'on' : 'off'); } catch { /* storage unavailable */ }
+    fitGameFrame();
+  });
+  // Set up before the rest of the editor (and before any game): nothing on stage to frame yet.
+  fitGameFrame(false);
+
   /** The `show` that put a character on stage: the nearest one above the game's line, in the same scene. */
   function showLineOf(tag: string): { n: number; text: string } | null {
     if (!playing || (playing.file ?? MAIN) !== active) return null;
@@ -881,6 +911,7 @@ async function main(): Promise<void> {
     }
     gameNote.textContent = '';
     story = r.story;
+    fitGameFrame();
     inspector.setCatalog({ images: story.images, characters: story.characters });
     // A voiced game's lines play their files here too (the files the assets folder has).
     const voices = voiceMap(story, (path) => assetPaths.has(path));
@@ -916,7 +947,7 @@ async function main(): Promise<void> {
 
   function startPlayer(s: CompiledStory): void {
     player?.destroy();
-    player = new Player(playerHost, s, {
+    player = new Player(gameFrame, s, {
       plugins,
       onUpdate: (block) => {
         const was = playing;

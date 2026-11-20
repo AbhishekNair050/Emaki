@@ -67,9 +67,12 @@
       </section>
       <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the script and the game" tabindex="0"></div>
       <section class="pane game-pane" aria-label="Game">
-        <h2 class="pane-head">Game <span class="game-note" role="status"></span></h2>
+        <div class="pane-head game-head">
+          <h2>Game</h2> <span class="game-note" role="status"></span>
+          <button type="button" id="phone-preview" class="pane-toggle" aria-pressed="false" title="Show the game as a phone shows it">Phone</button>
+        </div>
         <div class="stage-toolbar" role="toolbar" aria-label="Stage tools"></div>
-        <div class="player-host"></div>
+        <div class="player-host"><div class="game-frame"></div></div>
       </section>
       <section class="pane flow-pane" aria-label="Story">
         <div class="flow-host"></div>
