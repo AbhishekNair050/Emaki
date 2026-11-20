@@ -14,7 +14,7 @@ Editor and player sessions open in separate tabs. Reopening a session reuses its
 ## Emaki Studio
 `npm run studio` opens the same launcher as a desktop app (D-068). The editor and the player open in windows of their own instead of browser tabs, **Browse** uses the system's folder picker, and links to other sites open in your browser. Closing the launcher window closes the Studio, with its editors, players and exports. Everything else works as in the launcher above, and both can run at once (the Studio's launcher uses port 5185); they share the list of recent projects.
 
-The Studio runs on the Node built into Electron, so the app it will become needs nothing else installed. For now it runs from the repository like the other tools; an installer comes later.
+The Studio runs on the Node built into Electron, so it needs nothing else installed. `npm run build:studio` (on Windows) makes `packages/studio/out/installer/Emaki-Studio-Setup-<version>.exe`, about 135 MB, which installs it for the current user with a Start menu and desktop shortcut. The installer isn't signed yet, so Windows SmartScreen warns before the first run (**More info**, then **Run anyway**). The example game opened from an installed Studio lives in the install folder, so changes to it are lost when the Studio is updated; copy it to work on it.
 
 ## The editor
 `npm run edit` opens the editor in your browser (http://localhost:5174). For your own game: `EMAKI_GAME=../my-game npm run edit` (in PowerShell: `$env:EMAKI_GAME="../my-game"; npm run edit`).
