@@ -30,6 +30,9 @@ html, body {
 
 /* The element the player mounts into. Its shape decides the layout: wide → 16:9 letterbox, tall → portrait. */
 .stage-host { container: stage-host / size; }
+/* A game with a `canvas:` places its art in pixels on that canvas: always letterboxed (the portrait rules below
+ * only match a container named stage-host). */
+.stage-host.fixed-canvas { container-name: stage-fixed; }
 
 /*
  * 16:9 stage, letterboxed to fit its host. Everything inside sizes off the stage:

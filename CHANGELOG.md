@@ -25,7 +25,7 @@ The first public version. Everything below is new.
 - Saves with thumbnails and pages, quick save and load, rollback, a history log with voice replay and rewind, auto mode, skip (read text or all), skip to the next choice and back to the previous one. A save from an earlier version of a game opens at the same line, even when lines were added before it.
 - Esc and right-click open the menu during the story; a game can give each its own action instead (`escape:` / `right_click:`: save to an empty slot, quick save, hide the interface, settings, history).
 - Settings: text speed, auto speed, master, music, sound and voice volume with mutes, per-character voice volume, text size, text box opacity, reading fonts (Atkinson Hyperlegible, OpenDyslexic), animations, language, and which questions to confirm.
-- Keyboard, mouse, touch and gamepad; screen-reader support; reduced motion respected; a portrait layout for phones held upright.
+- Keyboard, mouse, touch and gamepad; screen-reader support; reduced motion respected; a portrait layout for phones held upright (games drawn on a fixed `canvas:` stay letterboxed).
 
 ### Translation
 - `emaki strings` writes PO or CSV catalogs by line id and keeps them up to date, marking changed lines for review. The interface is translatable too.

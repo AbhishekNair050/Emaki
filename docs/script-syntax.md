@@ -48,7 +48,7 @@ Between `---` lines at the very top: `key: value` pairs.
 - `language`: the language the script is written in, as a code (`en`, `fr`, `pt-BR`; default `en`).
 - `app_id`: a reverse-domain id for app stores and phones (`com.yourstudio.gullwing`); `emaki export` makes one up if it's missing.
 - `steam_app_id`: your game's Steam App ID; the desktop build then talks to Steam (achievements, overlay).
-- `canvas`: the size your UI art is drawn at, like `1920x1080`, so [screens](theming.md#3-your-own-screens-screen-title) can place things in pixels.
+- `canvas`: the size your UI art is drawn at, like `1920x1080`, so [screens](theming.md#3-your-own-screens-screen-title) can place things in pixels. A game with a canvas is always shown at its shape, letterboxed, even on a phone held upright (without one, a tall screen gets the portrait layout).
 - `save_slots`: how many save slots the game has (3 by default).
 - `click_sound`, `hover_sound`: sounds for clicking and pointing at the buttons of your screens.
 

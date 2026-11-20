@@ -159,8 +159,11 @@ export class Player {
   /** The ending this playthrough reached, for the end screen. */
   private endingName: string | null = null;
   private readonly systemReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** The element the player is mounted in (the stage's host, whose shape picks the layout). */
+  private readonly mount: HTMLElement;
 
   constructor(root: HTMLElement, story: CompiledStory, opts: PlayerOptions = {}) {
+    this.mount = root;
     this.story = story;
     useGrades(story.grades);
     this.runner = new Runner(story);
@@ -2480,11 +2483,13 @@ export class Player {
   }
 
   /** Switch story and interface text to the chosen language, redrawing whatever is on screen. */
-  /** Header options that shape the stage: `aspect` (16:9 unless set) and `narration` style. */
+  /** Header options that shape the stage: `aspect` (16:9 unless set), `canvas` and `narration` style. */
   private applyStageShape(): void {
     const ratio = this.story.meta.aspect ? parseAspect(this.story.meta.aspect) : null;
     if (ratio) this.stage.style.setProperty('--aspect', String(ratio));
     else this.stage.style.removeProperty('--aspect');
+    // A game drawn on a fixed canvas is letterboxed in any host: the portrait layout would stretch its pictures.
+    this.mount.classList.toggle('fixed-canvas', !!parseCanvas(this.story.meta.canvas));
     this.stage.classList.toggle('narration-plain', this.story.meta.narration === 'plain');
   }
 
