@@ -226,7 +226,7 @@ with dissolve 0.4
 
 **How it is drawn.** The DOM player keeps one stacking order for all layers (absolutely placed elements with CSS transforms), CSS blend modes, SVG filters for grades (`feComponentTransfer` for gamma and levels, `feFlood` + `feBlend` for tints) and masks for panels; a `with` puts a frozen copy of the old picture over the new one and fades or wipes it away (a wipe steps through threshold masks made from the rule picture once). Subtractive blends have no CSS equivalent: the layer is added (`plus-lighter`) between two inversions of what is behind it (`backdrop-filter: invert(1)`), 1 - ((1 - b) + s) = b - s, which is exact. WebGL was considered: it would be exact everywhere, but it means a second renderer for pictures that the DOM already draws, and losing CSS for theming; it stays the fallback if side-by-side tests show the DOM can't match.
 
-**Format.** New instructions `layer`, `animate`, `with`, `textbox`; `show` and `scene` gain optional properties, and the story carries `animations`, `grades` and `panels`. `FORMAT_VERSION` goes to 2, since a runtime that doesn't know these can't draw the story.
+**Format.** New instructions `animate`, `with` and `textbox`; `show` gains a `layer` name and optional `props` (panels are the `clip` and `feather` props, not a table of their own), and the story carries `animations` and `grades`. `FORMAT_VERSION` goes to 3 (2 was already the packed files of D-059), since a runtime that doesn't know these can't draw the story.
 
 **Proving it.** The port's converter turns the original's commands into these statements, and a harness screenshots the same moment in the original and in Emaki and measures the difference, scene by scene.
 ## D-063 — What Esc and a right-click do (accepted, 2026-11-16)
