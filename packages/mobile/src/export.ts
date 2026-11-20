@@ -7,8 +7,12 @@
  * icons, store settings) survive. Building the APK needs the Android SDK; iOS
  * needs a Mac with Xcode. Without them the project is still prepared, with
  * instructions for the last step.
+ *
+ * Which way up the app turns (header `orientation:`) is written into the native
+ * projects on every export: the activity's screenOrientation on Android, the
+ * supported orientations in Info.plist on iOS.
  */
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -23,6 +27,8 @@ export const CAPACITOR = {
 };
 
 export type MobilePlatform = 'android' | 'ios';
+/** Which way up the app can be held (the story header's `orientation:`). */
+export type AppOrientation = 'landscape' | 'portrait' | 'any';
 
 export interface MobileExportOptions {
   webDir: string;
@@ -33,6 +39,8 @@ export interface MobileExportOptions {
   /** Reverse-domain id, e.g. com.studio.gullwing. */
   appId: string;
   version?: string;
+  /** Which way up the app turns; `any` (the default) follows the phone. */
+  orientation?: AppOrientation;
   /** Build an installable debug APK if the Android SDK is available. */
   build?: boolean;
   log?: (msg: string) => void;
@@ -98,6 +106,7 @@ export async function exportMobile(o: MobileExportOptions): Promise<MobileExport
   }
   log('Copying the game into the app…');
   run('npx', ['cap', 'sync', o.platform], dir);
+  setOrientation(platformDir, o.platform, o.orientation ?? 'any', nextSteps);
 
   if (o.platform === 'ios') {
     nextSteps.push(`Open it in Xcode to run and publish: cd "${dir}" && npx cap open ios`);
@@ -116,9 +125,18 @@ export async function exportMobile(o: MobileExportOptions): Promise<MobileExport
     );
     return { projectDir: dir, apk: null, nextSteps };
   }
+  const java = findJava();
+  if (!java) {
+    nextSteps.push(
+      `To build the APK, install Java ${JAVA_NEEDED} or newer (a JDK, such as Eclipse Temurin ${JAVA_NEEDED}) and set JAVA_HOME to it, then export again.`,
+      `Android Studio comes with one, so you can also build it there: cd "${dir}" && npx cap open android`,
+    );
+    return { projectDir: dir, apk: null, nextSteps };
+  }
   log('Building the debug APK with Gradle (the first build downloads a lot)…');
-  const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
-  run(gradlew, ['assembleDebug', '--quiet'], platformDir, { ANDROID_HOME: sdk });
+  // By its full path: Windows may be set not to run programs from the current folder (NoDefaultCurrentDirectoryInExePath).
+  const gradlew = join(platformDir, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew');
+  run(gradlew, ['assembleDebug', '--quiet'], platformDir, { ANDROID_HOME: sdk, ...(java.home ? { JAVA_HOME: java.home } : {}) });
   const built = join(platformDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   if (!existsSync(built)) throw new Error('Gradle finished but no APK was produced.');
   const apk = join(dir, `${fileName(o.title)}-debug.apk`);
@@ -126,6 +144,73 @@ export async function exportMobile(o: MobileExportOptions): Promise<MobileExport
   nextSteps.push('This is a debug build for testing (install it with: adb install -r "' + apk + '").',
     'For Google Play, open the project in Android Studio and use Build > Generate Signed App Bundle.');
   return { projectDir: dir, apk, nextSteps };
+}
+
+/** Write the orientation into the native project, wherever the generated files are. */
+function setOrientation(platformDir: string, platform: MobilePlatform, orientation: AppOrientation, nextSteps: string[]): void {
+  const file = platform === 'android'
+    ? join(platformDir, 'app', 'src', 'main', 'AndroidManifest.xml')
+    : join(platformDir, 'App', 'App', 'Info.plist');
+  if (!existsSync(file)) return;
+  const before = readFileSync(file, 'utf8');
+  const after = platform === 'android' ? withAndroidOrientation(before, orientation) : withIosOrientation(before, orientation);
+  if (after === null) {
+    nextSteps.push(`Couldn't find the main activity in ${file}: set its screen orientation (${orientation}) in Android Studio.`);
+    return;
+  }
+  if (after !== before) writeFileSync(file, after);
+}
+
+const ANDROID_ORIENTATION = { landscape: 'sensorLandscape', portrait: 'sensorPortrait' } as const;
+
+/**
+ * The manifest with the main activity turning only `orientation` ways up (both landscapes, or both portraits), or
+ * free to turn for `any`. Null when there is no main activity to change.
+ */
+export function withAndroidOrientation(manifest: string, orientation: AppOrientation): string | null {
+  let found = false;
+  const next = manifest.replace(/<activity\s[^>]*>/g, (tag) => {
+    if (!/android:name="[^"]*\.MainActivity"/.test(tag)) return tag;
+    found = true;
+    const plain = tag.replace(/\s+android:screenOrientation="[^"]*"/, '');
+    return orientation === 'any' ? plain : plain.replace(/^<activity/, `<activity android:screenOrientation="${ANDROID_ORIENTATION[orientation]}"`);
+  });
+  return found ? next : null;
+}
+
+const IOS_ORIENTATIONS: Record<AppOrientation, { phone: string[]; pad: string[] }> = {
+  landscape: {
+    phone: ['UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
+    pad: ['UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
+  },
+  portrait: {
+    phone: ['UIInterfaceOrientationPortrait'],
+    pad: ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown'],
+  },
+  any: {
+    phone: ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
+    pad: ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
+  },
+};
+
+/**
+ * Info.plist with the orientations the app supports on iPhone and iPad. An iPad app that doesn't turn every way
+ * must also ask for the whole screen (no Split View), or the App Store refuses it.
+ */
+export function withIosOrientation(plist: string, orientation: AppOrientation): string {
+  const { phone, pad } = IOS_ORIENTATIONS[orientation];
+  let next = plist;
+  // Keys are plain words (and ~), so they can go into a pattern as they are.
+  const set = (key: string, xml: string) => {
+    const existing = new RegExp(`(<key>${key}</key>\\s*)(<array>[\\s\\S]*?</array>|<true/>|<false/>)`);
+    if (existing.test(next)) next = next.replace(existing, (_m, head: string) => head + xml);
+    else next = next.replace(/\n?<\/dict>(\s*<\/plist>\s*)$/, (_m, tail: string) => `\n\t<key>${key}</key>\n\t${xml}\n</dict>${tail}`);
+  };
+  const array = (list: string[]) => `<array>\n${list.map((v) => `\t\t<string>${v}</string>`).join('\n')}\n\t</array>`;
+  set('UISupportedInterfaceOrientations', array(phone));
+  set('UISupportedInterfaceOrientations~ipad', array(pad));
+  if (orientation !== 'any') set('UIRequiresFullScreen', '<true/>');
+  return next;
 }
 
 export function capacitorConfig(o: Pick<MobileExportOptions, 'appId' | 'title'>) {
@@ -159,6 +244,40 @@ export function semver(v: string | undefined): string {
 
 function fileName(title: string): string {
   return title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'game';
+}
+
+/** The Java the generated Android projects compile with (Capacitor 8). */
+export const JAVA_NEEDED = 21;
+
+/** The major version in `java -version` output ("17.0.11", "21", "1.8.0_402" → 8), or null. */
+export function javaMajor(versionOutput: string): number | null {
+  const m = /version "(\d+)(?:\.(\d+))?/.exec(versionOutput);
+  if (!m) return null;
+  const first = Number(m[1]);
+  return first === 1 && m[2] ? Number(m[2]) : first;
+}
+
+/**
+ * A Java new enough for Gradle: JAVA_HOME, then the one Android Studio comes with, then `java` on the PATH.
+ * `home` is what to give Gradle as JAVA_HOME (none for the PATH's java, which Gradle finds itself).
+ */
+function findJava(): { home: string | null } | null {
+  const exe = process.platform === 'win32' ? 'java.exe' : 'java';
+  const studio = [
+    process.platform === 'win32' && process.env.ProgramFiles ? join(process.env.ProgramFiles, 'Android', 'Android Studio', 'jbr') : undefined,
+    process.platform === 'darwin' ? '/Applications/Android Studio.app/Contents/jbr/Contents/Home' : undefined,
+    process.platform === 'linux' ? '/opt/android-studio/jbr' : undefined,
+  ];
+  // `java -version` writes to stderr.
+  const versionOf = (cmd: string) => {
+    const r = spawnSync(cmd, ['-version'], { encoding: 'utf8' });
+    return r.error ? null : javaMajor(`${r.stderr ?? ''}${r.stdout ?? ''}`);
+  };
+  for (const home of [process.env.JAVA_HOME, ...studio]) {
+    if (!home || !existsSync(join(home, 'bin', exe))) continue;
+    if ((versionOf(join(home, 'bin', exe)) ?? 0) >= JAVA_NEEDED) return { home };
+  }
+  return (versionOf('java') ?? 0) >= JAVA_NEEDED ? { home: null } : null;
 }
 
 /** The Android SDK, if installed. */
