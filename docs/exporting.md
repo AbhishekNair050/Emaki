@@ -85,9 +85,10 @@ If Steam isn't running (or the game is started outside Steam), the game plays no
 ## Android
 `export android` creates (the first time) a full Android Studio project in `export/mobile/`, then copies your game into it. Later exports only refresh the game, so anything you change in Android Studio (icons, signing, store settings) is kept.
 
-- **With the Android SDK installed** (Android Studio installs it), the export also builds `export/mobile/<Title>-debug.apk`, which you can install on a phone for testing (`adb install -r <file>`). Use `--no-build` to skip that.
+- **With the Android SDK and Java 21 or newer installed** (Android Studio comes with both; otherwise set `JAVA_HOME` to a JDK 21), the export also builds `export/mobile/<Title>-debug.apk`, which you can install on a phone for testing (`adb install -r <file>`). Use `--no-build` to skip that.
 - **To publish:** open the project (`npx cap open android` in `export/mobile`) and use *Build → Generate Signed App Bundle* for Google Play.
-- On phones the game fills the screen (the status bar is hidden), works upright or sideways, and the **back button** closes menus, then asks before leaving the story, then quits from the title screen.
+- On phones the game fills the screen (the status bar is hidden), and the **back button** closes menus, then asks before leaving the story, then quits from the title screen.
+- **Which way up:** the header's `orientation:` decides how the app turns. `landscape` keeps it sideways (either way round), `portrait` upright, and `any` follows the phone. Without the line, a game with a `canvas:` is `landscape` (its art can only be letterboxed upright) and other games are `any` (held upright, they use the portrait layout). Every export writes this into the app (the main activity on Android, Info.plist on iOS), so change it in the header rather than in Android Studio or Xcode.
 
 ## iOS
 `export ios` prepares the same project for iOS. Apple only allows building iOS apps on a Mac: on Windows or Linux, export, copy `export/mobile/` to a Mac, then run `npx cap add ios` and `npx cap open ios` there (Xcode required). On a Mac the export does those steps for you.
