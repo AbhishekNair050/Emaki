@@ -175,6 +175,8 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
       jobs.push(job);
       const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1' };
       delete env.NODE_ENV;
+      // In Emaki Studio, process.execPath is the app itself: run it as plain Node for the export.
+      if (process.versions.electron) env.ELECTRON_RUN_AS_NODE = '1';
       const child = spawn(process.execPath, [resolve(import.meta.dirname, 'main.ts'), 'export', target, path], {
         cwd: resolve(import.meta.dirname, '../../..'), env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
       });

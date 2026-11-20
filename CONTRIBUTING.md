@@ -19,6 +19,7 @@ packages/desktop     desktop export: app/ is the Electron shell shipped in every
 packages/mobile      Android/iOS export: generates and syncs a Capacitor project
 packages/editor      web editor: script pane (CodeMirror) + game + flowchart; src/server is the Vite plugin that reads/saves story.vn and manages assets/
 packages/language    editor features (problems, symbols, definition, references, hover, completion, formatting) and structural edits (src/edits.ts) over plain text
+packages/studio      Emaki Studio: Electron app that runs the launcher (@emaki/cli) in its main process; editors and players in their own windows
 packages/vscode      VS Code extension: a thin adapter over @emaki/language + TextMate grammar; bundled by esbuild
 games/gullwing       demo VN "The Keeper of Gullwing Point" (story.vn + assets/ + tools/gen-art.mjs)
 games/plugin-demo    a small game using the example plugins (plugins/weather, memory, meter; see docs/plugins.md)

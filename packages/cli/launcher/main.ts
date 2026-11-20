@@ -6,6 +6,10 @@ interface Job { id: number; path: string; target: string; status: 'running' | 'd
 interface State { projects: Project[]; sessions: Session[]; jobs: Job[]; defaultDirectory: string; home: string; platform: string }
 interface Folders { path: string; parent: string | null; folders: string[]; game: boolean; roots: string[] }
 interface InfoState { working: boolean; info: ProjectInfo | null; error: string | null }
+/** Present when the launcher runs inside Emaki Studio (packages/studio): the system's folder picker. */
+interface StudioBridge { pickFolder(options: { title: string; defaultPath?: string }): Promise<string | null> }
+const studio = (window as { emakiStudio?: StudioBridge }).emakiStudio ?? null;
+if (studio) document.getElementById('running-hint')!.textContent = 'The editor and the player each open in their own window.';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id)! as T;
 const button = (id: string) => $<HTMLButtonElement>(id);
 const input = (id: string) => $<HTMLInputElement>(id);
@@ -142,7 +146,7 @@ function render(): void {
     button('edit').disabled = !connected || !project.available || pending.has('editor');
     button('play').disabled = !connected || !project.available || pending.has('play');
     button('edit').firstChild!.textContent = pending.has('editor') ? 'Starting the editor… ' : 'Open editor ';
-    button('play').textContent = pending.has('play') ? 'Starting the player…' : 'Play in a browser tab';
+    button('play').textContent = pending.has('play') ? 'Starting the player…' : studio ? 'Play in a window' : 'Play in a browser tab';
     button('folder').disabled = !connected || !project.available;
     const rows = $('sessions'); rows.replaceChildren();
     for (const kind of ['editor', 'play'] as const) {
@@ -154,7 +158,7 @@ function render(): void {
       status.textContent = pending.has(kind) ? 'Starting…' : session ? 'Running' : 'Not running';
       row.append(name, status);
       if (session) {
-        const link = document.createElement('a'); link.href = session.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open tab ↗';
+        const link = document.createElement('a'); link.href = session.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = studio ? 'Open window ↗' : 'Open tab ↗';
         const stop = document.createElement('button'); stop.textContent = 'Stop'; stop.disabled = !connected || pending.has(kind);
         const sessionPath = session.path;
         stop.addEventListener('click', () => { void action(async () => {
@@ -283,7 +287,7 @@ async function launch(kind: SessionKind): Promise<void> {
       // The editor opens in the workspace chosen beside its button.
       const url = kind === 'editor' ? `${session.url}${session.url.includes('?') ? '&' : '?'}workspace=${workspace}` : session.url;
       if (tab && !tab.closed) tab.location.replace(url);
-      else notice('Your session is ready. Use Open tab under Running to open it.');
+      else notice(`Your session is ready. Use ${studio ? 'Open window' : 'Open tab'} under Running to open it.`);
     } catch (err) { tab?.close(); throw err; }
     finally { pending.delete(kind); await refresh(); }
   });
@@ -331,7 +335,15 @@ async function loadFolders(path: string): Promise<void> {
   } catch (err) { if (request === browseRequest) showError('browse-error', err); }
 }
 
+async function pickWithStudio(bridge: StudioBridge, next: 'parent' | 'existing-path'): Promise<void> {
+  const title = next === 'parent' ? 'Choose where to make the project' : 'Choose a game folder';
+  const path = await bridge.pickFolder({ title, defaultPath: input(next).value || state.home });
+  if (!path) return;
+  input(next).value = path; updatePath();
+}
+
 function openBrowser(next: 'parent' | 'existing-path'): void {
+  if (studio) { void action(() => pickWithStudio(studio, next)); return; }
   folderTarget = next; folders = null;
   $('folder-title').textContent = next === 'parent' ? 'Choose where to make the project' : 'Choose a game folder';
   $('folders').replaceChildren(); $('roots').replaceChildren(); $('browse-info').textContent = '';

@@ -7,6 +7,9 @@
   "bin": {
     "emaki": "./src/main.ts"
   },
+  "exports": {
+    "./launcher": "./src/launcher.ts"
+  },
   "dependencies": {
     "@emaki/desktop": "0.1.0",
     "@emaki/editor": "0.1.0",
