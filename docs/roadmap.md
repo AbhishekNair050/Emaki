@@ -138,6 +138,14 @@ The first pass kept the old editor's layout; this one follows the design (the "A
   - the story compiled twice per pause, for the game and for the underlines; a compile cache hands back its last result for the same texts
   - The longest freeze while typing and just after: 1.3-4 s → 0.25-0.5 s (the one compile left). Left alone: hashing every scene's code on the first compile (0.4 s of a 3 s load; the hash is what saves rely on), and the one compile per pause (~0.2-0.5 s here; a worker would hide it, if a longer game needs it)
 
+## 🚧 Milestone 13 — Emaki Studio
+Writers start without installing Node, git or a terminal: one app with the launcher, editor, player and exporters (D-068), kept in `packages/studio` so the browser tools stay as they are.
+- [x] The app: the launcher in a window, editors and players in their own windows, the system's folder picker, exports on the app's own Node, other sites in the browser (`npm run studio`)
+- [x] Exporting while a game's editor or player is open (the dev servers held the `export` folder open on Windows)
+- [ ] Packaged: the engine and its dependencies inside the app, an installer for Windows, then macOS and Linux
+- [ ] Signed installers and updates
+- [ ] Starter templates in New project, and a check for what Android and iOS exports need
+
 ## ⏸ On hold
 - Ren'Py importer (common subset)
 

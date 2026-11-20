@@ -9,7 +9,12 @@ Each project shows its picture (the `title_image`, else the background of its ow
 
 Editor and player sessions open in separate tabs. Reopening a session reuses its server; use **Stop** in the launcher to close it. Keep the launcher terminal open: Ctrl+C stops the launcher and all its sessions. Closing a browser tab alone does not stop a session. Recent projects are stored in `~/.emaki/launcher.json`; removing one from the list never deletes the game. Missing or moved folders stay listed until you remove or reopen them.
 
-`npm run emaki -- launch --port 5180` selects a different launcher port. Add `--no-open` to print the address without opening a browser. The launcher runs locally and requires the same Node installation as the other tools; it is not yet a standalone desktop application.
+`npm run emaki -- launch --port 5180` selects a different launcher port. Add `--no-open` to print the address without opening a browser. The launcher runs locally and requires the same Node installation as the other tools.
+
+## Emaki Studio
+`npm run studio` opens the same launcher as a desktop app (D-068). The editor and the player open in windows of their own instead of browser tabs, **Browse** uses the system's folder picker, and links to other sites open in your browser. Closing the launcher window closes the Studio, with its editors, players and exports. Everything else works as in the launcher above, and both can run at once (the Studio's launcher uses port 5185); they share the list of recent projects.
+
+The Studio runs on the Node built into Electron, so the app it will become needs nothing else installed. For now it runs from the repository like the other tools; an installer comes later.
 
 ## The editor
 `npm run edit` opens the editor in your browser (http://localhost:5174). For your own game: `EMAKI_GAME=../my-game npm run edit` (in PowerShell: `$env:EMAKI_GAME="../my-game"; npm run edit`).

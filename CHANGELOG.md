@@ -33,11 +33,13 @@ The first public version. Everything below is new.
 
 ### Tools
 - A local project launcher (`npm run launch`) in the editor's look: recent projects with their pictures, each project's size and problems (worked out in the background), create/open games with a folder browser, the editor opened in a chosen workspace, player sessions, and web/desktop/Android/iOS exports with build output. Direct `emaki edit <game>` and `emaki play <game>` commands also accept a game folder without environment variables.
+- Emaki Studio (`npm run studio`, D-068): the launcher, editor and player in desktop windows, with the system's folder picker, exports run on the app's own Node, and links to other sites opened in the browser. The first step towards an app that needs no Node or git installed; there is no installer yet.
 - The web editor (`npm run edit`): script, live game and flowchart linked together, visual scene editing written back as clean text, an asset browser with drag and drop, autosave with conflict detection.
 - Editor workspaces (D-065): Write, Stage and Story (Alt+1/2/3) in one layout: the scenes and a route chooser on the left, an inspector on the right, the scene's lines along the bottom. A route to an ending, found by playing the story in the background, sets the variables for every play-from-here. Stage has Move / Scale / Rotate tools and guides; Story colours scenes by playtest coverage, words or a variable's value, with a card for each scene, and pans and zooms like a design tool. Route to and the inspector can be hidden; the lines along the bottom follow the game as it plays.
 - The VS Code extension: highlighting, errors as you type, completion, go to definition, references, hover, outline, formatting, and play from the cursor's line.
 - The dev server with live reload at the same line, a story map for jumping anywhere and testing routes, and previews from any line with chosen variables.
 - The CLI: `new`, `check`, `fmt`, `graph`, `build`, `strings`, `voices`, `export`.
+- Exporting a game while its editor or player is open works on Windows: the dev servers no longer watch the `export` folder, which kept it open so the next export couldn't replace it.
 - The editor, dev server and launcher listen only on this computer and refuse requests from other sites, including through DNS rebinding (requests are only answered for localhost or an IP address; Vite's `server.allowedHosts` adds names).
 
 ### Plugins
