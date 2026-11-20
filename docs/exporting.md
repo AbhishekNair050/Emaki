@@ -2,7 +2,7 @@
 
 One command turns a game folder into something players can run. Everything goes into `<game>/export/`, which git ignores.
 
-You can also use **Export game** in the project launcher (`npm run launch`). Pick Web, Desktop, Android or iOS, then Export. Build output appears below the controls; once it finishes, **Show export folder** opens the output location. Desktop uses your computer's platform and architecture; Android and iOS make projects for Android Studio and Xcode (an APK too when the Android SDK is installed). For cross-platform desktop builds and the options below, use the commands.
+You can also use **Export game** in the project launcher (`npm run launch`). Pick Web, Desktop, Android or iOS, choose any **Compression** (below), then Export. Build output appears below the controls; once it finishes, **Show export folder** opens the output location. Desktop uses your computer's platform and architecture; Android and iOS make projects for Android Studio and Xcode (an APK too when the Android SDK is installed). For cross-platform desktop builds and the options below, use the commands.
 
 ```sh
 npm run export -- web     games/mygame    # a website (itch.io, any host)
@@ -36,6 +36,33 @@ language: en
 | `language` | The language the script is written in (for the language menu). |
 
 Put a square `icon.png` (512×512 or larger) in the game folder to give the desktop app its icon. Phone icons are set in Android Studio and Xcode (Image Asset / App Icon).
+
+## Making the export smaller
+Pictures, sound and movies are most of a game's size, and many games ship them larger than players can tell apart. Compression changes only the export's copy: the files in `assets/` stay as they are, and the editor and player keep using them. Each kind is off until you turn it on.
+
+In the launcher, open **Compression** under Export and pick a setting for each kind; it's saved in the game folder's `export.json`, so the commands use it too:
+
+```json
+{ "compress": { "images": 90, "audio": 96, "video": 23 } }
+```
+
+| Kind | Files | Setting |
+|---|---|---|
+| `images` | PNG and BMP, to WebP | `lossless` (pixel for pixel), or a quality from 50 to 100. 90 is hard to tell from the original; transparency always stays exact, so sprite edges don't fringe. |
+| `audio` | WAV, FLAC, AIFF, OGG and MP3, to Opus (in `.ogg`) | kbit/s for stereo files, 24 to 256; mono files (voices, mostly) get half. 96 suits music, and gives mono voices 48. Lossy files already at or near the setting are left alone, since encoding them again would only lose quality. |
+| `video` | MP4, MOV, M4V, OGV, AVI, MKV, MPEG and WMV, to H.264 MP4 | CRF from 15 (close to the original, large) to 40 (small); 18 to 23 is usual. WebM is left alone (it may have a transparent background, which H.264 can't keep). |
+
+Any file that comes out less than 5% smaller stays as it was, and so do animated PNGs (WebP would keep only their first frame). A file that changes format gets a new name (`bg/sea.png` becomes `bg/sea.webp`); the export lists these in `game.json` and the player looks every asset up there, so the story keeps its original names. A plugin that builds a file's address itself, instead of asking the plugin API's `asset()`, won't find renamed files.
+
+Results are kept in `export/.compress-cache`, so a second export converts only the files that changed. Delete that folder to start over.
+
+Sound and movies need [ffmpeg](https://ffmpeg.org/download.html) (with `ffprobe`, and built with libopus and libx264, as the usual Windows, macOS and Linux builds are) on the PATH, or `FFMPEG_PATH` set to the `ffmpeg` program. Without it, those two are skipped and the launcher says why. Older Safari and iOS versions can't play `.ogg` files at all; check on the oldest iPhone you support before compressing sound for an iOS export.
+
+From the command line, `--images`, `--audio` and `--video` replace the game's setting for that export (`off` turns one off):
+
+```sh
+npm run export -- web games/mygame --images 85 --audio off
+```
 
 ## Web
 `export web` makes a static site in `export/web/`. Zip the folder's contents and upload it to itch.io as an HTML game ("This file will be played in the browser"), or put it on any web host. Saves stay in the player's browser.

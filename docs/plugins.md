@@ -99,7 +99,7 @@ export default function weather(ctx) {
 | `layer` | The plugin's own layer: over the characters, under the text box. Clicks pass through it. |
 | `stage` | The whole stage (for its size). |
 | `modal()` | `{ root, close() }`: a full-screen area over the story that takes clicks, for a command the story waits on. The player closes it if the player goes back or loads. |
-| `asset(path)` | URL of a file in the game's assets/ (in the player's language when it has a version). Files in the plugin's own folder: `new URL('./petal.png', import.meta.url)`. |
+| `asset(path)` | URL of a file in the game's assets/ (in the player's language when it has a version, and under its new name when the export compressed it, see [exporting](exporting.md#making-the-export-smaller)). Files in the plugin's own folder: `new URL('./petal.png', import.meta.url)`. |
 | `vars()` | The story's variables. |
 | `set(name, value)` | Change a story variable listed in `"sets"`, to a value of the type it started with. See below. |
 | `storage` | The plugin's own data on this device: `get(key)`, `set(key, value)` (anything JSON can hold), `remove(key)`, `keys()`. See below. |
