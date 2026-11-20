@@ -121,11 +121,10 @@ export function emakiGame(gameDir: string): Plugin {
       if (env.command !== 'serve') return;
       // The dev server reads assets/ from disk as they're asked for (see serveAssets) instead
       // of listing and watching every file, which takes most of a minute for a long game.
-      const assets = normalize(resolve(gameDir, 'assets'));
-      return {
-        publicDir: false,
-        server: { watch: { ignored: [(p: string) => normalize(p) === assets || normalize(p).startsWith(assets + sep)] } },
-      };
+      // Exports aren't watched either: on Windows a watched folder stays open, so the next export couldn't replace it.
+      const skip = ['assets', 'export'].map((d) => normalize(resolve(gameDir, d)));
+      const ignored = (p: string) => { const n = normalize(p); return skip.some((d) => n === d || n.startsWith(d + sep)); };
+      return { publicDir: false, server: { watch: { ignored: [ignored] } } };
     },
     configResolved(config) {
       devServer = config.command === 'serve';

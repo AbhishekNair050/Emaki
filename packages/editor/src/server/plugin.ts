@@ -57,8 +57,10 @@ export function emakiEditor(gameDir: string): Plugin {
     config() {
       // Assets are read from disk as they're asked for (see serveAssets), not listed and
       // watched one by one through Vite's public folder: slow for a game with thousands.
-      const root = resolve(gameDir, 'assets');
-      return { publicDir: false, server: { watch: { ignored: [(p: string) => resolve(p) === root || resolve(p).startsWith(root + sep)] } } };
+      // Exports aren't watched either: on Windows a watched folder stays open, so the next export couldn't replace it.
+      const skip = ['assets', 'export'].map((d) => resolve(gameDir, d));
+      const ignored = (p: string) => { const r = resolve(p); return skip.some((d) => r === d || r.startsWith(d + sep)); };
+      return { publicDir: false, server: { watch: { ignored: [ignored] } } };
     },
     resolveId(id) {
       return id === THEME ? RESOLVED_THEME : id === PLUGINS ? RESOLVED_PLUGINS : null;
