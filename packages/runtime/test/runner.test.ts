@@ -158,6 +158,29 @@ label sub:
     expect(r2.advance().block).toMatchObject({ text: 'In sub.' });
   });
 
+  it('loads a save from an earlier build at the same line, after lines were added above it', () => {
+    const v1 = story('label start:\n  "One."\n  "Two."\n  menu:\n    "Go":\n      "Three."\n  "Four."\n');
+    const v2 = story('label start:\n  "Zero."\n  "One."\n  "Two."\n  menu:\n    "Go":\n      "Three."\n  "Four."\n');
+    const r1 = new Runner(v1);
+    r1.start();
+    const atOne = JSON.parse(JSON.stringify(r1.save()));
+    r1.advance();
+    r1.advance();
+    const atMenu = JSON.parse(JSON.stringify(r1.save()));
+
+    const r2 = new Runner(v2);
+    expect(r2.load(atOne)).toEqual({ ok: true, mismatch: true });
+    expect(r2.block).toMatchObject({ text: 'One.' });
+    expect(r2.advance().block).toMatchObject({ text: 'Two.' });  // not "One." again
+    expect(r2.load(atMenu).ok).toBe(true);
+    expect(r2.choose(0).block).toMatchObject({ text: 'Three.' });
+    // A line whose text changed can't be found by id: the saved position is kept, as before.
+    const v3 = story('label start:\n  "One, edited."\n  "Two."\n');
+    const r3 = new Runner(v3);
+    expect(r3.load(atOne)).toEqual({ ok: true, mismatch: true });
+    expect(r3.advance().block).toMatchObject({ text: 'Two.' });
+  });
+
   it('remembers the line a menu responds to, across save/load', () => {
     const st = story(src);
     const r1 = new Runner(st);

@@ -377,16 +377,18 @@ export class Player {
 
   /** Play from any label, keeping the current variables and what's on screen. */
   jumpTo(label: string): void {
-    const scene = this.mode === 'title' ? undefined : this.runner.scene();
+    const fromTitle = this.mode === 'title';
+    const scene = fromTitle ? undefined : this.runner.scene();
     const vars = { ...this.runner.vars };
+    // The story's lasting state, read before enterPlaying() changes the mode.
+    const screens = fromTitle ? [] : this.runner.screens;
+    const plugins = fromTitle ? {} : this.runner.pluginSlots;
     this.enterPlaying();
     this.auto = this.skip = false;
     this.updateToggles();
     this.nextEpoch();
     this.busy = false;
     this.syncScene(scene ?? { bg: null, sprites: [] });
-    const screens = this.mode === 'title' ? [] : this.runner.screens;
-    const plugins = this.mode === 'title' ? {} : Object.fromEntries(this.runner.pluginState.map((c, i) => [`${c.plugin}.${i}`, c]));
     this.guard(() => this.present(this.runner.startAt(label, { vars, scene, screens, plugins })));
   }
 
@@ -567,13 +569,14 @@ export class Player {
 
     switch (b.type) {
       case 'say':
-        if (page) { this.showPage(page, b, instant || this.skip); this.read.add(b.id); break; }
+        // Skip stops at the first unread line, on a full-screen page as in the text box.
         if (this.skip && !this.skipToChoice && this.settings.skipMode === 'read' && !this.read.has(b.id)) {
           this.skip = false;
           this.updateToggles();
           this.toast(this.t('ui.skip_stopped'));
         }
         this.read.add(b.id);
+        if (page) { this.showPage(page, b, instant || this.skip); break; }
         // Typing speed is the Text speed setting's job alone. Reduced motion (which Windows turns on
         // with "Animation effects" off) is about movement, not letters appearing.
         this.showLine(b, instant || this.skip);
@@ -1923,9 +1926,10 @@ export class Player {
         case 'set': {
           const vars = this.screenVars(screen);
           try {
-            const v = evaluate(a.value, vars, this.callPlugin);
-            const old = vars[a.name];
-            const next = a.op === '=' ? v : typeof old === 'number' && typeof v === 'number' ? (a.op === '+=' ? old + v : old - v) : a.op === '+=' ? String(old) + String(v) : v;
+            // `+=` / `-=` follow the story's own rules (as `set` compiles them), so `-=` on text is an error here too.
+            const next = a.op === '='
+              ? evaluate(a.value, vars, this.callPlugin)
+              : evaluate({ k: 'bin', op: a.op === '+=' ? '+' : '-', l: { k: 'var', name: a.name }, r: a.value }, vars, this.callPlugin);
             for (const fx of this.runner.assign(a.name, next)) {
               if (fx.type === 'globals') storage.set(`${this.storeKey}:globals`, JSON.stringify(fx.values));
             }

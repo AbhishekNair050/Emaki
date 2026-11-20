@@ -474,6 +474,11 @@ export class Runner {
     return Object.values(clone(this.state.plugins ?? {}));
   }
 
+  /** The same commands by slot (`plugin.lasting`), to hand to startAt so later `ends` commands still find them. */
+  get pluginSlots(): Record<string, PluginCommand> {
+    return clone(this.state.plugins ?? {});
+  }
+
   /** The screens shown over the story, bottom first. */
   get screens(): string[] {
     return [...(this.state.screens ?? [])];
@@ -682,14 +687,30 @@ export class Runner {
   load(data: SaveData): { ok: boolean; mismatch: boolean } {
     this.replaying = null;
     if (data?.format !== 'emaki-save' || !data.state || !data.block) return { ok: false, mismatch: false };
-    if (data.state.pc < 0 || data.state.pc > this.story.code.length) return { ok: false, mismatch: false };
+    const mismatch = data.storyHash !== this.story.hash;
+    // A save from another build: the line on screen may have moved (lines added or removed above it), so find it again
+    // by its id. When it's gone (its text was edited), the saved position is kept, as before.
+    const pc = (mismatch ? this.anchor(data.block) : null) ?? data.state.pc;
+    if (typeof pc !== 'number' || pc < 0 || pc > this.story.code.length) return { ok: false, mismatch: false };
     this.state = clone(data.state);
+    this.state.pc = pc;
     // Variables added in a newer build get their default values.
     this.state.vars = { ...this.story.vars, ...this.state.vars };
     this.applyGlobals();
     this.current = this.localize(clone(data.block));
     this.history = [{ state: clone(this.state), block: this.current }];
-    return { ok: true, mismatch: data.storyHash !== this.story.hash };
+    return { ok: true, mismatch };
+  }
+
+  /**
+   * Where the story stands while `block` shows, in this build: after its `say` (a line is shown once the runner has
+   * passed it), or on its `menu`. Null when the block has no id or this build has no instruction with it.
+   */
+  private anchor(block: Block): number | null {
+    if (block.type !== 'say' && block.type !== 'menu') return null;
+    const at = this.story.code.findIndex((i) => i.op === block.type && i.id === block.id);
+    if (at < 0) return null;
+    return block.type === 'say' ? at + 1 : at;
   }
 
   /**

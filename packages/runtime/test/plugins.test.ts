@@ -101,6 +101,15 @@ describe('running plugin commands', () => {
     preview.startAtLine(SRC.split('\n').indexOf('  "Rain."') + 1);
     expect(preview.pluginState.map((c) => c.args.kind)).toEqual(['rain']);
   });
+
+  it('hand lasting commands to startAt by their slots, so a later command that ends one still finds it', () => {
+    const run = new Runner(story());
+    run.start();
+    expect(run.pluginSlots).toEqual({ 'weather.sky': { plugin: 'weather', command: 'start', args: { kind: 'snow', amount: 40 } } });
+    const jumped = new Runner(compile(`${SRC}\nlabel later:\n  @weather stop\n  "Clear again."\n`, { plugins }).story!);
+    jumped.startAt('later', { plugins: run.pluginSlots });
+    expect(jumped.pluginState).toEqual([]);
+  });
 });
 
 describe('plugins changing story variables', () => {
