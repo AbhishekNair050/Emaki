@@ -10,7 +10,7 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { parseAspect } from '@emaki/format';
+import { gameOrientation, parseAspect, type Orientation } from '@emaki/format';
 import { compileGame, where } from '@emaki/format/files';
 import { buildWeb } from '@emaki/player-web/build';
 
@@ -38,6 +38,8 @@ export interface GameInfo {
   icon: string | null;
   /** The stage's shape, width / height (header `aspect:`; 16:9 unless set). */
   aspect: number;
+  /** Which way up phones show it (header `orientation:`; landscape with a `canvas:`, else any). */
+  orientation: Orientation;
 }
 
 /** Read and check the game's header; throws a message for the writer on problems. */
@@ -63,6 +65,7 @@ export function gameInfo(game: string, defaultAppId: (title: string) => string):
   return {
     dir, title, steamAppId, icon,
     aspect: (meta.aspect ? parseAspect(meta.aspect) : null) ?? 16 / 9,
+    orientation: gameOrientation(meta),
     appId: meta.app_id?.trim() || defaultAppId(title),
     ...(meta.author ? { author: meta.author } : {}),
     ...(meta.version ? { version: meta.version } : {}),
@@ -118,7 +121,7 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
   }
   const r = await mobile.exportMobile({
     webDir, projectDir: join(exportDir, 'mobile'), platform: a.target, title: info.title, appId: info.appId,
-    build: !a.noBuild, log, ...(info.version ? { version: info.version } : {}),
+    orientation: info.orientation, build: !a.noBuild, log, ...(info.version ? { version: info.version } : {}),
   });
   const defaultId = info.appId.startsWith('com.emaki.') ? ` (app id ${info.appId}: set app_id in the story header to your own before publishing)` : '';
   return [

@@ -784,6 +784,9 @@ export function compileProgram(program: Program, opts: CompileOptions = {}): { s
   if (meta.aspect !== undefined && parseAspect(meta.aspect) === null) {
     warn(1, 'bad-aspect', `'aspect: ${meta.aspect}' isn't a shape the player understands; use width:height, like 16:9 or 4:3`);
   }
+  if (meta.orientation !== undefined && !(ORIENTATIONS as readonly string[]).includes(meta.orientation.trim())) {
+    warn(1, 'bad-orientation', `'orientation: ${meta.orientation}' should be 'landscape', 'portrait' or 'any'`);
+  }
 
   // --- Extras: replayable scenes -----------------------------------------
   const replays: NonNullable<CompiledStory['replays']> = [];
@@ -943,6 +946,19 @@ function editDistance(a: string, b: string): number {
     }
   }
   return d[a.length][b.length];
+}
+
+export const ORIENTATIONS = ['landscape', 'portrait', 'any'] as const;
+export type Orientation = (typeof ORIENTATIONS)[number];
+
+/**
+ * Which way up the game is played: header `orientation:`, else landscape for a game drawn on a fixed `canvas:`
+ * (upright it could only be letterboxed) and any for the rest (upright phones get the portrait layout).
+ */
+export function gameOrientation(meta: Record<string, string | undefined>): Orientation {
+  const v = meta.orientation?.trim();
+  if ((ORIENTATIONS as readonly string[]).includes(v ?? '')) return v as Orientation;
+  return parseCanvas(meta.canvas) ? 'landscape' : 'any';
 }
 
 /** The stage shape from a header `aspect: 4:3` (width / height), or null if it isn't one. */
