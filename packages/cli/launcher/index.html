@@ -102,6 +102,22 @@
               <button id="export" type="submit" class="primary">Export</button>
             </form>
             <p id="target-note" class="field-hint"></p>
+            <details id="compress" class="compress">
+              <summary>Compression <span id="compress-summary" class="compress-summary"></span></summary>
+              <div class="compress-grid">
+                <label for="compress-images">Pictures</label>
+                <select id="compress-images" data-kind="images"></select>
+                <span class="field-hint">PNG and BMP to WebP</span>
+                <label for="compress-audio">Sound</label>
+                <select id="compress-audio" data-kind="audio"></select>
+                <span class="field-hint" id="compress-audio-hint">WAV, FLAC, OGG and MP3 to Opus</span>
+                <label for="compress-video">Movies</label>
+                <select id="compress-video" data-kind="video"></select>
+                <span class="field-hint" id="compress-video-hint">MP4, MOV, AVI and others to H.264</span>
+              </div>
+              <p class="field-hint">Only the exported copy is compressed: the files in <code>assets</code> stay as they are. Files that wouldn’t get smaller are left alone. Saved in the project’s <code>export.json</code>.</p>
+              <p id="compress-error" class="form-error" role="alert" hidden></p>
+            </details>
             <div id="export-progress" class="export-progress" hidden>
               <div class="export-status"><span id="export-status" role="status"></span><button id="output-folder" type="button" class="link-button" hidden>Show export folder</button></div>
               <details id="export-details"><summary>Build output</summary><pre id="export-log" tabindex="0" aria-label="Build output"></pre></details>

@@ -9,6 +9,7 @@ import { DEFAULT_PROJECTS_DIR, Projects, projectPath } from './projects.ts';
 import { openOnDesktop, Sessions, type SessionKind } from './serve.ts';
 import { assetFile, PICTURE_TYPES, storySignature, type ProjectInfo } from './project-info.ts';
 import { TARGETS, type Target } from './export.ts';
+import { findTools, missingTool, parseCompression, readCompression, writeCompression } from './compress.ts';
 
 interface ExportJob {
   id: number; path: string; target: Target; status: 'running' | 'done' | 'failed';
@@ -126,6 +127,12 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
       createReadStream(file).pipe(res);
       return;
     }
+    if (req.method === 'GET' && route === '/__launcher/compression') {
+      const path = projectPath(url.searchParams.get('path') ?? '');
+      known(path);
+      const tools = findTools(url.searchParams.has('recheck'));
+      return send(res, 200, { settings: readCompression(path), missing: { audio: missingTool('audio', tools), video: missingTool('video', tools) } });
+    }
     if (req.method === 'GET' && route === '/__launcher/browse') {
       return send(res, 200, browse(url.searchParams.get('path') || homedir()));
     }
@@ -154,6 +161,12 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
       const path = text(data, 'path');
       await sessions.stop(path, kindOf(data));
       return send(res, 200, {});
+    }
+    if (route === '/__launcher/compression') {
+      const path = projectPath(text(data, 'path'));
+      known(path);
+      writeCompression(path, parseCompression(data.settings));
+      return send(res, 200, { settings: readCompression(path) });
     }
     if (route === '/__launcher/folder') {
       const path = text(data, 'path');

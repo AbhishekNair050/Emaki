@@ -1,6 +1,7 @@
 import type { Project } from '../src/projects.ts';
 import type { Session, SessionKind } from '../src/serve.ts';
 import type { ProjectInfo } from '../src/project-info.ts';
+import type { Compression } from '../src/compress.ts';
 
 interface Job { id: number; path: string; target: string; status: 'running' | 'done' | 'failed'; log: string; output: string }
 interface State { projects: Project[]; sessions: Session[]; jobs: Job[]; defaultDirectory: string; home: string; platform: string }
@@ -38,6 +39,21 @@ const TARGET_NOTES: Record<string, string> = {
   ios: 'An Xcode project. Building it needs a Mac with Xcode.',
 };
 const TARGET_NAMES: Record<string, string> = { web: 'web', desktop: 'desktop', android: 'Android', ios: 'iOS' };
+type Kind = keyof Compression;
+interface CompressionState { settings: Compression; missing: { audio: string | null; video: string | null } }
+/** The selected project's compression settings, as last loaded or saved. */
+let compression: { path: string; state: CompressionState } | null = null;
+let compressionLoading = '';
+const KINDS: Kind[] = ['images', 'audio', 'video'];
+const OFF = 'Keep as they are';
+/** Choices in each list; a value set by hand in export.json is added to its list. */
+const PRESETS: Record<Kind, [string | number, string][]> = {
+  images: [['off', OFF], ['lossless', 'WebP, lossless'], [95, 'WebP, quality 95'], [90, 'WebP, quality 90'], [85, 'WebP, quality 85'], [80, 'WebP, quality 80'], [75, 'WebP, quality 75']],
+  audio: [['off', OFF], [192, 'Opus, 192 kbit/s'], [160, 'Opus, 160 kbit/s'], [128, 'Opus, 128 kbit/s'], [96, 'Opus, 96 kbit/s'], [64, 'Opus, 64 kbit/s'], [48, 'Opus, 48 kbit/s']],
+  video: [['off', OFF], [18, 'H.264, near original (CRF 18)'], [20, 'H.264, high quality (CRF 20)'], [23, 'H.264, balanced (CRF 23)'], [26, 'H.264, smaller (CRF 26)'], [28, 'H.264, small (CRF 28)']],
+};
+const customLabel = (kind: Kind, v: string | number) => kind === 'images' ? `WebP, quality ${v}` : kind === 'audio' ? `Opus, ${v} kbit/s` : `H.264, CRF ${v}`;
+const SHORT: Record<Kind, string> = { images: 'pictures', audio: 'sound', video: 'movies' };
 const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
 
 function stored(key: string, allowed: string[] | null, fallback: string): string {
@@ -132,6 +148,7 @@ function render(): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('#target-seg [data-target]')) b.setAttribute('aria-pressed', String(b.dataset.target === target));
   $('target-note').textContent = TARGET_NOTES[target]!;
   if (!project) { document.title = 'Emaki projects'; return; }
+  renderCompression();
   const infoState = infos.get(project.path) ?? null;
   const nextDetail = JSON.stringify([project, state.sessions.filter((s) => s.path === selected), [...pending], connected, infoState]);
   if (detailSignature !== nextDetail) {
@@ -187,6 +204,57 @@ function render(): void {
     button('output-folder').disabled = !connected;
     if (job.status === 'failed') $<HTMLDetailsElement>('export-details').open = true;
   }
+}
+
+async function loadCompression(path: string, recheck = false): Promise<void> {
+  if (compressionLoading === path) return;
+  compressionLoading = path;
+  try {
+    const next = await api<CompressionState>(`compression?path=${encodeURIComponent(path)}${recheck ? '&recheck' : ''}`);
+    if (path === selected) { compression = { path, state: next }; $('compress-error').hidden = true; }
+  } catch (err) {
+    if (path === selected) showError('compress-error', err);
+  } finally { compressionLoading = ''; renderCompression(); }
+}
+
+function renderCompression(): void {
+  const s = compression?.path === selected ? compression.state : null;
+  if (!s && connected && selected && current()?.available) void loadCompression(selected);
+  const exporting = state.jobs.some((j) => j.status === 'running');
+  const on: string[] = [];
+  for (const kind of KINDS) {
+    const select = $<HTMLSelectElement>(`compress-${kind}`);
+    const value = s ? String(s.settings[kind]) : 'off';
+    const missing = kind === 'images' ? null : s?.missing[kind] ?? null;
+    const choices = [...PRESETS[kind]];
+    if (!choices.some(([v]) => String(v) === value)) choices.push([value, customLabel(kind, value)]);
+    const signature = JSON.stringify(choices);
+    if (select.dataset.choices !== signature) {
+      select.dataset.choices = signature;
+      select.replaceChildren(...choices.map(([v, label]) => { const o = document.createElement('option'); o.value = String(v); o.textContent = label; return o; }));
+    }
+    if (document.activeElement !== select) select.value = value;
+    select.disabled = !s || !connected || exporting || (!!missing && value === 'off');
+    if (kind !== 'images') {
+      const hint = $(`compress-${kind}-hint`);
+      hint.textContent = missing ? `Needs ffmpeg: ${missing}.` : kind === 'audio' ? 'WAV, FLAC, OGG and MP3 to Opus. Mono files, like voices, get half.' : 'MP4, MOV, AVI and others to H.264. WebM is kept.';
+      hint.classList.toggle('form-error', !!missing && value !== 'off');
+    }
+    if (value !== 'off') on.push(`${SHORT[kind]} ${kind === 'images' ? (value === 'lossless' ? 'lossless' : `q${value}`) : kind === 'audio' ? `${value} kbit/s` : `CRF ${value}`}`);
+  }
+  $('compress-summary').textContent = s ? (on.length ? on.join(' · ') : 'off') : '';
+}
+
+async function saveCompression(kind: Kind, raw: string): Promise<void> {
+  const s = compression?.path === selected ? compression.state : null;
+  if (!s) return;
+  const path = selected;
+  const value = raw === 'off' || raw === 'lossless' ? raw : Number(raw);
+  try {
+    const saved = await api<{ settings: Compression }>('compression', { path, settings: { ...s.settings, [kind]: value } });
+    if (path === selected) { compression = { path, state: { ...s, settings: saved.settings } }; $('compress-error').hidden = true; }
+  } catch (err) { showError('compress-error', err); }
+  renderCompression();
 }
 
 function renderPicture(project: Project, s: InfoState | null): void {
@@ -401,6 +469,11 @@ button('select-folder').onclick = () => {
   input(folderTarget).value = folders.path; updatePath();
   $<HTMLDialogElement>('folder-dialog').close();
 };
+for (const kind of KINDS) {
+  $<HTMLSelectElement>(`compress-${kind}`).addEventListener('change', (event) => { void saveCompression(kind, (event.target as HTMLSelectElement).value); });
+}
+// ffmpeg may have been installed since: look again when the section is opened.
+$<HTMLDetailsElement>('compress').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('compress').open && selected) void loadCompression(selected, true); });
 $<HTMLFormElement>('export-form').onsubmit = (event) => {
   event.preventDefault();
   if (button('export').disabled) return;
