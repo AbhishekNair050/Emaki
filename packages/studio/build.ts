@@ -6,8 +6,8 @@
  *    can't carry: the Studio makes them when it starts, see src/link.ts).
  * 2. Add Electron with @electron/packager. No asar archive: Vite, esbuild and the exporters read and run these
  *    files as plain files.
- * 3. Make the installer with electron-builder: NSIS, one click, for the current user, so the install folder stays
- *    writable (the links, Vite's caches). Unsigned for now: Windows SmartScreen warns before the first run.
+ * 3. Make the installer with electron-builder: NSIS, for the current user (the folder can be chosen), so the
+ *    install folder stays writable (the links, Vite's caches). Unsigned for now: SmartScreen warns before the first run.
  *
  * Everything goes to packages/studio/out/ (stage, app, installer).
  */
@@ -146,7 +146,11 @@ async function installer(appDir: string, version: string, electronVersion: strin
       // The packager already set the executable's icon and details; nothing to sign yet.
       win: { icon: join(here, 'build', 'icon.png'), signAndEditExecutable: false },
       nsis: {
-        oneClick: true, perMachine: false, shortcutName: 'Emaki Studio',
+        // A few steps, so the folder can be chosen. If it doesn't end in the app's folder name, the installer adds
+        // one, so uninstalling removes only the Studio's own folder. Installed without administrator rights: the
+        // Studio writes in its folder (package links, Vite's caches), so a protected folder can't be chosen.
+        oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true,
+        shortcutName: 'Emaki Studio', createDesktopShortcut: true, createStartMenuShortcut: true, runAfterFinish: true,
         artifactName: `Emaki-Studio-Setup-${version}.exe`, deleteAppDataOnUninstall: false,
       },
     },
