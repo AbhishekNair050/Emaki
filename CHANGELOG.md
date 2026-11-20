@@ -41,6 +41,7 @@ The first public version. Everything below is new.
 - The CLI: `new`, `check`, `fmt`, `graph`, `build`, `strings`, `voices`, `export`.
 - Exporting a game while its editor or player is open works on Windows: the dev servers no longer watch the `export` folder, which kept it open so the next export couldn't replace it.
 - The editor, dev server and launcher listen only on this computer and refuse requests from other sites, including through DNS rebinding (requests are only answered for localhost or an IP address; Vite's `server.allowedHosts` adds names).
+- The editor's game pane keeps the game's own shape however narrow it gets; **Phone** previews it in a phone's screen, upright or, for landscape games, sideways.
 
 ### Plugins
 - Game plugins in `plugins/<name>/` (a `plugin.json` manifest and JavaScript): commands (effects, lasting effects that survive saves and rollback, and commands the story waits on with a result), screen elements, functions in expressions, and events. The compiler, editor and VS Code check every use against the manifest.
