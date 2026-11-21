@@ -114,6 +114,7 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
     estimates.set(path, { settings, result });
     return result;
   };
+  let importing = false;
   const kindOf = (data: Record<string, unknown>): SessionKind => {
     if (data.kind !== 'editor' && data.kind !== 'play') throw new Error('Choose Editor or Play.');
     return data.kind;
@@ -161,6 +162,14 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
     if (route === '/__launcher/example') return send(res, 200, projects.add(resolve(import.meta.dirname, '../../../games/gullwing')));
     if (route === '/__launcher/open') return send(res, 200, projects.add(text(data, 'path')));
     if (route === '/__launcher/create') return send(res, 201, projects.create(text(data, 'parent'), text(data, 'folder'), text(data, 'title')));
+    if (route === '/__launcher/import') {
+      if (importing) throw new Error('A project is already being imported. Wait for it to finish.');
+      importing = true;
+      try {
+        const { project, result } = await projects.importRenpy(text(data, 'source'), text(data, 'parent'), text(data, 'folder'));
+        return send(res, 201, { project, result });
+      } finally { importing = false; }
+    }
     if (route === '/__launcher/remove') {
       const path = text(data, 'path');
       known(path);

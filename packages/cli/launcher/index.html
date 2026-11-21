@@ -30,7 +30,7 @@
         <label class="search"><span class="sr-only">Filter projects</span><input id="search" type="search" placeholder="Filter projects" autocomplete="off" /></label>
         <div class="list-label"><span>Recent</span><span id="project-count"></span></div>
         <div id="project-list" class="project-list" aria-label="Recent projects"></div>
-        <div class="side-footer"><button id="example" class="link-button">Try the example game</button></div>
+        <div class="side-footer"><button id="example" class="link-button">Try the example game</button><button id="import-project" class="link-button">Import from Ren’Py…</button></div>
       </aside>
 
       <section class="content" aria-label="Selected project">
@@ -141,8 +141,10 @@
       <form id="project-form">
         <div class="dialog-header"><h2 id="dialog-title">New project</h2><button type="button" class="close-button" data-close="project-dialog" aria-label="Close">×</button></div>
         <p id="dialog-description" class="dialog-description"></p>
-        <div id="create-fields"><label for="title">Game title</label><input id="title" maxlength="200" placeholder="My first game" autocomplete="off" /><label for="parent">Location</label><div class="input-row"><input id="parent" autocomplete="off" /><button type="button" id="browse-parent">Browse…</button></div><label for="folder-name">Project folder</label><input id="folder-name" maxlength="100" placeholder="my-first-game" autocomplete="off" /><p id="create-path" class="field-hint path-preview"></p></div>
+        <div id="import-fields" hidden><label for="renpy-source">Ren’Py project</label><div class="input-row"><input id="renpy-source" placeholder="The project folder (with game/ and its .rpy files)" autocomplete="off" /><button type="button" id="browse-source">Browse…</button></div></div>
+        <div id="create-fields"><div id="title-field"><label for="title">Game title</label><input id="title" maxlength="200" placeholder="My first game" autocomplete="off" /></div><label for="parent">Location</label><div class="input-row"><input id="parent" autocomplete="off" /><button type="button" id="browse-parent">Browse…</button></div><label for="folder-name">Project folder</label><input id="folder-name" maxlength="100" placeholder="my-first-game" autocomplete="off" /><p id="create-path" class="field-hint path-preview"></p></div>
         <div id="open-fields" hidden><label for="existing-path">Game folder</label><div class="input-row"><input id="existing-path" placeholder="Path to your game folder" autocomplete="off" /><button type="button" id="browse-existing">Browse…</button></div><p class="field-hint">Choose the folder containing <code>story.vn</code>.</p></div>
+        <p id="import-status" class="field-hint" role="status" hidden></p>
         <p id="project-error" class="form-error" role="alert" hidden></p>
         <div class="dialog-footer"><button type="button" data-close="project-dialog">Cancel</button><button id="project-submit" type="submit" class="primary">Create project</button></div>
       </form>

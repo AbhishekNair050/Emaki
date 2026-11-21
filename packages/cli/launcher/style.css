@@ -146,7 +146,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 .row-path { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-path.missing { color: var(--danger); }
 .list-empty { color: var(--muted); padding: 8px 6px; margin: 0; }
-.side-footer { padding: 8px 4px 2px; border-top: 1px solid var(--border); }
+.side-footer { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 8px 4px 2px; border-top: 1px solid var(--border); }
 
 .content { min-width: 0; overflow: auto; padding: 28px clamp(16px, 4vw, 48px) 20px; }
 .content > * { max-width: 980px; margin-left: auto; margin-right: auto; }

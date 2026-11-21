@@ -3,6 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rea
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { newGame } from './new.ts';
+import type { ImportResult } from './renpy/import.ts';
 import { parse } from '@emaki/format';
 
 export interface Project { path: string; title: string; available: boolean; lastOpened: string }
@@ -68,15 +69,18 @@ export class Projects {
 
   create(parent: string, folder: string, title: string): Project {
     if (!title.trim() || title.length > 200 || /[\r\n\u0000-\u001f]/.test(title)) throw new Error('Enter a game title on one line (up to 200 characters).');
-    if (!folder || folder.length > 100 || !/^[\p{L}\p{N}_ -]+$/u.test(folder) || /[. ]$/.test(folder)
-      || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(folder)) {
-      throw new Error('Use a folder name with letters, numbers, spaces, hyphens or underscores.');
-    }
-    const path = join(resolve(parent), folder);
-    // Create only a new directory: never adopt or write over an existing folder.
-    if (existsSync(path)) throw new Error('That folder already exists. Choose a new folder name, or open the existing game.');
+    const path = newFolder(parent, folder);
     newGame(path, title.trim());
     return this.add(path);
+  }
+
+  /** A Ren'Py project as a new game in `parent/folder` (see renpy/import.ts). */
+  async importRenpy(source: string, parent: string, folder: string): Promise<{ project: Project; result: ImportResult }> {
+    if (!source.trim()) throw new Error('Choose the Ren’Py project to import.');
+    const path = newFolder(parent, folder);
+    const { importRenpy } = await import('./renpy/import.ts');
+    const result = await importRenpy(source.trim(), path);
+    return { project: this.add(path), result };
   }
 
   private persist(next: Recent[]): void {
@@ -86,4 +90,15 @@ export class Projects {
     renameSync(tmp, this.file);
     this.recent = next;
   }
+}
+
+/** A project folder that doesn't exist yet: never adopt or write over an existing one. */
+function newFolder(parent: string, folder: string): string {
+  if (!folder || folder.length > 100 || !/^[\p{L}\p{N}_ -]+$/u.test(folder) || /[. ]$/.test(folder)
+    || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(folder)) {
+    throw new Error('Use a folder name with letters, numbers, spaces, hyphens or underscores.');
+  }
+  const path = join(resolve(parent), folder);
+  if (existsSync(path)) throw new Error('That folder already exists. Choose a new folder name, or open the existing game.');
+  return path;
 }

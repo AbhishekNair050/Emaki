@@ -2,6 +2,7 @@ import type { Project } from '../src/projects.ts';
 import type { Session, SessionKind } from '../src/serve.ts';
 import type { ProjectInfo } from '../src/project-info.ts';
 import type { Compression, Estimate } from '../src/compress.ts';
+import type { ImportResult } from '../src/renpy/import.ts';
 
 interface Job { id: number; path: string; target: string; status: 'running' | 'done' | 'failed'; log: string; output: string }
 interface State { projects: Project[]; sessions: Session[]; jobs: Job[]; defaultDirectory: string; home: string; platform: string }
@@ -16,9 +17,9 @@ const button = (id: string) => $<HTMLButtonElement>(id);
 const input = (id: string) => $<HTMLInputElement>(id);
 let state: State = { projects: [], sessions: [], jobs: [], defaultDirectory: '', home: '', platform: '' };
 let selected = stored('emaki-launcher:selected', null, '');
-let mode: 'create' | 'open' = 'create';
+let mode: 'create' | 'open' | 'import' = 'create';
 let folderEdited = false;
-let folderTarget: 'parent' | 'existing-path' = 'parent';
+let folderTarget: 'parent' | 'existing-path' | 'renpy-source' = 'parent';
 let folders: Folders | null = null;
 let busy = false;
 let refreshing = false;
@@ -425,18 +426,36 @@ async function launch(kind: SessionKind): Promise<void> {
 
 function updatePath(): void { $('create-path').textContent = joinPath(input('parent').value, input('folder-name').value || 'project-folder'); }
 
-function openProjectDialog(next: 'create' | 'open'): void {
+const DIALOGS = {
+  create: { title: 'New project', submit: 'Create project', text: 'You start with a short story that already plays. Change its title and look whenever you like.' },
+  open: { title: 'Open a project', submit: 'Open project', text: 'Open an Emaki game from your computer. Its files stay where they are.' },
+  import: {
+    title: 'Import from Ren’Py', submit: 'Import project',
+    text: 'Makes a new Emaki game from a Ren’Py project: its scripts, characters, pictures and sound. The Ren’Py project isn’t changed. What can’t be converted (Python, screens, animations) is listed in the new game’s import-report.md.',
+  },
+} as const;
+
+function openProjectDialog(next: 'create' | 'open' | 'import'): void {
   mode = next; folderEdited = false;
-  $('dialog-title').textContent = next === 'create' ? 'New project' : 'Open a project';
-  $('dialog-description').textContent = next === 'create' ? 'You start with a short story that already plays. Change its title and look whenever you like.' : 'Open an Emaki game from your computer. Its files stay where they are.';
-  $('create-fields').hidden = next !== 'create'; $('open-fields').hidden = next !== 'open';
+  $('dialog-title').textContent = DIALOGS[next].title;
+  $('dialog-description').textContent = DIALOGS[next].text;
+  $('create-fields').hidden = next === 'open'; $('open-fields').hidden = next !== 'open';
+  $('import-fields').hidden = next !== 'import'; $('title-field').hidden = next === 'import';
   input('title').value = ''; input('folder-name').value = ''; input('parent').value = state.defaultDirectory;
-  input('existing-path').value = ''; $('project-error').hidden = true;
-  button('project-submit').textContent = next === 'create' ? 'Create project' : 'Open project';
+  input('existing-path').value = ''; input('renpy-source').value = ''; $('project-error').hidden = true; $('import-status').hidden = true;
+  button('project-submit').textContent = DIALOGS[next].submit;
   button('project-submit').disabled = false;
   updatePath();
   $<HTMLDialogElement>('project-dialog').showModal();
-  input(next === 'create' ? 'title' : 'existing-path').focus();
+  input(next === 'create' ? 'title' : next === 'open' ? 'existing-path' : 'renpy-source').focus();
+}
+
+/** A folder name from the Ren'Py project's (my-game from "My Game"), until one is typed. */
+function suggestFolder(): void {
+  if (folderEdited || mode !== 'import') return;
+  const name = input('renpy-source').value.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '';
+  input('folder-name').value = name.toLocaleLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '-').slice(0, 100);
+  updatePath();
 }
 
 async function loadFolders(path: string): Promise<void> {
@@ -460,22 +479,24 @@ async function loadFolders(path: string): Promise<void> {
       const root = document.createElement('button'); root.textContent = location === state.home ? 'Home' : location; root.title = location;
       root.addEventListener('click', () => { void loadFolders(location); }); roots.append(root);
     }
-    $('browse-info').textContent = next.game ? 'This folder has an Emaki game (story.vn).' : folderTarget === 'existing-path' ? 'Open a folder that has a story.vn.' : 'Your new project folder will be made inside this one.';
+    $('browse-info').textContent = folderTarget === 'renpy-source' ? 'Choose the Ren’Py project’s folder (the one with game/ in it).'
+      : next.game ? 'This folder has an Emaki game (story.vn).' : folderTarget === 'existing-path' ? 'Open a folder that has a story.vn.' : 'Your new project folder will be made inside this one.';
     button('select-folder').disabled = folderTarget === 'existing-path' && !next.game;
   } catch (err) { if (request === browseRequest) showError('browse-error', err); }
 }
 
-async function pickWithStudio(bridge: StudioBridge, next: 'parent' | 'existing-path'): Promise<void> {
-  const title = next === 'parent' ? 'Choose where to make the project' : 'Choose a game folder';
-  const path = await bridge.pickFolder({ title, defaultPath: input(next).value || state.home });
+const BROWSE_TITLES = { parent: 'Choose where to make the project', 'existing-path': 'Choose a game folder', 'renpy-source': 'Choose the Ren’Py project' } as const;
+
+async function pickWithStudio(bridge: StudioBridge, next: 'parent' | 'existing-path' | 'renpy-source'): Promise<void> {
+  const path = await bridge.pickFolder({ title: BROWSE_TITLES[next], defaultPath: input(next).value || state.home });
   if (!path) return;
-  input(next).value = path; updatePath();
+  input(next).value = path; suggestFolder(); updatePath();
 }
 
-function openBrowser(next: 'parent' | 'existing-path'): void {
+function openBrowser(next: 'parent' | 'existing-path' | 'renpy-source'): void {
   if (studio) { void action(() => pickWithStudio(studio, next)); return; }
   folderTarget = next; folders = null;
-  $('folder-title').textContent = next === 'parent' ? 'Choose where to make the project' : 'Choose a game folder';
+  $('folder-title').textContent = BROWSE_TITLES[next];
   $('folders').replaceChildren(); $('roots').replaceChildren(); $('browse-info').textContent = '';
   input('browse-path').value = input(next).value || state.home;
   $<HTMLDialogElement>('folder-dialog').showModal();
@@ -501,6 +522,9 @@ button('example').onclick = () => { void action(async () => { const project = aw
 for (const close of document.querySelectorAll<HTMLButtonElement>('[data-close]')) close.onclick = () => $<HTMLDialogElement>(close.dataset.close!).close();
 button('browse-parent').onclick = () => openBrowser('parent');
 button('browse-existing').onclick = () => openBrowser('existing-path');
+button('browse-source').onclick = () => openBrowser('renpy-source');
+button('import-project').onclick = () => openProjectDialog('import');
+input('renpy-source').addEventListener('input', suggestFolder);
 input('title').addEventListener('input', () => {
   if (!folderEdited) input('folder-name').value = input('title').value.toLocaleLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '-').slice(0, 100);
   updatePath();
@@ -514,21 +538,33 @@ $<HTMLFormElement>('project-form').addEventListener('submit', (event) => {
   submit.disabled = true; $('project-error').hidden = true;
   void (async () => {
     try {
-      const project = await api<Project>(mode === 'create' ? 'create' : 'open', mode === 'create'
-        ? { title: input('title').value, parent: input('parent').value, folder: input('folder-name').value }
-        : { path: input('existing-path').value });
+      let project: Project;
+      let imported: ImportResult | null = null;
+      if (mode === 'import') {
+        $('import-status').textContent = 'Importing… A long game takes a minute or two.'; $('import-status').hidden = false;
+        const r = await api<{ project: Project; result: ImportResult }>('import', { source: input('renpy-source').value, parent: input('parent').value, folder: input('folder-name').value });
+        project = r.project; imported = r.result;
+      } else {
+        project = await api<Project>(mode === 'create' ? 'create' : 'open', mode === 'create'
+          ? { title: input('title').value, parent: input('parent').value, folder: input('folder-name').value }
+          : { path: input('existing-path').value });
+      }
       $<HTMLDialogElement>('project-dialog').close();
       input('search').value = '';
       await refresh(); select(project.path);
+      if (imported) {
+        const left = imported.issues + imported.fixed;
+        notice(`Imported ${imported.scripts} scripts (${imported.lines.toLocaleString()} lines, ${imported.labels} labels). ${left ? `${left.toLocaleString()} lines were left out or changed: see import-report.md in the project folder.` : 'Nothing was left out.'}`);
+      }
     } catch (err) { showError('project-error', err); }
-    finally { submit.disabled = false; }
+    finally { submit.disabled = false; $('import-status').hidden = true; }
   })();
 });
 $<HTMLFormElement>('browse-form').onsubmit = (event) => { event.preventDefault(); void loadFolders(input('browse-path').value); };
 button('up').onclick = () => { if (folders?.parent) void loadFolders(folders.parent); };
 button('select-folder').onclick = () => {
   if (!folders || button('select-folder').disabled) return;
-  input(folderTarget).value = folders.path; updatePath();
+  input(folderTarget).value = folders.path; suggestFolder(); updatePath();
   $<HTMLDialogElement>('folder-dialog').close();
 };
 for (const kind of KINDS) {
