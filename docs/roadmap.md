@@ -1,158 +1,52 @@
 # Roadmap
 
-What is done and what comes next.
+Emaki hasn't had a release yet. This page is about what comes next. For what's already built, see the [changelog](../CHANGELOG.md), and for why things work the way they do, the [decisions log](decisions.md).
 
-## ✅ Milestone 0 — Walking skeleton (done, 2026-11-13)
-- `.vn` parser with friendly, line-numbered diagnostics and "did you mean" suggestions
-- Expression language (sandboxed, portable)
-- Compiler → portable JSON format; reference checks; unreachable-label warnings; stable line ids
-- Printer (AST → canonical text) with round-trip tests — foundation for the visual editor
-- Story graph → Mermaid (`emaki graph`)
-- Headless runtime: effects/blocks, call/return, conditions, menus with conditional choices, rollback, save/load, live-reload resume
-- Web player: title screen, typewriter text, transitions, sprites, back/log/auto/skip/save/load, keyboard + screen-reader support, reduced motion, letterboxed 16:9
-- Dev server with live reload that resumes at the same line; error page for broken scripts
-- Demo VN with 3 endings + generated placeholder art; 32 tests
+Most of what's here came from trying to make real games in Emaki and hitting a wall (D-035). If you hit one too, open an issue: that's the best way to move something up this list.
 
-## ✅ Milestone 1 — Make the core loop delightful (done, 2026-11-14)
-- [x] **Story map** (dev panel): flowchart of every scene beside the game, current scene highlighted, visited scenes tracked, click a scene to play from it, live-editable variables for testing routes
-- [x] Comments and blank lines preserved by the formatter (`emaki fmt`, `--check` in CI)
-- [x] Jump-to-line preview: `?line=52&trust=2` starts the story at that line with chosen variable values; Ctrl+Alt+Enter in VS Code opens it beside the script
-- [x] Text styling: `*italic*`, `**bold**`, `[color=...]`, with escapes and friendly errors
-- [x] Settings screen: text speed (incl. instant), auto-advance wait, music/sound volume, text size, text box opacity, font, animations; saved per game
-- [x] Bundled accessibility fonts: Atkinson Hyperlegible and OpenDyslexic (OFL), downloaded only when chosen
-- [x] Portrait phone layout: the stage fills the screen when held upright; landscape stays 16:9
-- [x] Preload images for the next scene (every branch a few lines ahead; transitions wait briefly for slow images)
-- [x] VS Code extension: highlighting, live diagnostics, go to definition, references, hover, completion, outline, formatting (reuses the compiler)
-- [x] Demo soundtrack (CC0, credited in `games/gullwing/assets/audio/CREDITS.md`); music fades and crossfades; no sound-effect bursts when skipping or rolling back
+## Done so far
 
-## ✅ Milestone 2 — The editor (done, 2026-11-14)
-- [x] Editor app (web): script pane + flowchart pane + live player pane, linked both ways; edits show in the running game at once; autosave with conflict detection (`npm run edit`)
-- [x] Editing in the flowchart writes clean text via the printer (round-trip): add, rename, delete and connect scenes (a second connection turns a jump into a choice); every edit is undoable in the script
-- [x] Asset browser: thumbnails and audio preview; drag an asset onto the script → `image`/`audio` line declared and `scene`/`show`/`play` placed where it was dropped; drop files from the computer to add them to the game
+- **0. Walking skeleton:** the `.vn` language, compiler, headless runtime, web player and a demo game with three endings.
+- **1. The core loop:** story map, formatter, line previews, text styling, settings, accessibility fonts and the VS Code extension.
+- **2. The editor:** script, live game and flowchart side by side, with visual scene editing and an asset browser.
+- **3. Shipping:** desktop (with Steam), Android and iOS exports, translations, NVL mode, extras, multi-file stories.
+- **4. Expressive scenes:** moves, camera, layered characters, voices, gapless loops, side images.
+- **5. Multilingual games:** pictures and movies per language, playing movies, endless moves, colour tones, furigana.
+- **6–7. Screens:** custom title, menus, text box, save and load, settings, history and confirmation screens.
+- **8. Plugins:** commands, screen elements, functions in expressions, variables, storage and types.
+- **9. Extras:** scene replay and a music room.
+- **10. Long games:** tuned on an 80,000-line game until the dev server, editor and VS Code stayed quick.
+- **11. Free layers:** composed shots with stacked, transformed, blended and graded images.
+- **12. Workspaces:** Write, Stage and Story in one editor.
+- **14. Ren'Py import:** `emaki import renpy` converts a project's scripts and pictures.
 
-## ✅ Milestone 3 — Ship games (done, 2026-11-14)
-- [x] Desktop export (Electron; D-029) for Windows, macOS and Linux + Steamworks: achievements and overlay (D-030); `achievement`/`achieve` in the language
-- [x] Android/iOS export (Capacitor; D-031): generated native projects kept between exports, debug APK when the Android SDK is present, back button and full screen on phones
-- [x] Localization (D-028): `emaki strings` writes PO or CSV catalogs by line id (with review suggestions for edited lines), the game loads `lang/`, and players switch language at any time; the interface is translatable too
-- [x] Lessons from porting a full existing VN (D-035): `aspect: 4:3`, real sound/voice channels with voice volume, `at 30%` positions, `global var`, `narration: plain`
-- [x] Skip read text only (default) or all text (D-032)
-- [x] Title screen customization (D-033): header keys, `theme.css`, and a scripted `label title`
-- [x] Stories split across files (D-034), in the CLI, dev server, editor and VS Code
-- [x] NVL mode: `nvl on` / `nvl off` / `nvl clear`, pages that turn over by themselves (D-036)
-- [x] Extras screen: CG gallery (`image ... gallery`), endings (`ending` + `end id`), achievements (D-037)
-- [x] Transition lengths: `scene beach with dissolve 1.5`
+## In progress: Emaki Studio
 
-## ✅ Milestone 4 — Expressive scenes (done, 2026-11-14)
-What a finished commercial VN does on screen and in the ear that Emaki couldn't yet.
-- [x] Movement and effects: `show mira at right with move`, `shake`, `flash red`, and a `camera` that zooms and pans (D-038)
-- [x] Layered characters: `layered mira:` with `always` layers and `group`s of options, so outfits and expressions combine (D-039)
-- [x] Pauses inside a line: `[w]` waits for a click, `[w=1.5]` for seconds, `[nw]` moves on by itself
-- [x] Voice by convention: header `voice: voice/{speaker}/{id}.ogg`, `emaki voices` for the recording script, replay from the history log (D-040)
-- [x] Gapless music loops through Web Audio, and an `ambience` channel under the music (D-041)
-- [x] Side images (`image side mira smile`) and per-character text boxes through `theme.css` (D-042)
-- [x] The editor's game pane uses the game's `theme.css` (updated live) and its voice files; NVL pages and the scripted title already showed there
+Writers should be able to start without installing Node, git or opening a terminal (D-068). The Windows app and installer work. Still to do:
 
-## ✅ Milestone 5 — Lessons from a multilingual commercial port (done, 2026-11-15)
-Porting a commercial VN demo released in Japanese, English and both Chinese scripts.
-- [x] Pictures and movies with a version per language (`cg/sign.fr.png`, D-043); Chinese devices matched by script (`zh-TW` → `zh-Hant`)
-- [x] Character and text box moves: `hop`, `nod`, `bow`, `shake mira` (D-044)
-- [x] Movies: `movie "movie/opening.mp4"`, skippable (D-045)
-- [x] Endless moves: `float icon`, `shake mira forever`, `still mira` (D-046)
-- [x] Colour tones on the picture: `tone sepia`, `tone mono`, `tone none` (D-047)
-- [x] Ruby text (furigana): `[ruby=うすくれない]薄紅[/ruby]` (D-048)
+- [ ] macOS and Linux packages, built in CI on release tags
+- [ ] Signed installers and automatic updates
+- [ ] Starter templates in New project
+- [ ] A check for what Android and iOS exports need (SDK, Java 21, a Mac for iOS) before an export starts, rather than partway through it
+- [ ] Recording the engine version in each game
 
-## ✅ Milestone 6 — Screens
-A game can replace any built-in screen with its own, written in the script and styled with `theme.css`, so it looks like itself. Proof: the commercial demo port gets its original title, menu, save/load, settings and text box back.
-- [x] Screen language (D-049): `screen name:` with images, text, buttons, rows, columns and boxes; placed by percentages, or by pixels on a declared `canvas: 1920x1080`; `if` on any element; actions `start`, `continue`, `open`, `close`, `title`, `quit`, `jump`, `set`. Replaces the title screen and the game menu
-- [x] Data screens (D-050): save/load slots with thumbnails and pages, settings sliders and toggles, the Extras gallery and endings
-- [x] Screens during the story (D-051): `show screen`, `hide screen`, `call screen pick_place` with the choice in a variable (maps, phones, calendars)
-- [x] The text box as a screen (D-052): name plate, dialogue, side image, its own buttons in place of the quick menu, box art; quick save and load
-- [x] Polish (D-053): pressed, selected and disabled pictures, settings as picture buttons, picture sliders, tabs (`switch`), click and hover sounds, fading screens, gamepad navigation, live preview in the editor
-- [x] Proof: the port's title, text box, save, load and settings pages, generated from the original layout tables
+## Next: the rest of the Ren'Py importer
 
-## ✅ Milestone 7 — Finishing touches for commercial UIs
-What the port still drew as dead art, made real.
-- [x] The history screen of your own: `screen history`, `log` with replay and go back to a line (D-054)
-- [x] Questions in your own art: `screen confirm`, and a setting per question to stop asking
-- [x] Master volume, mutes, and each character's voice volume and mute; sample buttons
-- [x] Reset settings; skip to the next choice and back to the previous one
+`emaki import renpy` handles scripts and pictures today (D-072). Two pieces are left:
 
-## ✅ Milestone 8 — Plugins
-- [x] Plugin API v1 (D-055): `plugins/<name>/` with plugin.json + index.js; `@name command key=value [-> var]` commands (effects, lasting, waiting with a result) and `@name element` in screens, checked by the compiler; events; bundled into exports. Example plugins in games/plugin-demo: weather, a memory minigame, a meter
-- [x] Plugin functions in expressions: `if @dice.roll(6) > 4:` (D-058); the demo's memory plugin has one
-- [x] VS Code checks scripts against the game's plugins/*/plugin.json, and shows problems with a plugin on it
-- [x] Completion of plugins, commands, elements, arguments, their values and functions (VS Code and the editor), with hovers from the manifests
-- [x] Plugins change listed story variables (`"sets"`, `ctx.set`, rollback-safe), keep their own data (`ctx.storage`), and are typed (`emaki plugin` scaffold, `plugins/emaki-plugin.d.ts`, TypeScript plugins) (D-066); the demo's memory plugin keeps its best round and sets `new_best`
-- [x] End-of-line comments: `scene kitchen  # morning light` (D-057)
-
-## ✅ Milestone 9 — Scene replay and music room
-- [x] `replay label "Name" [image ...] [until label]`: replay scenes from Extras, unlocked once reached, no saving, back to Extras at the end (D-056)
-- [x] `audio ... music "Title"`: a music room of the tracks heard so far; `scenes` and `music` elements for a game's own Extras screen, Scenes and Music tabs in the built-in one
-- [x] The demo game has two replayable scenes and three tracks; the port has its music room
-
-## ✅ Milestone 10 — Full-length games (done, 2026-11-15)
-Proved on a port of a full-length commercial VN (80,000 lines in 758 files, 151 choices, three routes, 31,000 pictures and voices), measured before and after:
-- [x] Packed story files (D-059): 31 MB → 19 MB (3.6 MB gzipped)
-- [x] Game data fetched as JSON, dev assets read on demand (D-060): the dev server starts in about 6 s instead of 45, the page loads in about 2 s instead of minutes, builds stop carrying the scripts' source lines
-- [x] Recompiling only what changed: an edit recompiles in 0.1 s instead of 2.5 s, and shows in the running game in about 3 s
-- [x] Analysis for VS Code and the editor compiles only for problems, with a shared cache: under 0.2 s per keystroke instead of 2-4 s
-- [x] The editor opens the game in about 5 s instead of 3 minutes, and typing keeps up; the story map lays out 1,500 labels in 60 ms instead of 1.6 s
-- [x] `emaki export web` builds it in about 70 s, and the build plays
-- [ ] Loading the story in parts (D-061, proposed): not needed at this size; for when a game or device needs it
-
-## ✅ Milestone 11 — Free layers (done, 2026-11-16)
-Composed shots, drawn the way the original game draws them (D-062). Proof: a second full-length commercial port matches its original side by side, scene by scene.
-- [x] Layers: `show ... as name at x y`, anchor, zoom (negative mirrors), rotation, opacity, depth, every blend including an exact subtract; `animate ... over s ease`; `with dissolve` for all changes since the last line
-- [x] Keyframed animations (`animation name [loop]:`, `animate x with name`): the port's 24,000 motion tracks
-- [x] Panels: `clip` with a feathered edge
-- [x] Line previews also replay the labels that run straight into the line's label
-- [x] Side-by-side harness against the original: on a sample of 24 moments, 14 within a small difference
-- [x] Colour grades (`grade dusk: gamma ... levels ... tint ...`), silhouettes, brightness, contrast, blur: the port's 83 colour presets drawn as SVG curves; the side-by-side sample goes from 23.4 to 15.5
-- [x] Esc and right-click actions from the header: menu, save to an empty slot, quick save, hide, settings, history (D-063); the port's own title, menu, save, load and settings screens
-- [x] Wipes through rule pictures (`with wipe rule_13 0.8`) and `textbox hide` / `show`: the port's 943 wipes and 1,574 window fades
-- [x] Several ambience loops at once (`play ambience wind as wind`, `stop ambience wind`): the port's sound channels each keep their own loop
-
-## ✅ Milestone 12 — One editor, three workspaces (done, 2026-11-18)
-The editor grows from a script with a game beside it into a workspace for staging and planning, like a game engine's editor, without the script losing its place as the source of truth (D-065). Every panel follows one position: the file, scene and line the writer is on. Proof: it stays as fast as it is now on the 80,000-line port (cursor moves and keystrokes under one frame of editor work; nothing new runs on every keystroke).
-- [x] Workspaces: **Write** (script and game), **Stage** (game, inspector and the scene's lines) and **Story** (flowchart), switched from the top bar and remembered
-- [x] One position for every panel: a bar shows the file, scene and line; the flowchart, inspector and timeline follow the cursor
-- [x] Inspector for the line under the cursor: a character's look, place and transition, a background, a speaker's look; changes rewrite that one line (undoable, comments kept, the rest of the file untouched)
-- [x] The scene's lines as a timeline: one column per line of dialogue or choice, with tracks for characters, background, music and branches; clicking a column goes to the line, and in Stage the game shows it
-- [x] Faster on long scripts, measured on a 65,000-line file with the game and a 2,500-scene flowchart running: cursor moves and keystrokes no longer copy the file or repaint the flowchart (main thread busy over 60 cursor moves 2.8 s → 1.0 s, over 40 keystrokes 1.8 s → 0.6 s; slowest key handler 30 ms → 8 ms)
-- [x] The pause when typing stops: recompiling reused only scenes in files that hadn't changed, so in one long file every scene below an edit compiled again; scenes that only moved now keep their code, shifted to their new lines (the same result as a fresh compile, tested on random edits). On the 65,000-line file the longest pause goes from 0.25-0.38 s to 0.10-0.14 s, so compiling in a worker isn't needed
-- [x] Story workspace: colour scenes by words or by what a playtest saw; the route to an ending, with the choices it takes and the variables on the way (searched in a worker that compiles the script itself, so the page only hands it text)
-- [x] The game's own buttons keep their look in the editor; a clearer timeline (changes as chips), quieter splitter, the game on the editor's background
-- [x] Stage: drag a character in the game to place them (snapping to left, center and right); the `show` line is rewritten, and a plain click still plays on
-
-### Milestone 12, second pass: the editor as designed (2026-11-18)
-The first pass kept the old editor's layout; this one follows the design (the "A + B + C" board) closely.
-- [x] One layout for every workspace: scenes on the left, the inspector on the right, the scene's lines along the bottom; the middle is the script and game (Write), the stage (Stage) or the flowchart, left to right (Story)
-- [x] The route chosen once for the whole editor (left dock), with each ending's conditions: its variables are used by every play-from-here, worked out at the line by playing the scene with the route's choices; the bar at the top names it
-- [x] Stage tools: pick a character, Move / Scale / Rotate by dragging (writes `at`, `zoom`, `rotate`), a frame with handles and a label, thirds and safe-area guides
-- [x] Timeline tracks: dialogue, one per character (look and place), background, music, branches; previous and next line from the top bar
-- [x] Story: colour by a variable's value as each scene begins (the route search records them), the scene card (picture, values on entry, what it sets, the route's choice there, Open on stage / in script)
-- [x] The route search runs in Story (and on opening), not after every edit while writing
-- [x] Measured the second pass on a full-length ported game (530 files, 305,000 lines, 25,000 assets). Cursor moves cost about 12 ms each (3 ms of it script, the rest CodeMirror and drawing), with nothing left worth chasing; the earlier "slower cursor moves" on the 65,000-line file was mostly the profiler's own cost. What was slow, and is fixed:
-  - the asset browser redrew every file after each compile, hidden or not, and found each file's name by scanning every declaration: up to 4 s frozen after an edit. It now draws only when shown, at most 300 per section until filtered, with names from a map built once per parse
-  - completion analysed the whole story on keystrokes in narration and dialogue, where only `{variables}` complete; it now decides from the line first
-  - the story compiled twice per pause, for the game and for the underlines; a compile cache hands back its last result for the same texts
-  - The longest freeze while typing and just after: 1.3-4 s → 0.25-0.5 s (the one compile left). Left alone: hashing every scene's code on the first compile (0.4 s of a 3 s load; the hash is what saves rely on), and the one compile per pause (~0.2-0.5 s here; a worker would hide it, if a longer game needs it)
-
-## 🚧 Milestone 13 — Emaki Studio
-Writers start without installing Node, git or a terminal: one app with the launcher, editor, player and exporters (D-068), kept in `packages/studio` so the browser tools stay as they are.
-- [x] The app: the launcher in a window, editors and players in their own windows, the system's folder picker, exports on the app's own Node, other sites in the browser (`npm run studio`)
-- [x] Exporting while a game's editor or player is open (the dev servers held the `export` folder open on Windows)
-- [x] Packaged for Windows: the engine and the packages it runs with inside the app, an installer for the current user (`npm run build:studio`, unsigned)
-- [x] Smaller exports: pictures to WebP, sound to Opus, movies to H.264, chosen per game in the Export card (D-070)
-- [x] Voices compressed on their own, large pictures made no bigger than the screen, the export's size shown first, ffmpeg in the Studio (D-071)
-- [ ] macOS and Linux packages, built in CI on release tags only
-- [ ] Signed installers and updates
-- [ ] Starter templates in New project, and a check for what Android and iOS exports need
-
-## ✅ Milestone 14 — Coming from Ren'Py
-- [x] Import a Ren'Py project (`emaki import renpy`, **Import from Ren'Py…** in the launcher): the common subset converted, the rest kept as comments and reported, the result always compiling (D-072)
-- [ ] Ren'Py translations (`game/tl/`) as `lang/*.po`
-- [ ] Ren'Py screens as Emaki screens, where they're plain enough
+- [ ] Ren'Py translations (`game/tl/`) converted to `lang/*.po`
+- [ ] Ren'Py screens converted to Emaki `screen` blocks, where they're simple enough. Anything that relies on Python stays as a comment, the way the script importer does it now.
 
 ## Later
-Live2D/Spine plugins, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles, plural forms in translations, explicit line ids.
+
+No particular order. Most of these wait until a game needs them.
+
+- A native player for consoles, reading the same compiled format (D-005)
+- Live2D and Spine, as plugins
+- Encrypted packs for every export, not only the Windows player (D-067), and leak watermarking
+- Opt-in analytics, built on plugin events
+- Plural forms in translations
+- Explicit line ids (`#id`) for lines a writer wants to pin (D-008)
+- Loading very long stories in parts (D-061)
+- Rebinding keys as a player setting (D-063)
+- A browser playground with nothing to install (D-068)
