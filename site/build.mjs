@@ -70,6 +70,7 @@ await mkdir(join(output, 'screens'), { recursive: true });
 await Promise.all([
   writeFile(join(output, 'index.html'), html),
   cp(join(site, 'style.css'), join(output, 'style.css')),
+  cp(join(site, 'guide.js'), join(output, 'guide.js')),
   cp(join(site, 'screens'), join(output, 'screens'), { recursive: true }),
   cp(join(repo, 'docs', 'images', 'demo.png'), join(output, 'screens', 'demo.png')),
 ]);
@@ -79,6 +80,13 @@ for (const match of html.matchAll(/src="\.\/screens\/([^"]+)"/g)) {
 }
 
 for (const game of ['gullwing', 'plugin-demo']) {
-  await buildWeb(join(repo, 'games', game), join(output, 'play', game), { quiet: true });
+  const gameOutput = join(output, 'play', game);
+  await buildWeb(join(repo, 'games', game), gameOutput, { quiet: true });
+  if (game === 'gullwing') {
+    const gamePage = join(gameOutput, 'index.html');
+    const gameHtml = await readFile(gamePage, 'utf8');
+    await cp(join(site, 'demo.css'), join(gameOutput, 'demo.css'));
+    await writeFile(gamePage, gameHtml.replace('</head>', '  <link rel="stylesheet" href="./demo.css">\n  </head>'));
+  }
 }
 console.log('Built the Emaki guide and both browser demos in site/dist/public.');

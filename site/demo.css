@@ -1,0 +1,7 @@
+/* The site's Gullwing demo fills its host at any aspect ratio. The engine's
+ * portrait rules still handle controls when the viewport is narrow. */
+#app > .stage {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
