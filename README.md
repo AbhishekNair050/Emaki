@@ -70,6 +70,7 @@ npm run emaki -- new ../my-game      # start your own game
 - **[Getting started](docs/getting-started.md)**: your first game, step by step
 - **[Script syntax](docs/script-syntax.md)**: everything you can write in a story
 - **[Writing tools](docs/tools.md)**: the editor, VS Code, the dev server, story map, line previews and the CLI
+- **[Importing from Ren’Py](docs/importing-from-renpy.md)** explains what converts and how to use the import report.
 - **[Theming](docs/theming.md)**: title screen, your own screens, `theme.css`
 - **[Plugins](docs/plugins.md)**: extending Emaki with JavaScript
 - **[Exporting](docs/exporting.md)**: web, desktop, Steam, Android and iOS
@@ -85,7 +86,7 @@ Emaki is young (0.x). It's been used to write the demo and to port two complete 
 - The VS Code extension installs [from source](packages/vscode/README.md#install-from-source).
 - Desktop export is tested on Windows. macOS and Linux apps are built the same way but haven't been tried on those systems yet, and macOS apps need signing before others can open them without warnings.
 - Steam support (achievements, overlay) and the Android APK build are written but not yet tested against real Steam or on a device. iOS projects need a Mac to build.
-- Not yet: Live2D or Spine characters, plural forms in translations, a Ren'Py importer.
+- Live2D and Spine characters and plural forms in translations are currently unsupported.
 
 Found a bug, or something you need for your game? [Open an issue](https://github.com/AbhishekNair050/Emaki/issues).
 

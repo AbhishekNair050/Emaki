@@ -1,12 +1,12 @@
 # Security
 
 ## Reporting a vulnerability
-Please don't open a public issue for a security problem. Report it privately through GitHub: the repository's **Security** tab → **Report a vulnerability**. Include what an attacker could do, and the steps or a small game that shows it.
+Report security problems privately through **Security → Advisories → Report a vulnerability** on GitHub. Include what an attacker could do and the steps or a small game that shows it.
 
 You'll get a reply within a week. Once it's fixed, the fix and its credit (if you'd like it) go in the changelog.
 
 ## Supported versions
-Emaki hasn't had a release yet: fixes go to the `main` branch.
+Security fixes are developed on `main`. Windows Studio users should use the latest release.
 
 ## What's in scope
 The parts that run in players' hands matter most:
