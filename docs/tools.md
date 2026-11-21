@@ -3,7 +3,7 @@
 Emaki's tools all read the same script and report the same problems, so use whichever suits you: the web editor, VS Code, or any text editor with the dev server.
 
 ## The project launcher
-Run `npm run launch` to open the project manager in your browser. Create a game with **New project**, or use **Open…** and browse to a folder containing `story.vn`. **Try the example game** adds the bundled demo to the list.
+Run `npm run launch` to open the project manager in your browser. Create a game with **New project**, or use **Open…** and browse to a folder containing `story.vn`. **Try the example game** adds the bundled demo to the list. **Import from Ren'Py…** makes a new game from a Ren'Py project (see [Importing a Ren'Py project](importing-from-renpy.md)).
 
 Each project shows its picture (the `title_image`, else the background of its own `screen title`, else its first scene), how big it is (scenes, words, choices, endings, files and lines) and whether it has problems, with the first one spelled out, the same check as `emaki check`. A long game takes a few seconds to read the first time; this happens in the background, and again only when a story file changes. **Open editor** opens the editor in the workspace chosen beside it (**Write**, **Stage** or **Story**); **Play in a browser tab** runs the game on its own. **Export** builds it for the web, the desktop, Android or iOS (the last two make projects for Android Studio and Xcode; see [exporting](exporting.md)). **Compression**, under it, makes the export smaller: pictures to WebP, pictures larger than the game's screen made smaller, music and sound, and voices on their own, to Opus, and movies to H.264, each off until chosen; while it is open it shows about how big the export will be (see [making the export smaller](exporting.md#making-the-export-smaller)).
 
@@ -67,3 +67,4 @@ Run from the Emaki folder as `npm run emaki -- <command>`:
 | `strings <story.vn> [--lang fr,de] [--csv]` | Create or update translation files in `lang/`; without `--lang`, how far each translation is. See [Translations](script-syntax.md#translations). |
 | `voices <story.vn>` | The recording script (`voice-script.csv`) and which voice files are missing. See [Voiced games](script-syntax.md#voiced-games). |
 | `export <web\|desktop\|android\|ios> <game folder>` | Package the game for players; `--images`, `--shrink`, `--audio`, `--voice`, `--video` set compression. See [Exporting](exporting.md). |
+| `import renpy <Ren'Py project> <new folder> [--title "Name"]` | A Ren'Py project as a new game, with `import-report.md` listing what was left out. See [Importing a Ren'Py project](importing-from-renpy.md). |

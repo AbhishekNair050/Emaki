@@ -7,6 +7,7 @@ Notable changes to Emaki. The format follows [Keep a Changelog](https://keepacha
 The first public version. Everything below is new.
 
 ### Writing
+- A character's name can show a variable: `define mc "{player}"`.
 - The `.vn` script: a header, characters, images, audio, variables, and labels with dialogue, narration, choices (with conditions), `if`/`elif`/`else`, `jump`/`call`/`return`, endings and achievements. Stories can be split across files.
 - Comments on their own line or at the end of any line; the formatter keeps them.
 - Friendly, line-numbered errors with "did you mean" suggestions; unreachable scenes are warned about.
@@ -32,6 +33,7 @@ The first public version. Everything below is new.
 - Pictures and movies with a version per language (`cg/sign.fr.png`); devices matched by language and script.
 
 ### Tools
+- Import a Ren'Py project as a new game (D-072): `emaki import renpy <project> <new folder>`, or **Import from Ren'Py…** in the launcher. Characters, pictures (composites made into single pictures), sound, variables, labels, dialogue, menus, conditions and transitions convert; pictures keep the game's positions; the rest stays as `# renpy:` comments, listed in `import-report.md`, and the new game always compiles. See [docs/importing-from-renpy.md](docs/importing-from-renpy.md).
 - A local project launcher (`npm run launch`) in the editor's look: recent projects with their pictures, each project's size and problems (worked out in the background), create/open games with a folder browser, the editor opened in a chosen workspace, player sessions, and web/desktop/Android/iOS exports with build output. Direct `emaki edit <game>` and `emaki play <game>` commands also accept a game folder without environment variables.
 - Emaki Studio (`npm run studio`, D-068): the launcher, editor and player in desktop windows, with the system's folder picker, exports run on the app's own Node, and links to other sites opened in the browser. `npm run build:studio` makes an unsigned Windows installer (current user, about 135 MB) that needs no Node or git installed.
 - The web editor (`npm run edit`): script, live game and flowchart linked together, visual scene editing written back as clean text, an asset browser with drag and drop, autosave with conflict detection.

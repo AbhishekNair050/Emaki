@@ -149,8 +149,10 @@ Writers start without installing Node, git or a terminal: one app with the launc
 - [ ] Signed installers and updates
 - [ ] Starter templates in New project, and a check for what Android and iOS exports need
 
-## ⏸ On hold
-- Ren'Py importer (common subset)
+## ✅ Milestone 14 — Coming from Ren'Py
+- [x] Import a Ren'Py project (`emaki import renpy`, **Import from Ren'Py…** in the launcher): the common subset converted, the rest kept as comments and reported, the result always compiling (D-072)
+- [ ] Ren'Py translations (`game/tl/`) as `lang/*.po`
+- [ ] Ren'Py screens as Emaki screens, where they're plain enough
 
 ## Later
 Live2D/Spine plugins, analytics (opt-in), encrypted bundles + leak watermarking, native player for consoles, plural forms in translations, explicit line ids.

@@ -56,7 +56,7 @@ Between `---` lines at the very top: `key: value` pairs.
 ## Declarations (top level, no indentation)
 | Line | Meaning |
 |---|---|
-| `define mira "Mira" color=#e8b04b` | A character. `mira` is what you type; `"Mira"` is what players see. |
+| `define mira "Mira" color=#e8b04b` | A character. `mira` is what you type; `"Mira"` is what players see. The name can show a variable: `define mc "{player}"`. |
 | `image kitchen = "bg/kitchen.png"` | A background or any image. Paths are relative to the game's `assets/` folder. |
 | `image mira smile = "sprites/mira_smile.png"` | A character image: first word is the **tag** (`mira`), the rest are **attributes** (`smile`). |
 | `layered mira:` | A character drawn from stacked layers (body, outfit, face), so outfits and expressions combine freely. See [Layered characters](#layered-characters). |
