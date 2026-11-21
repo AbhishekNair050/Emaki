@@ -22,6 +22,8 @@
  *                [--images off|lossless|50-100] [--shrink off|100-400] [--audio off|24-256] [--voice off|16-256]
  *                [--video off|15-40]
  *                                     package the game for players (into <game>/export/)
+ *   emaki import renpy <Ren'Py project> <new folder> [--title "Name"]
+ *                                     a Ren'Py project as a new Emaki game (import-report.md lists what was left out)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
@@ -52,7 +54,8 @@ const USAGE = `Usage:
   emaki voices  <story.vn>                          recording script and missing voice files (header 'voice:')
   emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--shell webview2|electron] [--no-build]
                 [--images off|lossless|50-100] [--shrink off|100-400] [--audio off|24-256] [--voice off|16-256]
-                [--video off|15-40]   (default: the game's export.json)`;
+                [--video off|15-40]   (default: the game's export.json)
+  emaki import renpy <Ren'Py project> <new folder> [--title "Name"]   a Ren'Py project as a new Emaki game`;
 
 if (cmd === 'launch' || cmd === 'edit' || cmd === 'play') {
   try {
@@ -94,6 +97,7 @@ if (!cmd || !file || cmd === 'help' || cmd === '--help') {
 if (cmd === 'export') await exportCommand();
 if (cmd === 'new') newCommand();
 if (cmd === 'plugin') pluginCommand();
+if (cmd === 'import') await importCommand();
 
 let source: string;
 try {
@@ -218,6 +222,27 @@ Play it while you write (it reloads as you save):
   PowerShell: $env:EMAKI_GAME="${game}"; npm run dev
 Or open it in the editor: the same, with 'npm run edit'.
 Then: docs/getting-started.md`);
+    process.exit(0);
+  } catch (e) {
+    console.error((e as Error).message);
+    process.exit(1);
+  }
+}
+
+async function importCommand(): Promise<never> {
+  try {
+    if (file !== 'renpy') throw new Error(`Usage: emaki import renpy <Ren'Py project> <new folder> [--title "Name"] (only Ren'Py projects can be imported for now)`);
+    const at = rest.indexOf('--title');
+    const title = at >= 0 ? rest[at + 1] : undefined;
+    const [src, dest] = rest.filter((a, i) => !a.startsWith('--') && (at < 0 || i !== at + 1));
+    if (!src || !dest) throw new Error(`Usage: emaki import renpy <Ren'Py project> <new folder> [--title "Name"]`);
+    const { importRenpy } = await import('./renpy/import.ts');
+    const r = await importRenpy(src, dest, { ...(title ? { title } : {}), log: (m) => console.log(m) });
+    console.log(`
+✓ Imported ${r.scripts} scripts (${r.lines.toLocaleString()} lines, ${r.labels} labels) into ${r.dest}
+  ${r.copied} files copied into assets/${r.made ? `, ${r.made} pictures made from Ren'Py composites` : ''}
+  ${r.issues + r.fixed ? `${r.issues} lines left out or changed and ${r.fixed} commented out because they didn't compile: see ${r.report}` : 'Nothing left out.'}
+Open it in the launcher, or: emaki play "${r.dest}"`);
     process.exit(0);
   } catch (e) {
     console.error((e as Error).message);
