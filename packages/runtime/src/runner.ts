@@ -1144,7 +1144,7 @@ export class Runner {
     return {
       type: 'say',
       id: ins.id,
-      who: ins.who && c ? { id: ins.who, name: this.translation?.names[ins.who] ?? c.name, color: c.color } : null,
+      who: ins.who && c ? { id: ins.who, name: this.characterName(this.translation?.names[ins.who] ?? c.name, vars), color: c.color } : null,
       ...this.text(ins.id, ins, ins, vars),
       line: ins.src.line,
       ...fileOf(ins),
@@ -1188,6 +1188,12 @@ export class Runner {
       // A variable the old text used is gone (the script changed): keep the block as it was.
     }
     return b;
+  }
+
+  /** A character's name, with any `{variable}` in it filled in (`define mc "{player}"`); unknown names stay as written. */
+  private characterName(name: string, vars: Record<string, Value>): string {
+    if (!name.includes('{')) return name;
+    return name.replace(/\{\{|\}\}|\{([A-Za-z_]\w*)\}/g, (m, v: string | undefined) => m === '{{' ? '{' : m === '}}' ? '}' : vars[v!] !== undefined ? String(vars[v!]) : m);
   }
 
   private interpolate(text: string, ins: Instr, vars: Record<string, Value> = this.state.vars): string {

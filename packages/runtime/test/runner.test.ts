@@ -329,3 +329,19 @@ label start:
     expect(r.advance().block.type).toBe('end');
   });
 });
+
+describe('character names', () => {
+  it('fill in variables, as they are when the line is said', () => {
+    const r = new Runner(story(`define mc "{player}" color=#ffffff
+define odd "{nobody} & {{co}}"
+var player = "Ann"
+label start:
+  mc: Hi.
+  set player = "Bea"
+  mc: Hello.
+  odd: Who?
+`));
+    const names = playthrough(r, []).flatMap((b) => (b.type === 'say' && b.who ? [b.who.name] : []));
+    expect(names).toEqual(['Ann', 'Bea', '{nobody} & {co}']);
+  });
+});
