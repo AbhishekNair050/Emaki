@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Play an Emaki visual novel and follow the illustrated guide from installation to publishing.">
+  <title>Emaki · Visual novel engine and illustrated guide</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <a class="skip" href="#guide">Skip to guide</a>
+  <header class="top">
+    <a class="brand" href="./"><span aria-hidden="true">絵</span> Emaki</a>
+    <nav aria-label="Main navigation">
+      <a href="#guide">Guide</a>
+      <a href="#reference">Reference</a>
+      <a href="https://github.com/AbhishekNair050/Emaki">GitHub</a>
+    </nav>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Open-source visual novel engine</p>
+        <h1 id="hero-title">Unroll your story.</h1>
+        <p>Write dialogue and choices in plain text. Stage scenes, test every route, and publish your visual novel with Emaki.</p>
+        <div class="actions">
+          <a class="button" href="./play/gullwing/">Play Gullwing Point</a>
+          <a class="button secondary" href="#install">Install Emaki</a>
+        </div>
+      </div>
+      <figure>
+        <img src="./screens/demo.png" alt="Mira on a cliff above the sea in The Keeper of Gullwing Point">
+        <figcaption>The Keeper of Gullwing Point · The bundled example story</figcaption>
+      </figure>
+    </section>
+
+    <div class="manual" id="guide">
+      <aside>
+        <nav aria-label="Guide chapters">
+          <a href="#install">Install and verify</a>
+          <a href="#startup">Start Emaki</a>
+          <a href="#project">Set up a project</a>
+          <a href="#first-game">Build your first scene</a>
+          <a href="#write">Write workspace</a>
+          <a href="#stage">Stage workspace</a>
+          <a href="#story">Story workspace</a>
+          <a href="#player">Player controls</a>
+          <a href="#customize">Customize and extend</a>
+          <a href="#dev-tools">VS Code and dev tools</a>
+          <a href="#publish">Export and publish</a>
+          <a href="#troubleshoot">Troubleshoot</a>
+          <a href="#reference">Full reference index</a>
+        </nav>
+      </aside>
+      <div class="chapters">
+        <section id="install">
+          <p class="eyebrow">First run</p>
+          <h2>Install and verify</h2>
+          <p>Playing the <a href="./play/gullwing/">browser demo</a> requires no installation. To author a game from source, install <a href="https://nodejs.org/">Node.js</a> 22.18 or newer and <a href="https://git-scm.com/">Git</a>. Open PowerShell, Command Prompt, or your macOS or Linux terminal in the folder where you want Emaki.</p>
+          <pre><code>node --version
+npm --version
+git --version
+git clone https://github.com/AbhishekNair050/Emaki.git
+cd Emaki
+npm install
+npm run check</code></pre>
+          <p>A successful check prints <strong>✓ No problems found</strong>, followed by counts for labels, dialogue and menus.</p>
+          <dl>
+            <dt>Version checks</dt><dd>Confirm the three tools are available. On PowerShell, use <code>npm.cmd</code> in place of <code>npm</code> if script execution blocks <code>npm.ps1</code>.</dd>
+            <dt>Clone and install</dt><dd><code>git clone</code> downloads the engine, <code>cd Emaki</code> enters its folder, and <code>npm install</code> installs its dependencies.</dd>
+            <dt>Check the sample</dt><dd><code>npm run check</code> compiles the bundled story and reports any problems before you launch anything.</dd>
+          </dl>
+          <details>
+            <summary>Windows desktop installation</summary>
+            <p>Use an Emaki Studio installer if you have one. From a source checkout, run <code>npm run build:studio</code> on Windows to build it under <code>packages/studio/out/installer/</code>. The source-built installer is unsigned. Open Studio from the Start menu after installation. The installed Studio bundles its own Node runtime and ffmpeg.</p>
+          </details>
+        </section>
+
+        <section id="startup">
+          <h2>Start Emaki</h2>
+          <pre><code>npm run launch</code></pre>
+          <p>The project launcher normally opens at <code>http://127.0.0.1:5175/</code>. Keep its terminal open while using the editor and player. <code>npm run studio</code> opens the same launcher in a desktop window from the source checkout. <code>npm run dev</code> starts the bundled game directly.</p>
+          <figure class="capture"><a href="./screens/first-launch.webp"><img src="./screens/first-launch.webp" loading="lazy" alt="First launch of Emaki with an empty recent-project list"></a><figcaption>On first launch, create a project, open an existing one, or choose <strong>Try the example game</strong>.</figcaption></figure>
+          <figure class="capture"><a href="./screens/launcher.webp"><img src="./screens/launcher.webp" loading="lazy" alt="Emaki launcher showing Gullwing Point, project stats, editor shortcuts and export controls"></a><figcaption>Select <strong>Try the example game</strong> to open Gullwing Point in the project list.</figcaption></figure>
+          <dl>
+            <dt>New project · Open… · Filter projects</dt><dd>Create a starter story, find an existing folder containing <code>story.vn</code>, or filter the recent list. <strong>Remove from list</strong> removes the shortcut.</dd>
+            <dt>Project summary · Show folder</dt><dd>See the cover, scenes, words, choices, endings, source files, lines, and the first compilation problem. Open the project folder from here.</dd>
+            <dt>Open editor · Play in a browser tab · Stop</dt><dd>Choose Write, Stage, or Story for editing, or launch the game on its own. Stop closes the corresponding local session.</dd>
+            <dt>Export · Compression</dt><dd>Choose a target, optionally adjust media compression, and build into the project's <code>export/</code> folder.</dd>
+          </dl>
+        </section>
+
+        <section id="project">
+          <h2>Set up your first project</h2>
+          <ol class="steps">
+            <li>Choose <strong>New project</strong>. <strong>Game title</strong> is what players see. <strong>Location</strong> is the parent folder. <strong>Project folder</strong> is the new directory inside it. Use <strong>Browse…</strong> to pick the location, check the full path under the fields, and click <strong>Create project</strong>.</li>
+            <li>Open <strong>Write</strong>. Play the starter story once and edit a line of dialogue to see the preview update.</li>
+            <li>Add a background, sprite, or audio file on the <strong>Assets</strong> tab, then drag the asset into the script to declare and use it.</li>
+          </ol>
+          <figure class="capture"><a href="./screens/new-project.webp"><img src="./screens/new-project.webp" loading="lazy" alt="New project form in the Emaki launcher"></a><figcaption>Choose where to store your game. A folder outside the engine checkout keeps engine updates and game files separate.</figcaption></figure>
+          <pre><code>npm run emaki -- new ../my-game --title "My Game"
+npm run emaki -- edit ../my-game
+npm run emaki -- play ../my-game</code></pre>
+          <dl>
+            <dt><code>story.vn</code></dt><dd>The main script. It contains the game header, declarations, and scenes. Keep it in the project's root.</dd>
+            <dt><code>theme.css</code></dt><dd>The place to change the look of menus, dialogue, and other screens.</dd>
+            <dt><code>assets/</code></dt><dd>Put images, music, sound, and other media here. Paths in your script are relative to this folder.</dd>
+            <dt>Import from Ren’Py…</dt><dd>Choose the existing project folder that contains <code>game/</code>. Emaki creates a new project and writes an <code>import-report.md</code> listing items that need attention. <a href="https://github.com/AbhishekNair050/Emaki/blob/main/docs/importing-from-renpy.md">Read the conversion coverage</a>.</dd>
+          </dl>
+          <details>
+            <summary>Open an existing Emaki project</summary>
+            <p>Click <strong>Open…</strong>, enter the folder containing <code>story.vn</code> or locate it using <strong>Browse…</strong>, then open the project and choose a workspace.</p>
+            <figure class="capture"><a href="./screens/open-project.webp"><img src="./screens/open-project.webp" loading="lazy" alt="Open project dialog with a path field and Browse button"></a></figure>
+          </details>
+          <details>
+            <summary>Import an existing Ren’Py project</summary>
+            <p>Use a project with editable <code>.rpy</code> source files. Set a separate destination folder and select <strong>Import project</strong>. Open the result, review <code>import-report.md</code>, then play through the routes you depend on. Custom Python, screens, and animations can require manual work.</p>
+            <figure class="capture"><a href="./screens/import-renpy.webp"><img src="./screens/import-renpy.webp" loading="lazy" alt="Ren’Py import form showing source folder, destination, and project folder fields"></a></figure>
+          </details>
+        </section>
+
+        <section id="first-game">
+          <h2>Build your first playable scene</h2>
+          <p>Create a fresh project called <strong>The Lighthouse Door</strong> and keep its starter <code>assets/bg/sky.svg</code>. Replace the contents of that project's <code>story.vn</code> with this complete script.</p>
+          <pre><code>---
+title: The Lighthouse Door
+start: arrival
+---
+
+define ava "Ava"
+image sky = "bg/sky.svg"
+
+label arrival:
+  scene sky with fade
+  ava: The lighthouse is just ahead.
+  menu:
+    "Knock on the door.":
+      jump knock
+    "Keep walking.":
+      jump walk
+
+label knock:
+  ava: Come in. The kettle's on.
+  end
+
+label walk:
+  "The light sweeps across the empty path."
+  end</code></pre>
+          <ol class="steps">
+            <li>Open the editor and choose <strong>Write</strong>. Put the cursor on <code>ava: The lighthouse is just ahead.</code> and press <kbd>Ctrl</kbd>+<kbd>Enter</kbd>.</li>
+            <li>Advance to the menu and pick <strong>Knock on the door.</strong> Ava should invite you in. Play from the same line again and pick <strong>Keep walking.</strong> to see the other branch.</li>
+            <li>Change <code>The kettle's on.</code> to your own dialogue. Play that line again to confirm the edit. Then open <strong>Story</strong> and check that <code>arrival</code> leads to both <code>knock</code> and <code>walk</code>.</li>
+          </ol>
+          <p>The header picks the entry label, <code>define</code> registers a speaker, and <code>image</code> names an asset. Each <code>jump</code> sends the selected branch to another label. <code>end</code> finishes that path.</p>
+          <figure class="capture"><a href="./screens/lighthouse-choice.webp"><img src="./screens/lighthouse-choice.webp" loading="lazy" alt="The Lighthouse Door exercise showing the Knock on the door and Keep walking choices"></a><figcaption>Both options should appear in the preview before you test the branches.</figcaption></figure>
+        </section>
+
+        <section id="write">
+          <h2>Write with the game running</h2>
+          <figure class="capture"><a href="./screens/write.webp"><img src="./screens/write.webp" loading="lazy" alt="Write workspace showing story.vn beside the running game, with scenes, inspector and line tracks"></a><figcaption>Write pairs the editable script with a running preview.</figcaption></figure>
+          <dl>
+            <dt>Scenes and Assets</dt><dd>Scenes jumps to each label. Assets lists existing media and accepts file drops from your computer. Drop an asset into the script to insert its declaration and a matching story command.</dd>
+            <dt>File picker and New file</dt><dd>Switch between scripts or add a file for another chapter or route.</dd>
+            <dt>Play from cursor, previous and next, Restart</dt><dd><kbd>Ctrl</kbd>+<kbd>Enter</kbd> plays from the current line. The arrows move between lines. Restart returns the preview to the title screen.</dd>
+            <dt>Format, Problems, and save status</dt><dd>Format tidies layout. Problems opens diagnostics. Emaki saves edits as you type and shows the last working version in the preview while you fix an error.</dd>
+            <dt>Lines and Inspector</dt><dd>The bottom tracks show dialogue, choices, sprites, scenery and audio at each point. The Inspector shows the selected line and its state, and can edit supported properties.</dd>
+          </dl>
+          <details>
+            <summary>Add assets and split the script</summary>
+            <p>Open <strong>Assets</strong> and drop a file from your computer onto the list. The editor copies it into the project. Drag an image or audio item from the list onto your script to declare and use it. Give character images an expression name if you want the speaker's portrait to change with dialogue.</p>
+            <figure class="capture"><a href="./screens/assets.webp"><img src="./screens/assets.webp" loading="lazy" alt="Write workspace with the Assets tab listing backgrounds, sprites and audio"></a></figure>
+            <p>Use <strong>New file</strong> to add a chapter or route file, and the file picker to switch between it and <code>story.vn</code>. Keep the main header in <code>story.vn</code>.</p>
+          </details>
+          <h3>What the script does</h3>
+          <pre><code>var trust = 0
+
+label arrival:
+  scene cliff_road with fade
+  show mira neutral at center with dissolve
+  mira: You're early.
+  menu:
+    "I wanted to see the light come on.":
+      set trust += 1
+      mira smile: Did you now.
+    "The driver wanted to beat the storm.":
+      mira: Smart man.</code></pre>
+          <p>This excerpt assumes the character, background and sprites have already been declared. A <code>label</code> names a scene. <code>scene</code> sets a background, <code>show</code> places a sprite, a speaker followed by a colon speaks, and <code>menu</code> offers choices. <code>set</code> changes a value that later conditions can read. A quoted line by itself is narration.</p>
+        </section>
+
+        <section id="stage">
+          <h2>Stage a scene</h2>
+          <figure class="capture"><a href="./screens/stage.webp"><img src="./screens/stage.webp" loading="lazy" alt="Stage workspace showing Mira in the large preview with stage tools and inspector"></a><figcaption>Choose Stage or press Alt+2 for a larger preview and placement tools.</figcaption></figure>
+          <dl>
+            <dt>Move, Scale, Rotate</dt><dd>Select a character and drag to adjust the chosen property. The change updates the character's <code>show</code> line. Use <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo it.</dd>
+            <dt>Thirds and safe area</dt><dd>Overlay composition guides while placing a character or framing a scene.</dd>
+            <dt>Phone</dt><dd>Check the layout inside a phone frame. The preview follows the game's orientation settings.</dd>
+          </dl>
+          <figure class="capture"><a href="./screens/phone.webp"><img src="./screens/phone.webp" loading="lazy" alt="Stage workspace with the game constrained to an upright phone preview"></a><figcaption>Toggle Phone again to return to the regular stage.</figcaption></figure>
+        </section>
+
+        <section id="story">
+          <h2>Follow a route through the story</h2>
+          <figure class="capture"><a href="./screens/story.webp"><img src="./screens/story.webp" loading="lazy" alt="Story flowchart with a highlighted Gullwing Point route and the list of endings"></a><figcaption>Choose an ending in Route to, then inspect the path through the flowchart.</figcaption></figure>
+          <dl>
+            <dt>Route to · Search again</dt><dd>Find a path to each reachable ending. Selecting a route highlights its scenes and sets the variables used by preview when you play from a line.</dd>
+            <dt>Flowchart</dt><dd>Pan and zoom to inspect the branching story. Click a scene to select it, or double-click to play it. Add and rename scenes or connect them to create jumps and choices.</dd>
+            <dt>Color views and Inspector</dt><dd>Color scenes by playtest coverage, word count, or a variable. The Inspector shows scene counts, state, and the route's choice. Open the scene in Stage or in the script.</dd>
+          </dl>
+        </section>
+
+        <section id="player">
+          <h2>Get to know the player</h2>
+          <div class="actions"><a class="button" href="./play/gullwing/">Play Gullwing Point</a><a class="button secondary" href="./play/plugin-demo/">Play the plugin demo</a></div>
+          <figure class="capture"><a href="./screens/title.webp"><img src="./screens/title.webp" loading="lazy" alt="Gullwing Point title screen with Start, Extras and Settings"></a><figcaption>The bundled game uses the default player interface. Games can supply their own screens.</figcaption></figure>
+          <dl>
+            <dt>Start · Load · Extras · Settings</dt><dd>Begin the story, resume from a saved slot, see unlocked content, or change reading and playback preferences. Load appears on the title screen when a save exists.</dd>
+            <dt>Advance and choose</dt><dd>Click or tap to reveal or advance dialogue, or use Enter or Space. Pick a response when a choice appears.</dd>
+            <dt>Back · Log</dt><dd>Back rolls back one line. Log opens the dialogue history. Select an earlier line to roll back to it. Voiced games can offer replay from the backlog.</dd>
+            <dt>Save · Load · Menu</dt><dd>Save stores a position with a thumbnail. Load resumes a slot. Menu opens the game's custom menu if it has one, or asks before returning to the title.</dd>
+            <dt>Auto · Skip · Next choice</dt><dd>Advance at a reading pace, skip eligible text, or advance to the next choice. By default, normal skipping stops on unread lines.</dd>
+            <dt>Extras</dt><dd>View unlocked replays, music, endings, achievements, and any gallery images the game declares.</dd>
+          </dl>
+          <details>
+            <summary>Choices, keyboard controls, and Extras</summary>
+            <figure class="capture"><a href="./screens/first-choice.webp"><img src="./screens/first-choice.webp" loading="lazy" alt="Gullwing's opening choice with two player responses"></a><figcaption>Pick a response to continue. A choice can change dialogue immediately and influence later scenes.</figcaption></figure>
+            <p>In the default player, <kbd>Enter</kbd>, <kbd>Space</kbd>, <kbd>Page Down</kbd>, and right arrow advance. <kbd>Page Up</kbd> and left arrow roll back. Use <kbd>A</kbd> for Auto, <kbd>S</kbd> for Skip, <kbd>L</kbd> for Log, <kbd>H</kbd> to hide or show the interface, and <kbd>O</kbd> for Settings.</p>
+            <figure class="capture"><a href="./screens/extras.webp"><img src="./screens/extras.webp" loading="lazy" alt="Gullwing Extras menu with sections for unlockable content"></a><figcaption>Open Extras from the title screen to see what playing has unlocked.</figcaption></figure>
+          </details>
+          <figure class="capture"><a href="./screens/save.webp"><img src="./screens/save.webp" loading="lazy" alt="Gullwing Point save screen showing save slots"></a><figcaption>Pick a save slot to store your progress.</figcaption></figure>
+          <figure class="capture"><a href="./screens/log.webp"><img src="./screens/log.webp" loading="lazy" alt="Gullwing Point dialogue history with a line that can be selected for rollback"></a><figcaption>Open Log during play to revisit dialogue.</figcaption></figure>
+          <h3>Player settings</h3>
+          <figure class="capture"><a href="./screens/settings.webp"><img src="./screens/settings.webp" loading="lazy" alt="Gullwing Point player settings with text, motion and audio options"></a></figure>
+          <dl>
+            <dt>Full screen · Text speed · Auto-advance wait</dt><dd>Change display mode, how quickly letters appear, and how long Auto waits ahead of the next line.</dd>
+            <dt>Master · Music · Sound · Voice</dt><dd>Master sets overall volume. Use the other sliders to balance the music, sounds and spoken dialogue separately.</dd>
+            <dt>Text size · Text box opacity · Font</dt><dd>Adjust readability and check the sample text below the controls. The player includes Atkinson Hyperlegible and OpenDyslexic options.</dd>
+            <dt>Skip · Animations · Language</dt><dd>Choose whether Skip can pass unread text, and whether animation follows device preferences or uses reduced motion. The language picker appears for translated games.</dd>
+            <dt>Reset to defaults · Done</dt><dd>Restore the starting preferences or return to the game.</dd>
+          </dl>
+        </section>
+
+        <section id="customize">
+          <h2>Customize and extend</h2>
+          <dl>
+            <dt>Production features</dt><dd>Use layered sprites for outfits, side portraits for speakers, camera moves and transitions for staging, NVL for full-page text, and movies for cutscenes.</dd>
+            <dt>Screen and theme</dt><dd>Set the title art in the header or use a <code>screen</code> block for custom menus, dialogue, settings, saves, history, confirmations, and Extras. Style them with <code>theme.css</code>.</dd>
+            <dt>Translation and voice</dt><dd>Generate translation catalogs with <code>strings</code> and a recording sheet with <code>voices</code>. Keep translated text in PO or CSV and use language-specific media where required.</dd>
+            <dt>Plugins</dt><dd>Add commands, expression functions, and screen elements. The <a href="./play/plugin-demo/">plugin demo</a> shows a weather effect, a memory minigame, and a screen meter.</dd>
+          </dl>
+          <figure class="capture"><a href="./screens/plugin-memory.webp"><img src="./screens/plugin-memory.webp" loading="lazy" alt="Plugin demo with a card matching minigame running over the story scene"></a><figcaption>The script waits for the memory game to finish, then uses the result to change the Trust meter.</figcaption></figure>
+          <details>
+            <summary>Give the starter game a title screen</summary>
+            <p>Add these lines inside the header of <em>The Lighthouse Door</em>, restart the preview, and check that the starter sky fills the title screen and the title menu sits on the left.</p>
+            <pre><code>title_image: bg/sky.svg
+title_layout: left
+title_buttons: start, settings</code></pre>
+            <figure class="capture"><a href="./screens/themed-title.webp"><img src="./screens/themed-title.webp" loading="lazy" alt="The Lighthouse Door with the starter sky behind its left-aligned title and buttons"></a></figure>
+            <p>A <code>label title:</code> lets the title screen play like a scene. Use <code>screen title:</code> for custom layout and buttons. Use <code>theme.css</code> to style the screens and dialogue box.</p>
+          </details>
+          <details>
+            <summary>Translate a line and prepare voice recordings</summary>
+            <ol class="steps">
+              <li>Run <code>npm run emaki -- strings ../my-game/story.vn --lang fr --csv</code>. Open <code>lang/fr.csv</code> in the project and enter a French translation for one line in the translation column.</li>
+              <li>Launch the game, select French in <strong>Settings</strong>, and play that line. Missing or unreviewed translations use the original text. Rerun the command after changing the script to update the catalog.</li>
+              <li>To prepare recordings, set <code>voice: voice/{speaker}/{id}.ogg</code> in the header and run <code>npm run emaki -- voices ../my-game/story.vn</code>. The generated <code>voice-script.csv</code> lists each recording's expected path under <code>assets/</code>.</li>
+            </ol>
+            <figure class="capture"><a href="./screens/translated-settings.webp"><img src="./screens/translated-settings.webp" loading="lazy" alt="The Lighthouse Door player settings with Français selected as the language"></a></figure>
+          </details>
+        </section>
+
+        <section id="dev-tools">
+          <h2>Use VS Code and the dev server</h2>
+          <h3>Install the VS Code extension from source</h3>
+          <pre><code>npm run build:vscode
+npm run package -w emaki-vscode</code></pre>
+          <p>In VS Code, run <strong>Extensions: Install from VSIX…</strong> and select the generated <code>.vsix</code> in <code>packages/vscode/</code>. Open your game's folder to get highlighting, diagnostics, completion, hover information, and navigation for <code>.vn</code> files. <kbd>F12</kbd> goes to a definition. <kbd>Shift</kbd>+<kbd>F12</kbd> lists references.</p>
+          <h3>Preview with any text editor</h3>
+          <pre><code>npm run emaki -- play ../my-game --no-open</code></pre>
+          <p>Open the printed URL. Emaki reloads the game as you save the script. Press <kbd>M</kbd> to toggle the dev story map and click a scene to jump to it. To preview a specific state, append <code>?line=52&amp;trust=2</code> to the demo's dev URL. Add <code>&amp;file=chapters/two.vn</code> when selecting a line in a different file. In VS Code, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd> sends the cursor line to the configured dev server.</p>
+          <figure class="capture"><a href="./screens/dev-story-map.webp"><img src="./screens/dev-story-map.webp" loading="lazy" alt="Emaki development player with a story map and editable variables beside the scene"></a><figcaption>The map and variable controls are available during development. The exported game opens straight into the player.</figcaption></figure>
+          <details>
+            <summary>Script features by task</summary>
+            <dl>
+              <dt>Organize a long story</dt><dd>Use a header for project settings, declarations for reusable names, and labels for scenes. Split chapters into separate files and jump or branch between labels.</dd>
+              <dt>Compose a shot</dt><dd>Declare backgrounds and sprite expressions, then use transitions, positions, moves, camera effects, free image layers, or color tones. Name a side image for a portrait in the dialogue box.</dd>
+              <dt>Set the reading rhythm</dt><dd>Use text styling, ruby annotations, inline pauses, or NVL pages. Music, ambience, and effects play on their own channels. A movie can take over the stage for a cutscene.</dd>
+              <dt>Track decisions</dt><dd>Store decisions in variables, test them in conditions, and jump to scenes or endings. Declare achievements, music, and replays so they can appear in Extras.</dd>
+            </dl>
+          </details>
+          <details>
+            <summary>Command-line examples</summary>
+            <pre><code>npm run emaki -- check ../my-game/story.vn
+npm run emaki -- fmt ../my-game/story.vn --write
+npm run emaki -- graph ../my-game/story.vn
+npm run emaki -- build ../my-game/story.vn
+npm run emaki -- strings ../my-game/story.vn --lang fr
+npm run emaki -- voices ../my-game/story.vn
+npm run emaki -- plugin ../my-game weather --ts</code></pre>
+            <p>These commands report script errors, format source, print a Mermaid graph, compile the story, generate a French catalog, prepare a recording sheet, and scaffold a TypeScript plugin, respectively.</p>
+          </details>
+        </section>
+
+        <section id="publish">
+          <h2>Export and publish</h2>
+          <p>In the launcher, select a game and an export target. The export log shows where the build went. For a browser game, use the launcher’s <strong>Web</strong> export or run this from the engine checkout.</p>
+          <figure class="capture"><a href="./screens/export.webp"><img src="./screens/export.webp" loading="lazy" alt="Launcher export controls with compression settings expanded"></a></figure>
+          <pre><code>npm run export -- web ../my-game</code></pre>
+          <figure class="capture"><a href="./screens/export-complete.webp"><img src="./screens/export-complete.webp" loading="lazy" alt="Finished web export showing the build log and Show export folder button"></a><figcaption>When the build completes, choose <strong>Show export folder</strong> and check the output before uploading it.</figcaption></figure>
+          <dl>
+            <dt>Web</dt><dd>Host the contents of <code>export/web/</code> as a website or zip its contents for an itch.io HTML game. Browser saves are kept in that browser.</dd>
+            <dt>Desktop and Steam</dt><dd>Windows x64 has a WebView2 export. Electron targets Windows, macOS, and Linux with optional Steam support. Consult the target guide for packaging, signing and testing.</dd>
+            <dt>Android and iOS</dt><dd>Export a Capacitor project for Android Studio or Xcode. Android builds require the Android SDK and Java 21 or newer. Building for iOS requires a Mac with Xcode. See the export reference for debug builds and store packaging.</dd>
+            <dt>Compression</dt><dd>Adjust image format and resizing, sound and voice compression, and movie compression per project. Check the size estimates and play the exported game before sharing it.</dd>
+          </dl>
+        </section>
+
+        <section id="troubleshoot">
+          <h2>When something goes wrong</h2>
+          <dl>
+            <dt>Version or command errors</dt><dd>Check the Node version, restart the terminal after installation, and run commands from the Emaki checkout that contains <code>package.json</code>.</dd>
+            <dt>The launcher tab did not open</dt><dd>Use the exact local address printed in the terminal. To choose another port and print the URL without opening the browser, use <code>npm run launch -- --port 5180 --no-open</code>.</dd>
+            <dt>Your folder does not open</dt><dd>Choose the folder that directly contains <code>story.vn</code>. Quote paths containing spaces on the command line.</dd>
+            <dt>A scene stopped updating</dt><dd>Open Problems and fix the first file and line it lists. From the terminal, run <code>npm run emaki -- check ../my-game/story.vn</code>.</dd>
+            <dt>Missing art or sound</dt><dd>Check the file name and capitalization under <code>assets/</code>, and check the declaration and command referring to it.</dd>
+          </dl>
+          <figure class="capture"><a href="./screens/diagnostics.webp"><img src="./screens/diagnostics.webp" loading="lazy" alt="Emaki Problems panel showing No label named office beside the script"></a><figcaption>In this example, <code>jump office</code> points to a label that doesn't exist. Change it to <code>jump knock</code> to restore the first branch.</figcaption></figure>
+          <a href="https://github.com/AbhishekNair050/Emaki/issues">Report an issue on GitHub</a>
+        </section>
+
+        <section id="reference">
+          <h2>Full reference index</h2>
+          <p>Look up a specific command, control, platform requirement, or script feature in the engine documentation.</p>
+          <!-- reference-index -->
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer><span>Emaki · MIT licensed</span><a href="https://github.com/AbhishekNair050/Emaki">Source on GitHub</a></footer>
+</body>
+</html>
