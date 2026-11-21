@@ -4,7 +4,9 @@ From nothing to your own game playing in the browser, in about ten minutes.
 
 ## 1. Install
 
-You need [Node.js](https://nodejs.org/) 22.18 or newer and [git](https://git-scm.com/).
+**Windows x64:** Download `Emaki-Studio-Setup-*.exe` from [GitHub Releases](https://github.com/AbhishekNair050/Emaki/releases). The installer is unsigned, so Windows may show a SmartScreen warning. Open Emaki Studio from the Start menu. Studio includes its own Node runtime.
+
+**macOS and Linux:** Run from source. The same steps also work on Windows. Install [Node.js](https://nodejs.org/) 22.18 or newer and [git](https://git-scm.com/).
 
 ```sh
 git clone https://github.com/AbhishekNair050/Emaki.git

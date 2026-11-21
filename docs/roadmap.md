@@ -1,6 +1,6 @@
 # Roadmap
 
-Emaki hasn't had a release yet. This page is about what comes next. For what's already built, see the [changelog](../CHANGELOG.md), and for why things work the way they do, the [decisions log](decisions.md).
+This page is about what comes next. For what's already built, see the [changelog](../CHANGELOG.md), and for why things work the way they do, the [decisions log](decisions.md).
 
 Most of what's here came from trying to make real games in Emaki and hitting a wall (D-035). If you hit one too, open an issue: that's the best way to move something up this list.
 
@@ -22,7 +22,7 @@ Most of what's here came from trying to make real games in Emaki and hitting a w
 
 ## In progress: Emaki Studio
 
-Writers should be able to start without installing Node, git or opening a terminal (D-068). The Windows app and installer work. Still to do:
+Writers can install Studio on Windows x64 without setting up Node or Git (D-068). The release workflow builds the installer only when a matching Studio version tag is pushed. macOS and Linux use the source setup.
 
 - [ ] macOS and Linux packages, built in CI on release tags
 - [ ] Signed installers and automatic updates

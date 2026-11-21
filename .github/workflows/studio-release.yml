@@ -1,0 +1,83 @@
+name: Emaki Studio Windows release
+
+on:
+  push:
+    tags:
+      - 'studio-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check the release tag
+        shell: pwsh
+        run: |
+          $version = (Get-Content packages/studio/package.json -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$' -or $env:GITHUB_REF_NAME -cne "studio-v$version") {
+            throw "Expected tag studio-v$version for this Studio version."
+          }
+          "STUDIO_INSTALLER=packages/studio/out/installer/Emaki-Studio-Setup-$version.exe" >> $env:GITHUB_ENV
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- packages/studio/test
+      - run: npm run build:studio -- --without-ffmpeg
+      - name: Install Studio and export the example
+        shell: pwsh
+        run: ./packages/studio/test/windows-installer-smoke.ps1 -Installer $env:STUDIO_INSTALLER
+      - uses: actions/upload-artifact@v4
+        with:
+          name: studio-windows-x64
+          path: ${{ env.STUDIO_INSTALLER }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: studio-windows-x64
+          path: release
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version="${tag#studio-v}"
+          name="Emaki-Studio-Setup-$version.exe"
+          installer="release/$name"
+          test -s "$installer"
+
+          if status=$(gh release view "$tag" --json isDraft,assets --jq '.isDraft,.assets[].name'); then
+            if [[ "${status%%$'\n'*}" == true ]]; then
+              if ! grep -Fxq "$name" <<< "$status"; then
+                gh release upload "$tag" "$installer"
+              fi
+              gh release edit "$tag" --draft=false
+            elif ! grep -Fxq "$name" <<< "$status"; then
+              echo "The published release is missing $name." >&2
+              exit 1
+            fi
+          else
+            gh release create "$tag" "$installer" --verify-tag \
+              --title "Emaki Studio $version" --notes-file .github/studio-release-notes.md
+          fi

@@ -45,6 +45,17 @@ Other commands:
 - `npm run art`: regenerate the demo's placeholder SVGs.
 - `VSCODE_PATH=/path/to/Code npm run test:e2e -w emaki-vscode`: drive the extension in a real VS Code (needs a desktop, so not in CI).
 
+## Release Emaki Studio for Windows
+
+Set the release version in `packages/studio/package.json` and update the lockfile if the version changes. Merge the release commit, then push an annotated tag matching that version. For Studio 0.1.0:
+
+```sh
+git tag -a studio-v0.1.0 -m "Emaki Studio 0.1.0"
+git push origin studio-v0.1.0
+```
+
+The [Studio release workflow](.github/workflows/studio-release.yml) runs on Studio version tags. It builds and smoke-tests the Windows x64 installer, then publishes it to GitHub Releases. Its release notes come from [.github/studio-release-notes.md](.github/studio-release-notes.md).
+
 ## Reporting bugs and proposing features
 Use the issue templates. For a bug in a story, the smallest script that shows it is the most useful thing you can include. A new feature should come from a game that needs it: say what you're making and what you couldn't write. Larger changes are best discussed in an issue before a pull request, since the script language and the compiled format are shared contracts (see Conventions). Security problems go privately: see [SECURITY.md](SECURITY.md).
 

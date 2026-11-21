@@ -24,7 +24,7 @@ label arrival:
 
 ## Start here
 
-You need Node.js 22.18 or newer.
+On **Windows x64**, get the unsigned **Emaki Studio** installer from [GitHub Releases](https://github.com/AbhishekNair050/Emaki/releases). On **macOS and Linux**, run from source. The source setup also works on Windows and requires Node.js 22.18 or newer and Git.
 
 ```sh
 git clone https://github.com/AbhishekNair050/Emaki.git
@@ -82,7 +82,7 @@ npm run emaki -- new ../my-game      # start your own game
 Emaki is young (0.x). It's been used to write the demo and to port two complete existing visual novels, but expect rough edges:
 
 - The script language and the compiled format may still change before 1.0. Changes are logged in [Decisions](docs/decisions.md).
-- Nothing is published yet: run Emaki from this repository, and install the VS Code extension [from source](packages/vscode/README.md#install-from-source).
+- The VS Code extension installs [from source](packages/vscode/README.md#install-from-source).
 - Desktop export is tested on Windows. macOS and Linux apps are built the same way but haven't been tried on those systems yet, and macOS apps need signing before others can open them without warnings.
 - Steam support (achievements, overlay) and the Android APK build are written but not yet tested against real Steam or on a device. iOS projects need a Mac to build.
 - Not yet: Live2D or Spine characters, plural forms in translations, a Ren'Py importer.

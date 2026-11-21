@@ -4,8 +4,8 @@
  * 1. Stage the engine as it runs from the repository: the packages, the example game, and the packages they use
  *    at run time, copied from node_modules (not npm's links between the engine's own packages, which installers
  *    can't carry: the Studio makes them when it starts, see src/link.ts).
- *    Plus ffmpeg (vendor/ffmpeg), for making exports' sound and movies smaller: downloaded once, checked against
- *    its known hash, and kept in out/downloads.
+ *    Local builds can also include ffmpeg (vendor/ffmpeg), downloaded and checked against its known hash.
+ *    Use --without-ffmpeg for the release build.
  * 2. Add Electron with @electron/packager. No asar archive: Vite, esbuild and the exporters read and run these
  *    files as plain files.
  * 3. Make the installer with electron-builder: NSIS, for the current user (the folder can be chosen), so the
@@ -208,7 +208,7 @@ if (process.platform !== 'win32') {
   process.exit(1);
 }
 const { version, electronVersion } = stageApp();
-await stageFfmpeg();
+if (!process.argv.includes('--without-ffmpeg')) await stageFfmpeg();
 const appDir = await packageApp(version, electronVersion);
 const exe = await installer(appDir, version, electronVersion);
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(0)} MB`;
