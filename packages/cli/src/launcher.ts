@@ -9,7 +9,7 @@ import { DEFAULT_PROJECTS_DIR, Projects, projectPath } from './projects.ts';
 import { openOnDesktop, Sessions, type SessionKind } from './serve.ts';
 import { assetFile, PICTURE_TYPES, storySignature, type ProjectInfo } from './project-info.ts';
 import { TARGETS, type Target } from './export.ts';
-import { findTools, missingTool, parseCompression, readCompression, writeCompression } from './compress.ts';
+import { findTools, missingTool, parseCompression, readCompression, writeCompression, type Estimate } from './compress.ts';
 
 interface ExportJob {
   id: number; path: string; target: Target; status: 'running' | 'done' | 'failed';
@@ -99,6 +99,21 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
     worker.once('exit', () => { if (infos.get(path) === next) done({ error: 'The project could not be read.' }); });
     return { working: true, info: entry?.info ?? null, error: null };
   };
+  // One estimate at a time for each project and its settings; asking again while it runs waits for the same one.
+  const estimates = new Map<string, { settings: string; result: Promise<Estimate> }>();
+  const estimateOf = (path: string): Promise<Estimate> => {
+    const settings = JSON.stringify(readCompression(path));
+    const running = estimates.get(path);
+    if (running?.settings === settings) return running.result;
+    const result = new Promise<Estimate>((done, fail) => {
+      const worker = new Worker(resolve(import.meta.dirname, 'estimate-worker.ts'), { workerData: path });
+      worker.once('message', (m: { estimate?: Estimate; error?: string }) => (m.estimate ? done(m.estimate) : fail(new Error(m.error ?? 'The estimate failed.'))));
+      worker.once('error', fail);
+      worker.once('exit', () => fail(new Error('The estimate stopped.')));
+    }).finally(() => { if (estimates.get(path)?.result === result) estimates.delete(path); });
+    estimates.set(path, { settings, result });
+    return result;
+  };
   const kindOf = (data: Record<string, unknown>): SessionKind => {
     if (data.kind !== 'editor' && data.kind !== 'play') throw new Error('Choose Editor or Play.');
     return data.kind;
@@ -131,7 +146,12 @@ export async function startLauncher(opts: { port?: number; stateFile?: string; o
       const path = projectPath(url.searchParams.get('path') ?? '');
       known(path);
       const tools = findTools(url.searchParams.has('recheck'));
-      return send(res, 200, { settings: readCompression(path), missing: { audio: missingTool('audio', tools), video: missingTool('video', tools) } });
+      return send(res, 200, { settings: readCompression(path), missing: { audio: missingTool('audio', tools), voice: missingTool('voice', tools), video: missingTool('video', tools) } });
+    }
+    if (req.method === 'GET' && route === '/__launcher/estimate') {
+      const path = projectPath(url.searchParams.get('path') ?? '');
+      known(path);
+      return send(res, 200, { settings: readCompression(path), estimate: await estimateOf(path) });
     }
     if (req.method === 'GET' && route === '/__launcher/browse') {
       return send(res, 200, browse(url.searchParams.get('path') || homedir()));

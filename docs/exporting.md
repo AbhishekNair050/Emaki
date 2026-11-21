@@ -38,25 +38,31 @@ language: en
 Put a square `icon.png` (512×512 or larger) in the game folder to give the desktop app its icon. Phone icons are set in Android Studio and Xcode (Image Asset / App Icon).
 
 ## Making the export smaller
-Pictures, sound and movies are most of a game's size, and many games ship them larger than players can tell apart. Compression changes only the export's copy: the files in `assets/` stay as they are, and the editor and player keep using them. Each kind is off until you turn it on.
+Pictures, sound and movies are most of a game's size, and many games ship them larger than players can tell apart. Compression changes only the export's copy: the files in `assets/` stay as they are, and the editor and player keep using them. Each setting is off until you turn it on.
 
-In the launcher, open **Compression** under Export and pick a setting for each kind; it's saved in the game folder's `export.json`, so the commands use it too:
+In the launcher, open **Compression** under Export and pick each setting; they're saved in the game folder's `export.json`, so the commands use them too:
 
 ```json
-{ "compress": { "images": 90, "audio": 96, "video": 23 } }
+{ "compress": { "images": 90, "shrink": 100, "audio": 96, "voice": 32, "video": 23 } }
 ```
+
+While the section is open, the launcher works out how big the export will be with these settings, for each kind and in all: files an earlier export (or estimate) already converted count exactly, and for the rest it converts a few of each kind and expects the others to shrink the same way (a few seconds of each movie it tries). The pictures and sound it tries are kept for the export, so they aren't done twice. Estimates marked **about** or **~** are these guesses.
 
 | Kind | Files | Setting |
 |---|---|---|
 | `images` | PNG and BMP, to WebP | `lossless` (pixel for pixel), or a quality from 50 to 100. 90 is hard to tell from the original; transparency always stays exact, so sprite edges don't fringe. |
-| `audio` | WAV, FLAC, AIFF, OGG and MP3, to Opus (in `.ogg`) | kbit/s for stereo files, 24 to 256; mono files (voices, mostly) get half. 96 suits music, and gives mono voices 48. Lossy files already at or near the setting are left alone, since encoding them again would only lose quality. |
+| `shrink` | Pictures (PNG, BMP, JPEG, WebP) bigger than the game's screen | A percentage of the screen, 100 to 400: a picture that is bigger than that both ways is made smaller until it just covers it. 100 suits most games; 200 stays sharp on 4K screens and when the camera zooms in. Pictures wider or taller than the screen in only one direction (panoramas, tall scrolling scenes) are kept. The screen is the story's `canvas:`, else 1920 wide at its `aspect:`. Without `images`, PNG and JPEG stay PNG and JPEG. |
+| `audio` | Music and sound effects: WAV, FLAC, AIFF, OGG and MP3, to Opus (in `.ogg`) | kbit/s for stereo files, 24 to 256; mono files get half. 96 suits music. Lossy files already at or near the setting are left alone, since encoding them again would only lose quality. |
+| `voice` | Voices, the same files to Opus | `audio` (the default: voices go with music and sound), or kbit/s for every voice, mono or stereo, 16 to 256; 32 is clear speech, and 24 is still good. Voices are the files the story plays with `play voice`, the files of a voiced game's lines (`voice:` in the header), the `sample voice` files of its screens, and any sound file in a folder named `voice` or `voices`. |
 | `video` | MP4, MOV, M4V, OGV, AVI, MKV, MPEG and WMV, to H.264 MP4 | CRF from 15 (close to the original, large) to 40 (small); 18 to 23 is usual. WebM is left alone (it may have a transparent background, which H.264 can't keep). |
 
-Any file that comes out less than 5% smaller stays as it was, and so do animated PNGs (WebP would keep only their first frame). A file that changes format gets a new name (`bg/sea.png` becomes `bg/sea.webp`); the export lists these in `game.json` and the player looks every asset up there, so the story keeps its original names. A plugin that builds a file's address itself, instead of asking the plugin API's `asset()`, won't find renamed files.
+Any file that comes out less than 5% smaller stays as it was, and so do animated pictures (WebP would keep only their first frame). A file that changes format gets a new name (`bg/sea.png` becomes `bg/sea.webp`); the export lists these in `game.json` and the player looks every asset up there, so the story keeps its original names. A plugin that builds a file's address itself, instead of asking the plugin API's `asset()`, won't find renamed files.
+
+A picture made smaller is still drawn at its old size: where the player sizes a picture by its pixels (free layers and screen pictures, whose pixels are canvas pixels), the export's `game.json` gives it the size the picture had. A plugin that measures a picture's pixels itself sees the smaller size.
 
 Results are kept in `export/.compress-cache`, so a second export converts only the files that changed. Delete that folder to start over.
 
-Sound and movies need [ffmpeg](https://ffmpeg.org/download.html) (with `ffprobe`, and built with libopus and libx264, as the usual Windows, macOS and Linux builds are) on the PATH, or `FFMPEG_PATH` set to the `ffmpeg` program. Without it, those two are skipped and the launcher says why. Older Safari and iOS versions can't play `.ogg` files at all; check on the oldest iPhone you support before compressing sound for an iOS export.
+Sound and movies need ffmpeg. Emaki Studio comes with it (6.1.1, from www.gyan.dev; GPL v3, see `vendor/ffmpeg` in the install folder). From the repository, install [ffmpeg](https://ffmpeg.org/download.html) built with libopus and libx264 (the usual Windows, macOS and Linux builds are) and put it on the PATH, or set `FFMPEG_PATH` to the `ffmpeg` program; `FFMPEG_PATH` also replaces the Studio's own. Without it, sound and movies are skipped and the launcher says why. Older Safari and iOS versions can't play `.ogg` files at all; check on the oldest iPhone you support before compressing sound for an iOS export.
 
 From the command line, `--images`, `--audio` and `--video` replace the game's setting for that export (`off` turns one off):
 

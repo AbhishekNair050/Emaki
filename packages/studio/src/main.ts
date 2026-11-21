@@ -18,6 +18,10 @@ const PORT = 5185;
 /** What pages may ask for. Everything else (camera, location, notifications…) is refused. */
 const PERMISSIONS = new Set(['fullscreen', 'clipboard-sanitized-write', 'clipboard-read']);
 
+// The ffmpeg the installed Studio comes with (see build.ts), for exports' sound and movies, unless one is set already.
+const ffmpeg = resolve(import.meta.dirname, '../../../vendor/ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+if (!process.env.FFMPEG_PATH && existsSync(ffmpeg)) process.env.FFMPEG_PATH = ffmpeg;
+
 app.setName('Emaki Studio');
 app.setPath('userData', join(app.getPath('appData'), 'Emaki Studio'));
 if (process.platform === 'win32') app.setAppUserModelId('org.emaki.studio');

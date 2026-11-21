@@ -19,7 +19,8 @@
  *   emaki plugin <game folder> <name> [--ts]
  *                                     start a plugin: plugins/<name>/ with a command that works as it is
  *   emaki export <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--no-build]
- *                [--images off|lossless|50-100] [--audio off|24-256] [--video off|15-40]
+ *                [--images off|lossless|50-100] [--shrink off|100-400] [--audio off|24-256] [--voice off|16-256]
+ *                [--video off|15-40]
  *                                     package the game for players (into <game>/export/)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -50,7 +51,8 @@ const USAGE = `Usage:
   emaki strings <story.vn> [--lang fr,de] [--csv]   translation files in lang/ (without --lang: progress)
   emaki voices  <story.vn>                          recording script and missing voice files (header 'voice:')
   emaki export  <web|desktop|android|ios> <game folder> [--platform win32|darwin|linux] [--arch x64|arm64] [--shell webview2|electron] [--no-build]
-                [--images off|lossless|50-100] [--audio off|24-256] [--video off|15-40]   (default: the game's export.json)`;
+                [--images off|lossless|50-100] [--shrink off|100-400] [--audio off|24-256] [--voice off|16-256]
+                [--video off|15-40]   (default: the game's export.json)`;
 
 if (cmd === 'launch' || cmd === 'edit' || cmd === 'play') {
   try {
@@ -386,7 +388,7 @@ async function exportCommand(): Promise<never> {
     const shell = opt('--shell');
     if (rest.includes('--shell') && !shell) throw new Error('--shell requires webview2 or electron.');
     const compress: Record<string, string> = {};
-    for (const kind of ['images', 'audio', 'video']) {
+    for (const kind of ['images', 'shrink', 'audio', 'voice', 'video']) {
       if (!rest.includes(`--${kind}`)) continue;
       const value = opt(`--${kind}`);
       if (!value || value.startsWith('--')) throw new Error(`--${kind} requires a value: off, or a number (see emaki help).`);

@@ -56,6 +56,7 @@ The first public version. Everything below is new.
 - Desktop windows open in the game's shape (`aspect:`): 960×720 for a 4:3 game instead of 1280×720 with black bars at the sides, in both the Electron and WebView2 shells.
 - Windows x64 games export with a small WebView2 player by default (D-067): about 5 MB instead of about 300 MB, with the game's files in an encrypted, tamper-checked pack. It behaves like the Electron app (window size, full screen, display scaling, one copy at a time) and imports saves from an earlier Electron release. Steam games and other systems use Electron; `--shell electron|webview2` chooses.
 - Smaller exports (D-070): pictures to WebP (lossless or a quality), sound to Opus and movies to H.264, each chosen in the launcher's Export card (saved in the game's `export.json`) or with `--images`, `--audio` and `--video`. Off unless turned on; only the export's copy changes, files that wouldn't shrink stay as they are, and conversions are cached between exports.
+- Compression (D-071): voices get a bitrate of their own (`voice`, `--voice`), pictures bigger than the game's screen can be made smaller (`shrink`, `--shrink`) and are still drawn at their size, and the launcher shows about how big the export will be before it runs. Emaki Studio comes with ffmpeg, so sound and movies compress without installing anything; ffprobe is no longer needed.
 
 ### Examples
 - *The Keeper of Gullwing Point*, a short original story with three endings, two replayable scenes and a music room.

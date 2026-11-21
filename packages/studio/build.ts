@@ -4,6 +4,8 @@
  * 1. Stage the engine as it runs from the repository: the packages, the example game, and the packages they use
  *    at run time, copied from node_modules (not npm's links between the engine's own packages, which installers
  *    can't carry: the Studio makes them when it starts, see src/link.ts).
+ *    Plus ffmpeg (vendor/ffmpeg), for making exports' sound and movies smaller: downloaded once, checked against
+ *    its known hash, and kept in out/downloads.
  * 2. Add Electron with @electron/packager. No asar archive: Vite, esbuild and the exporters read and run these
  *    files as plain files.
  * 3. Make the installer with electron-builder: NSIS, for the current user (the folder can be chosen), so the
@@ -12,7 +14,9 @@
  * Everything goes to packages/studio/out/ (stage, app, installer).
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { pngToIco } from '../desktop/src/icon.ts';
 
 const here = import.meta.dirname;
@@ -33,6 +37,17 @@ interface Manifest {
   name?: string; version?: string; description?: string;
   dependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; peerDependencies?: Record<string, string>;
 }
+/**
+ * ffmpeg for Windows x64 (6.1.1, the "essentials" build from www.gyan.dev: GPL v3, with libopus and libx264), as
+ * the ffmpeg-static project republishes it. Only ffmpeg: the exporter reads files' details from it too.
+ */
+const FFMPEG_RELEASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1';
+const FFMPEG_FILES = {
+  'ffmpeg-win32-x64.gz': '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',
+  'win32-x64.LICENSE': '8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903',
+  'win32-x64.README': 'a636a7183c58006351acbaf35303c0ed85c6e1320fd4e80de453ba6157de6311',
+} as const;
+
 const manifest = (dir: string): Manifest => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as Manifest;
 const log = (line: string) => console.log(line);
 
@@ -85,6 +100,34 @@ function runtimePackages(): Map<string, string> {
     need(manifest(dir), dir);
   }
   return found;
+}
+
+/** A file of the ffmpeg release, from out/downloads or else downloaded; either way checked against its hash. */
+async function ffmpegFile(name: keyof typeof FFMPEG_FILES): Promise<Buffer> {
+  const file = join(out, 'downloads', 'ffmpeg-b6.1.1', name);
+  const sha = (data: Buffer) => createHash('sha256').update(data).digest('hex');
+  if (existsSync(file)) {
+    const data = readFileSync(file);
+    if (sha(data) === FFMPEG_FILES[name]) return data;
+  }
+  log(`Downloading ${name}…`);
+  const res = await fetch(`${FFMPEG_RELEASE}/${name}`);
+  if (!res.ok) throw new Error(`Downloading ${name} failed (${res.status}).`);
+  const data = Buffer.from(await res.arrayBuffer());
+  if (sha(data) !== FFMPEG_FILES[name]) throw new Error(`${name} is not the file expected (its SHA-256 differs).`);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, data);
+  return data;
+}
+
+/** ffmpeg and its licence and build notes in vendor/ffmpeg: the Studio points the exporter at it (FFMPEG_PATH). */
+async function stageFfmpeg(): Promise<void> {
+  const dir = join(stage, 'vendor', 'ffmpeg');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'ffmpeg.exe'), gunzipSync(await ffmpegFile('ffmpeg-win32-x64.gz')));
+  writeFileSync(join(dir, 'LICENSE.txt'), await ffmpegFile('win32-x64.LICENSE'));
+  writeFileSync(join(dir, 'README.txt'), await ffmpegFile('win32-x64.README'));
+  log('Added ffmpeg 6.1.1 (GPL v3; source: https://github.com/FFmpeg/FFmpeg/commit/e38092ef93).');
 }
 
 function stageApp(): { version: string; electronVersion: string } {
@@ -165,6 +208,7 @@ if (process.platform !== 'win32') {
   process.exit(1);
 }
 const { version, electronVersion } = stageApp();
+await stageFfmpeg();
 const appDir = await packageApp(version, electronVersion);
 const exe = await installer(appDir, version, electronVersion);
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(0)} MB`;

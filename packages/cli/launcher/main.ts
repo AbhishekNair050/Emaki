@@ -1,7 +1,7 @@
 import type { Project } from '../src/projects.ts';
 import type { Session, SessionKind } from '../src/serve.ts';
 import type { ProjectInfo } from '../src/project-info.ts';
-import type { Compression } from '../src/compress.ts';
+import type { Compression, Estimate } from '../src/compress.ts';
 
 interface Job { id: number; path: string; target: string; status: 'running' | 'done' | 'failed'; log: string; output: string }
 interface State { projects: Project[]; sessions: Session[]; jobs: Job[]; defaultDirectory: string; home: string; platform: string }
@@ -40,20 +40,35 @@ const TARGET_NOTES: Record<string, string> = {
 };
 const TARGET_NAMES: Record<string, string> = { web: 'web', desktop: 'desktop', android: 'Android', ios: 'iOS' };
 type Kind = keyof Compression;
-interface CompressionState { settings: Compression; missing: { audio: string | null; video: string | null } }
+interface CompressionState { settings: Compression; missing: { audio: string | null; voice: string | null; video: string | null } }
 /** The selected project's compression settings, as last loaded or saved. */
 let compression: { path: string; state: CompressionState } | null = null;
 let compressionLoading = '';
-const KINDS: Kind[] = ['images', 'audio', 'video'];
+const KINDS: Kind[] = ['images', 'shrink', 'audio', 'voice', 'video'];
+/** The selected project's estimate (see estimateCompression), for its settings as they were when asked. */
+let estimate: { path: string; settings: string; result: Estimate | null; error: string | null } | null = null;
 const OFF = 'Keep as they are';
 /** Choices in each list; a value set by hand in export.json is added to its list. */
 const PRESETS: Record<Kind, [string | number, string][]> = {
   images: [['off', OFF], ['lossless', 'WebP, lossless'], [95, 'WebP, quality 95'], [90, 'WebP, quality 90'], [85, 'WebP, quality 85'], [80, 'WebP, quality 80'], [75, 'WebP, quality 75']],
+  shrink: [['off', OFF], [100, 'To the screen’s size'], [150, 'To 1.5 × the screen'], [200, 'To 2 × the screen (sharp on 4K screens)']],
   audio: [['off', OFF], [192, 'Opus, 192 kbit/s'], [160, 'Opus, 160 kbit/s'], [128, 'Opus, 128 kbit/s'], [96, 'Opus, 96 kbit/s'], [64, 'Opus, 64 kbit/s'], [48, 'Opus, 48 kbit/s']],
+  voice: [['audio', 'Same as music and sound'], ['off', OFF], [64, 'Opus, 64 kbit/s'], [48, 'Opus, 48 kbit/s'], [40, 'Opus, 40 kbit/s'], [32, 'Opus, 32 kbit/s'], [24, 'Opus, 24 kbit/s']],
   video: [['off', OFF], [18, 'H.264, near original (CRF 18)'], [20, 'H.264, high quality (CRF 20)'], [23, 'H.264, balanced (CRF 23)'], [26, 'H.264, smaller (CRF 26)'], [28, 'H.264, small (CRF 28)']],
 };
-const customLabel = (kind: Kind, v: string | number) => kind === 'images' ? `WebP, quality ${v}` : kind === 'audio' ? `Opus, ${v} kbit/s` : `H.264, CRF ${v}`;
-const SHORT: Record<Kind, string> = { images: 'pictures', audio: 'sound', video: 'movies' };
+const customLabel = (kind: Kind, v: string | number) => kind === 'images' ? `WebP, quality ${v}` : kind === 'shrink' ? `To ${v}% of the screen`
+  : kind === 'video' ? `H.264, CRF ${v}` : `Opus, ${v} kbit/s`;
+const SHORT: Record<Kind, string> = { images: 'pictures', shrink: 'large pictures', audio: 'sound', voice: 'voices', video: 'movies' };
+const ESTIMATED = { images: 'Pictures', audio: 'Music and sound', voice: 'Voices', video: 'Movies' } as const;
+const HINTS: Partial<Record<Kind, string>> = {
+  audio: 'WAV, FLAC, OGG and MP3 to Opus. Mono files get half.',
+  voice: 'The files the story plays as voices, and any in a voice folder, to Opus.',
+  video: 'MP4, MOV, AVI and others to H.264. WebM is kept.',
+};
+function size(bytes: number): string {
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1 ? `${gb.toFixed(gb < 10 ? 2 : 1)} GB` : `${(bytes / 1024 ** 2).toFixed(bytes < 10 * 1024 ** 2 ? 1 : 0)} MB`;
+}
 const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
 
 function stored(key: string, allowed: string[] | null, fallback: string): string {
@@ -215,6 +230,47 @@ async function loadCompression(path: string, recheck = false): Promise<void> {
   } catch (err) {
     if (path === selected) showError('compress-error', err);
   } finally { compressionLoading = ''; renderCompression(); }
+  void loadEstimate(path);
+}
+
+/** Work out how much smaller the export will be, while the section is open (it converts a few files of each kind). */
+async function loadEstimate(path: string): Promise<void> {
+  const s = compression?.path === path ? compression.state : null;
+  if (!s || path !== selected || !$<HTMLDetailsElement>('compress').open) return;
+  const settings = JSON.stringify(s.settings);
+  if (estimate?.path === path && estimate.settings === settings && !estimate.error) return;
+  estimate = { path, settings, result: null, error: null };
+  renderEstimate();
+  try {
+    const r = await api<{ settings: Compression; estimate: Estimate }>(`estimate?path=${encodeURIComponent(path)}`);
+    if (estimate?.path === path && estimate.settings === settings && JSON.stringify(r.settings) === settings) estimate = { ...estimate, result: r.estimate };
+  } catch (err) {
+    if (estimate?.path === path && estimate.settings === settings) estimate = { ...estimate, error: errorMessage(err) };
+  }
+  renderEstimate();
+}
+
+function renderEstimate(): void {
+  const box = $('compress-estimate');
+  const s = compression?.path === selected ? compression.state : null;
+  const e = estimate?.path === selected && s && estimate.settings === JSON.stringify(s.settings) ? estimate : null;
+  const on = s ? KINDS.some((k) => s.settings[k] !== 'off' && s.settings[k] !== 'audio') : false;
+  box.hidden = !e || !on;
+  if (box.hidden || !e) return;
+  box.classList.toggle('form-error', !!e.error);
+  if (e.error) { box.textContent = `Couldn’t estimate the export: ${e.error}`; return; }
+  const r = e.result;
+  if (!r) { box.textContent = 'Working out how much smaller the export will be…'; return; }
+  if (!r.before) { box.textContent = 'No files in assets are affected by these settings.'; return; }
+  const kinds = (['images', 'audio', 'voice', 'video'] as const).filter((k) => r[k].files);
+  const exact = kinds.every((k) => r[k].exact);
+  const saved = Math.max(0, Math.round((1 - r.after / r.before) * 100));
+  const head = document.createElement('strong');
+  head.textContent = `${size(r.before)} → ${exact ? '' : 'about '}${size(r.after)} (${saved}% smaller)`;
+  const rest = document.createElement('span');
+  rest.textContent = ` · ${kinds.map((k) => `${ESTIMATED[k]} ${size(r[k].before)} → ${r[k].exact ? '' : '~'}${size(r[k].after)}`).join(' · ')}`
+    + (exact ? '' : '. Worked out from a few files of each kind; the export reuses them.');
+  box.replaceChildren(head, rest);
 }
 
 function renderCompression(): void {
@@ -224,8 +280,8 @@ function renderCompression(): void {
   const on: string[] = [];
   for (const kind of KINDS) {
     const select = $<HTMLSelectElement>(`compress-${kind}`);
-    const value = s ? String(s.settings[kind]) : 'off';
-    const missing = kind === 'images' ? null : s?.missing[kind] ?? null;
+    const value = s ? String(s.settings[kind]) : kind === 'voice' ? 'audio' : 'off';
+    const missing = kind === 'images' || kind === 'shrink' ? null : s?.missing[kind] ?? null;
     const choices = [...PRESETS[kind]];
     if (!choices.some(([v]) => String(v) === value)) choices.push([value, customLabel(kind, value)]);
     const signature = JSON.stringify(choices);
@@ -234,27 +290,33 @@ function renderCompression(): void {
       select.replaceChildren(...choices.map(([v, label]) => { const o = document.createElement('option'); o.value = String(v); o.textContent = label; return o; }));
     }
     if (document.activeElement !== select) select.value = value;
-    select.disabled = !s || !connected || exporting || (!!missing && value === 'off');
-    if (kind !== 'images') {
+    select.disabled = !s || !connected || exporting || (!!missing && (value === 'off' || value === 'audio'));
+    const hintText = HINTS[kind];
+    if (hintText) {
       const hint = $(`compress-${kind}-hint`);
-      hint.textContent = missing ? `Needs ffmpeg: ${missing}.` : kind === 'audio' ? 'WAV, FLAC, OGG and MP3 to Opus. Mono files, like voices, get half.' : 'MP4, MOV, AVI and others to H.264. WebM is kept.';
-      hint.classList.toggle('form-error', !!missing && value !== 'off');
+      hint.textContent = missing ? `Needs ffmpeg: ${missing}.` : hintText;
+      hint.classList.toggle('form-error', !!missing && value !== 'off' && !(value === 'audio' && s?.settings.audio === 'off'));
     }
-    if (value !== 'off') on.push(`${SHORT[kind]} ${kind === 'images' ? (value === 'lossless' ? 'lossless' : `q${value}`) : kind === 'audio' ? `${value} kbit/s` : `CRF ${value}`}`);
+    if (value !== 'off' && value !== 'audio') {
+      on.push(`${SHORT[kind]} ${kind === 'images' ? (value === 'lossless' ? 'lossless' : `q${value}`) : kind === 'shrink' ? `to ${value}%`
+        : kind === 'video' ? `CRF ${value}` : `${value} kbit/s`}`);
+    }
   }
   $('compress-summary').textContent = s ? (on.length ? on.join(' · ') : 'off') : '';
+  renderEstimate();
 }
 
 async function saveCompression(kind: Kind, raw: string): Promise<void> {
   const s = compression?.path === selected ? compression.state : null;
   if (!s) return;
   const path = selected;
-  const value = raw === 'off' || raw === 'lossless' ? raw : Number(raw);
+  const value = raw === 'off' || raw === 'lossless' || raw === 'audio' ? raw : Number(raw);
   try {
     const saved = await api<{ settings: Compression }>('compression', { path, settings: { ...s.settings, [kind]: value } });
     if (path === selected) { compression = { path, state: { ...s, settings: saved.settings } }; $('compress-error').hidden = true; }
   } catch (err) { showError('compress-error', err); }
   renderCompression();
+  void loadEstimate(path);
 }
 
 function renderPicture(project: Project, s: InfoState | null): void {

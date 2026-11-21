@@ -28,6 +28,7 @@ import { Progress } from './progress.ts';
 import { ReadLines } from './read-lines.ts';
 import { detectHost, type EmakiHost } from './host.ts';
 import { parsePreview } from './preview.ts';
+import { pictureSize, setPictureSizes } from './picture-size.ts';
 import { UI_STRINGS, fill, isRtl, languageName, matchLanguage, type UiKey } from './ui-strings.ts';
 
 /** Sprite positions are CSS variables so each layout (landscape, portrait) can place them. */
@@ -64,6 +65,8 @@ export interface PlayerOptions {
   plugins?: Readonly<Record<string, PluginSetup>>;
   /** Files a compressed export gave a new name (bg/a.png → bg/a.webp), by the path the story uses. */
   renamed?: Readonly<Record<string, string>>;
+  /** Pictures a compressed export made smaller, by their path in it: the size they had, which they are drawn at. */
+  sizes?: Readonly<Record<string, readonly [number, number]>>;
 }
 
 export class Player {
@@ -172,6 +175,7 @@ export class Player {
     this.runner.callPlugin = this.callPlugin;
     this.opts = opts;
     renamed = opts.renamed ?? {};
+    setPictureSizes(opts.sizes ?? {});
     this.host = opts.host ?? detectHost();
     this.storeKey = `emaki:${story.meta.title ?? 'untitled'}`;
     this.settings = loadSettings(this.storeKey + ':settings');
@@ -1211,14 +1215,14 @@ export class Player {
    */
   private placeLayer(node: HTMLElement, p: LayerProps, move?: { keys: string[]; ms: number; ease: string }): void {
     const img = node.querySelector('img');
-    const size: [number, number] | null = img && img.naturalWidth ? [img.naturalWidth, img.naturalHeight] : null;
+    const size: [number, number] | null = img && img.naturalWidth ? pictureSize(img) : null;
     applyLayer(node, p, size, this.canvas, move);
     const waiting = !size && !!img && isFree(p);
     node.style.visibility = waiting ? 'hidden' : '';
     if (!waiting) return;
     img.decode().catch(() => undefined).then(() => {
       if (!img.naturalWidth) return;
-      applyLayer(node, layerProps(node), [img.naturalWidth, img.naturalHeight], this.canvas);
+      applyLayer(node, layerProps(node), pictureSize(img), this.canvas);
       node.style.visibility = '';
     });
   }
@@ -1233,7 +1237,7 @@ export class Player {
     if (!anim) return;
     const img = node.querySelector('img');
     const start = () => {
-      const size: [number, number] = img && img.naturalWidth ? [img.naturalWidth, img.naturalHeight] : [this.canvas[0], this.canvas[1]];
+      const size: [number, number] = img && img.naturalWidth ? pictureSize(img) : [this.canvas[0], this.canvas[1]];
       const { frames, end } = animationFrames(layerProps(node), anim, size, this.canvas);
       if (!anim.loop) this.placeLayer(node, end);
       if (this.reducedMotion || (instant && !anim.loop) || !anim.duration) return;

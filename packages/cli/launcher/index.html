@@ -108,14 +108,21 @@
                 <label for="compress-images">Pictures</label>
                 <select id="compress-images" data-kind="images"></select>
                 <span class="field-hint">PNG and BMP to WebP</span>
-                <label for="compress-audio">Sound</label>
+                <label for="compress-shrink">Large pictures</label>
+                <select id="compress-shrink" data-kind="shrink"></select>
+                <span class="field-hint">Pictures bigger than the game’s screen in both directions, made smaller. Panoramas are kept.</span>
+                <label for="compress-audio">Music and sound</label>
                 <select id="compress-audio" data-kind="audio"></select>
                 <span class="field-hint" id="compress-audio-hint">WAV, FLAC, OGG and MP3 to Opus</span>
+                <label for="compress-voice">Voices</label>
+                <select id="compress-voice" data-kind="voice"></select>
+                <span class="field-hint" id="compress-voice-hint">Voice files to Opus</span>
                 <label for="compress-video">Movies</label>
                 <select id="compress-video" data-kind="video"></select>
                 <span class="field-hint" id="compress-video-hint">MP4, MOV, AVI and others to H.264</span>
               </div>
               <p class="field-hint">Only the exported copy is compressed: the files in <code>assets</code> stay as they are. Files that wouldn’t get smaller are left alone. Saved in the project’s <code>export.json</code>.</p>
+              <p id="compress-estimate" class="compress-estimate" role="status" hidden></p>
               <p id="compress-error" class="form-error" role="alert" hidden></p>
             </details>
             <div id="export-progress" class="export-progress" hidden>

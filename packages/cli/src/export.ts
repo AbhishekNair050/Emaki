@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { gameOrientation, parseAspect, type Orientation } from '@emaki/format';
 import { compileGame, where } from '@emaki/format/files';
 import { buildWeb } from '@emaki/player-web/build';
-import { compressBuild, parseCompression, readCompression, recordRenamed, summary, type Compression } from './compress.ts';
+import { compressBuild, parseCompression, readCompressionSettings, recordRenamed, summary } from './compress.ts';
 
 export const TARGETS = ['web', 'desktop', 'android', 'ios'] as const;
 export type Target = (typeof TARGETS)[number];
@@ -27,8 +27,8 @@ export interface ExportArgs {
   shell?: string;
   /** android: skip the Gradle build even if the SDK is there. */
   noBuild?: boolean;
-  /** Overrides the game's export.json, kind by kind (see compress.ts). */
-  compress?: Partial<Compression>;
+  /** Overrides the game's export.json, setting by setting (see compress.ts), as written there or on the command line. */
+  compress?: Record<string, unknown>;
 }
 
 export interface GameInfo {
@@ -87,13 +87,14 @@ export async function runExport(a: ExportArgs, log: (msg: string) => void): Prom
   const info = gameInfo(a.game, mobile.defaultAppId);
   const exportDir = join(info.dir, 'export');
   const webDir = join(exportDir, 'web');
-  const compression = parseCompression({ ...readCompression(info.dir), ...a.compress });
+  const saved = readCompressionSettings(info.dir);
+  const compression = parseCompression({ ...(saved && typeof saved === 'object' ? saved : {}), ...a.compress });
   const compressed: string[] = [];
   /** The web build every target starts from, made smaller as the game asks. */
   const build = async (outDir: string) => {
     await buildWeb(info.dir, outDir, { quiet: true });
     const r = await compressBuild(info.dir, outDir, compression, { cacheDir: join(exportDir, '.compress-cache'), log });
-    recordRenamed(outDir, r.renamed);
+    recordRenamed(outDir, r);
     const line = summary(r);
     if (line) compressed.push(line);
   };

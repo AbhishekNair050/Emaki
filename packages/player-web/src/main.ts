@@ -11,7 +11,7 @@ const app = document.getElementById('app')!;
 void start();
 
 async function start(): Promise<void> {
-  const { story, translations, diagnostics, sourceLines, graph, renamed } = await loadGame();
+  const { story, translations, diagnostics, sourceLines, graph, renamed, sizes } = await loadGame();
   if (!story) {
     // Compile errors: show them instead of the game (dev only, a build would have failed).
     app.className = 'compile-errors';
@@ -26,7 +26,7 @@ async function start(): Promise<void> {
   } else {
     document.title = story.meta.title ?? 'Emaki';
     if (import.meta.env.DEV && graph) void startWithMap(story, graph, translations);
-    else new Player(app, story, { dev: import.meta.env.DEV, translations, ownsDocument: true, plugins, ...(renamed ? { renamed } : {}) }).boot();
+    else new Player(app, story, { dev: import.meta.env.DEV, translations, ownsDocument: true, plugins, ...(renamed ? { renamed } : {}), ...(sizes ? { sizes } : {}) }).boot();
   }
 }
 

@@ -144,6 +144,7 @@ Writers start without installing Node, git or a terminal: one app with the launc
 - [x] Exporting while a game's editor or player is open (the dev servers held the `export` folder open on Windows)
 - [x] Packaged for Windows: the engine and the packages it runs with inside the app, an installer for the current user (`npm run build:studio`, unsigned)
 - [x] Smaller exports: pictures to WebP, sound to Opus, movies to H.264, chosen per game in the Export card (D-070)
+- [x] Voices compressed on their own, large pictures made no bigger than the screen, the export's size shown first, ffmpeg in the Studio (D-071)
 - [ ] macOS and Linux packages, built in CI on release tags only
 - [ ] Signed installers and updates
 - [ ] Starter templates in New project, and a check for what Android and iOS exports need

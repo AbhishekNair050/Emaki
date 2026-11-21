@@ -24,5 +24,7 @@ declare module 'virtual:emaki-game' {
     graph: StoryGraph | null;
     /** In a compressed export: the new names of files that changed format (bg/a.png → bg/a.webp). */
     renamed?: Record<string, string>;
+    /** In an export that made large pictures smaller: the size each had, by its path. */
+    sizes?: Record<string, [number, number]>;
   }>;
 }

@@ -9,6 +9,7 @@
  * The renderer only builds elements; what buttons do, which text a translation
  * gives and what variables hold all come from the host (the Player).
  */
+import { pictureSize } from './picture-size.ts';
 import { evaluate, truthy, type CallPlugin, type CompiledScreen, type CompiledScreenItem, type ScreenAction, type Span, type Value } from '@emaki/format';
 
 export interface ScreenHost {
@@ -121,7 +122,7 @@ function picture(src: string, it: CompiledScreenItem, host: ScreenHost): HTMLIma
   img.draggable = false;
   if (it.w === undefined && it.h === undefined) {
     const cw = host.canvas?.[0] ?? 1920;
-    img.addEventListener('load', () => { img.style.width = `${(img.naturalWidth / cw) * 100}cqw`; }, { once: true });
+    img.addEventListener('load', () => { img.style.width = `${(pictureSize(img)[0] / cw) * 100}cqw`; }, { once: true });
   } else {
     img.style.width = it.w !== undefined ? '100%' : 'auto';
     img.style.height = it.h !== undefined ? '100%' : 'auto';
@@ -364,8 +365,9 @@ function renderItem(it: CompiledScreenItem, host: ScreenHost, vars: Readonly<Rec
         const k = new Image();
         k.addEventListener('load', () => {
           const cw = host.canvas?.[0] ?? 1920;
-          input.style.setProperty('--knob-w', `${(k.naturalWidth / cw) * 100}cqw`);
-          input.style.setProperty('--knob-h', `${(k.naturalHeight / cw) * 100}cqw`);
+          const [kw, kh] = pictureSize(k);
+          input.style.setProperty('--knob-w', `${(kw / cw) * 100}cqw`);
+          input.style.setProperty('--knob-h', `${(kh / cw) * 100}cqw`);
         }, { once: true });
         k.src = host.url(it.knob);
       }

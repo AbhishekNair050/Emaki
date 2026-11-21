@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { asset, setRenamedAssets } from '../src/player.ts';
+import { pictureSize, setPictureSizes } from '../src/picture-size.ts';
 
 describe('asset URLs in a compressed export', () => {
   afterEach(() => setRenamedAssets({}));
@@ -13,5 +14,19 @@ describe('asset URLs in a compressed export', () => {
     expect(asset('https://example.com/a.png')).toBe('https://example.com/a.png');
     setRenamedAssets({});
     expect(asset('bg/sea.png')).toBe('./bg/sea.png');
+  });
+});
+
+describe('pictures a compressed export made smaller', () => {
+  afterEach(() => setPictureSizes({}));
+
+  /** Just what pictureSize reads of an <img>. */
+  const img = (src: string, w: number, h: number) => ({ getAttribute: () => src, naturalWidth: w, naturalHeight: h }) as unknown as HTMLImageElement;
+
+  it('are sized as they were before, and other pictures by their pixels', () => {
+    setPictureSizes({ 'bg/sea.webp': [3840, 2160] });
+    expect(pictureSize(img(asset('bg/sea.webp'), 1920, 1080))).toEqual([3840, 2160]);
+    expect(pictureSize(img(asset('bg/sky.png'), 1280, 720))).toEqual([1280, 720]);
+    expect(pictureSize(img('./toString', 10, 20))).toEqual([10, 20]);
   });
 });
