@@ -2,7 +2,7 @@
   "name": "@emaki/cli",
   "version": "0.1.0",
   "description": "Emaki project launcher and command line tools.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "type": "module",
   "bin": {
     "emaki": "./src/main.ts"

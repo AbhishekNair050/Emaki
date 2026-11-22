@@ -2,7 +2,7 @@
   "name": "@emaki/editor",
   "version": "0.1.0",
   "description": "Emaki's web editor: the script, a flowchart of the story and the running game, side by side.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "type": "module",
   "private": true,
   "exports": {

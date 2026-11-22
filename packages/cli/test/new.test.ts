@@ -10,7 +10,7 @@ describe('emaki new', () => {
   it('starts a game that compiles cleanly, is formatted and has its background', () => {
     const root = mkdtempSync(join(tmpdir(), 'emaki-new-'));
     const dir = join(root, 'my-first_game');
-    expect(newGame(dir)).toEqual(['story.vn', 'theme.css', 'assets/bg/sky.svg']);
+    expect(newGame(dir)).toEqual(['story.vn', 'theme.css', 'assets/bg/sky.svg', 'LICENSE-starter.txt']);
     const r = compileGame(dir);
     expect(r.diagnostics).toEqual([]);
     expect(r.story!.meta.title).toBe('My First Game');
@@ -19,7 +19,7 @@ describe('emaki new', () => {
     expect(existsSync(join(dir, 'assets', 'sprites'))).toBe(true);
     // Never over an existing game.
     expect(() => newGame(dir)).toThrow(/already has files/);
-    expect(newGame(join(root, 'other'), 'The Pier')).toHaveLength(3);
+    expect(newGame(join(root, 'other'), 'The Pier')).toHaveLength(4);
     expect(readFileSync(join(root, 'other', 'story.vn'), 'utf8')).toContain('title: The Pier');
     rmSync(root, { recursive: true, force: true });
   });

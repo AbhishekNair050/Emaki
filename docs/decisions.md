@@ -26,6 +26,8 @@ The name is short, rare in software, and works everywhere we need it: the CLI (`
 
 ## D-002: MIT license, no royalties
 
+D-073 supersedes the license choice and retains royalty-free use.
+
 The engine, the editor and the exporters are free, and games made with them owe nothing. Ren'Py is MIT and free; a fee on Emaki's core would be the first reason not to switch. (An OSI license can't carry a royalty anyway.) If paid things ever exist, they'll be optional services around the engine, such as console-port support or cloud builds, never a charge on the core or on games.
 
 ## D-003: TypeScript everywhere, for now
@@ -571,3 +573,9 @@ Ren'Py games often let the player name themselves (`DynamicCharacter("player")`,
 The importer only reads `.rpy` sources, and refuses a folder that has only `.rpyc` and `.rpa` files. Those are a released game, not a project, and getting scripts back out of them is a different job.
 
 We checked it on a 20,000-line Ren'Py game (35 scripts, 283 labels, about 800 composite sprites, its own position transforms). The import took about 35 seconds, commented out 70 lines that didn't compile (pictures the game draws in Python), and reported the rest of what it skipped. The web export played from the title into the first chapter in Chrome with no missing files or errors, with characters at the game's own positions and sizes.
+
+## D-073: License Emaki under MPL 2.0 before public release
+
+We chose the Mozilla Public License 2.0 so that a distributor of a commercial fork must make the source of the covered engine files, including its changes, available to recipients under the MPL. This file-level protection keeps improvements to Emaki available to the people who receive the fork. Developers can still sell games royalty-free and license their own separate scripts, art, audio, and independently written files on their own terms. See the [license](../LICENSE), sections 3.1 through 3.3.
+
+All engine packages use MPL 2.0. Original game samples under `games/` and starter content emitted by `emaki new` use MIT so developers can reuse scripts, styles, and art in commercial games while retaining the sample notice. Separately credited assets and copies of engine files retain their respective licenses.

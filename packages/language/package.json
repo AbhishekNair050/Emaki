@@ -2,7 +2,7 @@
   "name": "@emaki/language",
   "version": "0.1.0",
   "description": "Editor features for Emaki scripts (problems, symbols, definition, references, hover, completion, formatting), independent of any editor.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "type": "module",
   "private": true,
   "exports": {

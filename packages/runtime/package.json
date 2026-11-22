@@ -2,7 +2,7 @@
   "name": "@emaki/runtime",
   "version": "0.1.0",
   "description": "Headless Emaki story VM: runs compiled stories, rollback, save/load.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

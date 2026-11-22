@@ -59,7 +59,7 @@ The [Studio release workflow](.github/workflows/studio-release.yml) runs on Stud
 ## Reporting bugs and proposing features
 Use the issue templates. For a bug in a story, the smallest script that shows it is the most useful thing you can include. A new feature should come from a game that needs it: say what you're making and what you couldn't write. Larger changes are best discussed in an issue before a pull request, since the script language and the compiled format are shared contracts (see Conventions). Security problems go privately: see [SECURITY.md](SECURITY.md).
 
-By contributing you agree that your contributions are licensed under the MIT License, and to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+By contributing you agree that your contributions follow the applicable project license ([MPL 2.0](LICENSE) for engine packages and [MIT](games/LICENSE) for original game samples), and to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Conventions
 - TypeScript runs directly in Node (type stripping): **no enums, no parameter properties, no namespaces**

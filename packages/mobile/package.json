@@ -2,7 +2,7 @@
   "name": "@emaki/mobile",
   "version": "0.1.0",
   "description": "Android and iOS export for Emaki games, with Capacitor.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "type": "module",
   "private": true,
   "exports": {

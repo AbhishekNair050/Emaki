@@ -4,7 +4,7 @@
   "description": "Write Emaki visual novel scripts (.vn): highlighting, live error checking, go to definition, completion, outline and formatting.",
   "version": "0.1.0",
   "publisher": "emaki",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "private": true,
   "repository": {
     "type": "git",

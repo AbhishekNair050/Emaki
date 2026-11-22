@@ -2,7 +2,7 @@
   "name": "@emaki/format",
   "version": "0.1.0",
   "description": "Emaki story format: parser, compiler, expression language, diagnostics.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

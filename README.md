@@ -2,7 +2,7 @@
 
 *Unroll your story. Write like a screenplay, ship everywhere.*
 
-An open-source (MIT) visual novel engine. Write your story in a plain-text script, edit it with the game running beside it, translate it, and ship it to the web, Windows, macOS, Linux (with Steam achievements) and phones.
+An open-source ([MPL 2.0](LICENSE)) visual novel engine. Write your story in a plain-text script, edit it with the game running beside it, translate it, and ship it to the web, Windows, macOS, Linux (with Steam achievements) and phones.
 
 ![A scene from the demo: Mira, the lighthouse keeper, on the cliff road at dusk](docs/images/demo.png)
 
@@ -109,4 +109,6 @@ Example games: [`games/gullwing`](games/gullwing), *The Keeper of Gullwing Point
 Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
-MIT. Games you make with Emaki are yours, under any license you choose.
+Copyright (c) 2026 Emaki contributors. Emaki is licensed under the [Mozilla Public License 2.0](LICENSE). When distributing a game with Emaki, tell recipients how to obtain the MPL-covered engine source for that build, including any changes. You can choose your own terms for your original game scripts, artwork, and audio.
+
+Original samples under `games/` and the story, CSS, and background emitted by `emaki new` use the [MIT License](games/LICENSE). Keep the MIT notice with copies or substantial portions. Gullwing audio has separate [CC0 credits](games/gullwing/assets/audio/CREDITS.md). The plugin demo file `plugins/emaki-plugin.d.ts` is a copy of the MPL-covered engine API.

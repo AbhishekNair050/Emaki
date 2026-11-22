@@ -2,7 +2,7 @@
   "name": "@emaki/desktop",
   "version": "0.1.0",
   "description": "Desktop export for Emaki games with WebView2, encrypted Windows game packs, Electron and Steamworks.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "type": "module",
   "private": true,
   "exports": {

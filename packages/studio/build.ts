@@ -135,6 +135,7 @@ function stageApp(): { version: string; electronVersion: string } {
   mkdirSync(stage, { recursive: true });
   for (const p of SHIP) copy(join(repo, 'packages', p), join(stage, 'packages', p));
   copy(join(repo, 'games', 'gullwing'), join(stage, 'games', 'gullwing'));
+  cpSync(join(repo, 'games', 'LICENSE'), join(stage, 'games', 'LICENSE'));
   for (const file of ['LICENSE', 'README.md']) if (existsSync(join(repo, file))) cpSync(join(repo, file), join(stage, file));
 
   let electronVersion = '';
@@ -153,7 +154,7 @@ function stageApp(): { version: string; electronVersion: string } {
   const version = studio.version ?? '0.0.0';
   writeFileSync(join(stage, 'package.json'), `${JSON.stringify({
     name: 'emaki-studio', productName: 'Emaki Studio', version, description: studio.description,
-    license: 'MIT', author: 'Emaki', private: true, type: 'module', main: 'packages/studio/src/main.ts',
+    license: 'MPL-2.0', author: 'Emaki', private: true, type: 'module', main: 'packages/studio/src/main.ts',
   }, null, 2)}\n`);
   log(`Staged ${SHIP.length} engine packages and ${packages.size} dependencies (Electron ${electronVersion}).`);
   return { version, electronVersion };

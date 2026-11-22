@@ -6,7 +6,7 @@
  * it at once and change it line by line. The background is hand-written SVG,
  * like the demo's placeholder art.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { splitComment } from '@emaki/format';
 
@@ -74,6 +74,8 @@ export function newGame(dir: string, title?: string): string[] {
     'story.vn': starterStory(name),
     'theme.css': THEME,
     'assets/bg/sky.svg': STARTER_BACKGROUND,
+    'LICENSE-starter.txt': 'Emaki starter files (story.vn, theme.css, and assets/bg/sky.svg)\n\n'
+      + readFileSync(new URL('../../../games/LICENSE', import.meta.url), 'utf8'),
   };
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(full, path, '..'), { recursive: true });
