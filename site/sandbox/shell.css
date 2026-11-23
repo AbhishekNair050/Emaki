@@ -1,0 +1,15 @@
+#sandbox-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+}
+#sandbox-notice span { flex: 1 1 25em; }
+#sandbox-notice a { color: var(--text); }
+.editor .game-frame .stage { color: var(--ui-text); }
+@media (max-width: 860px) {
+  .editor .workspace > .game-pane { min-height: min(50dvh, 440px); }
+}

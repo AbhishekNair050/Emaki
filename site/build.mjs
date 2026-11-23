@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { buildWeb } from '../packages/player-web/src/build.ts';
+import { buildSandbox } from './sandbox/build.mjs';
 
 const site = import.meta.dirname;
 const repo = resolve(site, '..');
@@ -86,7 +87,10 @@ for (const game of ['gullwing', 'plugin-demo']) {
     const gamePage = join(gameOutput, 'index.html');
     const gameHtml = await readFile(gamePage, 'utf8');
     await cp(join(site, 'demo.css'), join(gameOutput, 'demo.css'));
-    await writeFile(gamePage, gameHtml.replace('</head>', '  <link rel="stylesheet" href="./demo.css">\n  </head>'));
+    await writeFile(gamePage, gameHtml
+      .replace('</head>', '  <link rel="stylesheet" href="./demo.css">\n  </head>')
+      .replace('</body>', '  <a class="try-editor" href="../../try/gullwing/">Try the Emaki editor</a>\n  </body>'));
   }
 }
-console.log('Built the Emaki guide and both browser demos in site/dist/public.');
+await buildSandbox(repo, join(output, 'try', 'gullwing'));
+console.log('Built the Emaki guide, browser demos and editor sandbox in site/dist/public.');
